@@ -334,7 +334,7 @@ def run_for_symbol(symbol: str, cfg: dict):
             sweep_bar_idx = None
             sweep_found = False
             lookback = min(5, scan_bar)
-            for check_idx in range(scan_bar - 4, scan_bar + 1):
+            for check_idx in range(max(0, scan_bar - 4), scan_bar + 1):
                 if check_idx < 0 or check_idx >= len(bars_15m):
                     continue
                 cb = bars_15m[check_idx]
@@ -367,10 +367,9 @@ def run_for_symbol(symbol: str, cfg: dict):
                     )
                     pipeline["retrade_sweep_fed"] += 1
 
-            if rsm_retrade.state_name == "SWEEP_DETECTED":
+            if sweep_found and rsm_retrade.state_name == "SWEEP_DETECTED":
                 pipeline["retrade_fvg_scanned"] += 1
                 sweep_bar = bars_15m[sweep_bar_idx]
-                rsm_retrade.on_sweep_confirmed(chunk, sweep_bar)
                 sweep_chunk = (
                     bars_15m[sweep_bar_idx - WINDOW : sweep_bar_idx + 1]
                     if sweep_bar_idx >= WINDOW
@@ -382,8 +381,11 @@ def run_for_symbol(symbol: str, cfg: dict):
 
             if rsm_retrade.can_trigger():
                 pipeline["retrade_trigger_ready"] += 1
-                phase_rt = detect_phase_from_timestamp(current.timestamp)
-                if phase_rt not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
+                # FIX #3: Sweep, primary entry barından sonra oluşmuş olmalı.
+                # bot.py ile hizalı: önceki sweep'e denk düşmeyi engeller.
+                if sweep_bar_idx is not None and sweep_bar_idx <= (ss.retrade_entry_bar or 0):
+                    rsm_retrade.reset()
+                elif detect_phase_from_timestamp(current.timestamp) not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
                     rsm_retrade.reset()
                 else:
                     retrade_entry_price = current.close
