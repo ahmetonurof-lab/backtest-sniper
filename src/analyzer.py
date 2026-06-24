@@ -9,7 +9,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from coins_config import get_config, COINS
+from coins_config import get_config, COINS, SYMBOL_RISK_MAP, RISK_PER_TRADE
 from fvg import detect_fvgs
 from models import Bar
 from retrace_state import RetraceStateMachine
@@ -72,6 +72,8 @@ def run_for_symbol(symbol: str, cfg: dict):
     min_fvg_size = cfg["min_fvg_size"]
     initial_capital = cfg["initial_capital"]
     risk_per_trade = cfg["risk_per_trade"]
+    risk_primary = cfg.get("risk_primary", risk_per_trade)
+    risk_retrade = cfg.get("risk_retrade", risk_per_trade)
     sl_atr_mult = cfg["sl_atr_mult"]
     tp_rr = cfg["tp_rr"]
     fvg_buffer_mult = cfg["fvg_buffer_mult"]
@@ -200,7 +202,7 @@ def run_for_symbol(symbol: str, cfg: dict):
                 )
 
             qty = (
-                (initial_capital * risk_per_trade) / abs(sl - entry_price)
+                (initial_capital * risk_primary) / abs(sl - entry_price)
                 if abs(sl - entry_price) > 0
                 else 0
             )
@@ -418,7 +420,7 @@ def run_for_symbol(symbol: str, cfg: dict):
                         )
 
                     retrade_qty = (
-                        (initial_capital * risk_per_trade)
+                        (initial_capital * risk_retrade)
                         / abs(retrade_sl - retrade_entry_price)
                         if abs(retrade_sl - retrade_entry_price) > 0
                         else 0
@@ -463,14 +465,27 @@ def run_for_symbol(symbol: str, cfg: dict):
                 trades.append(trade)
                 pipeline["closed"] += 1
 
+    # Baseline PnL (RISK_PER_TRADE=0.01 ile karsilastirma icin)
+    for t in trades:
+        risk_dist_t = abs(t["initial_sl"] - t["entry_price"])
+        if t["side"] == "long":
+            diff_t = t["exit_price"] - t["entry_price"]
+        else:
+            diff_t = t["entry_price"] - t["exit_price"]
+        qty_base = (initial_capital * RISK_PER_TRADE) / risk_dist_t if risk_dist_t > 0 else 0
+        t["pnl_base"] = round(diff_t * qty_base, 2)
+
     print(f"\n{'='*78}")
     print(f"  SNIPER BACKTEST — {symbol} | {len(trades)} Islem")
     print(f"{'='*78}")
     print(
-        f"  Parametreler: SL=FVG edge +/- buffer | TP=London High/Low veya {tp_rr}R | Risk=%{risk_per_trade*100:.0f}"
+        f"  Parametreler: SL=FVG edge +/- buffer | TP=London High/Low veya {tp_rr}R"
     )
     print(
         f"                FVG buffer={fvg_buffer_mult}x risk_pts | min_fvg={min_fvg_size} | Session=NEWYORK | Retrade var"
+    )
+    print(
+        f"  Risk: primary=%{risk_primary*100:.1f}  retrade=%{risk_retrade*100:.1f}  (baseline=%{RISK_PER_TRADE*100:.0f})"
     )
 
     print("\n  PIPELINE")
@@ -565,20 +580,37 @@ def run_for_symbol(symbol: str, cfg: dict):
 
         primary_trades = [t for t in trades if not t.get("is_retrade", False)]
         retrade_trades = [t for t in trades if t.get("is_retrade", False)]
+        rt_armed = pipeline.get("retrade_armed", 0)
+        rt_sweep = pipeline.get("retrade_sweep", 0)
+        rt_entry = pipeline.get("retrade_entry", 0)
+        print("\n  RETRADE PIPELINE BREAKDOWN")
+        print(f"  {'-'*56}")
+        print(f"  {'retrade_armed':<30}{rt_armed}")
+        print(f"  {'retrade_sweep':<30}{rt_sweep}")
+        print(f"  {'retrade_entry':<30}{rt_entry}")
+        if rt_armed > 0:
+            print(f"  {'sweep/armed ratio':<30}{rt_sweep/rt_armed*100:.1f}%")
+            print(f"  {'entry/sweep ratio':<30}{rt_entry/rt_sweep*100:.1f}%" if rt_sweep > 0 else "")
+            print(f"  {'armed→entry conv rate':<30}{rt_entry/rt_armed*100:.1f}%")
         if retrade_trades:
             rt_wins = [t for t in retrade_trades if t["pnl"] > 0]
             rt_pnl = sum(t["pnl"] for t in retrade_trades)
             rt_wr = len(rt_wins) / len(retrade_trades) * 100
-            print("\n  RETRADE (2. ENTRY) ANALIZI")
+            rt_tp = sum(1 for t in retrade_trades if t["result"] == "TP")
+            rt_sl = sum(1 for t in retrade_trades if t["result"] == "SL")
+            rt_open = sum(1 for t in retrade_trades if t["result"] == "OPEN")
+            rt_trail = sum(t.get("trailing_count", 0) for t in retrade_trades) / len(retrade_trades)
+            print(f"\n  RETRADE (2. ENTRY) ANALIZI")
             print(f"  {'-'*56}")
-            print(f"  {'1. Entry (gunun ilk islemi)':<30}{len(primary_trades)}")
-            print(
-                f"  {'2. Entry (retrade)':<30}{len(retrade_trades)}  (PnL={rt_pnl:+.2f}, WR={rt_wr:.1f}%)"
-            )
+            print(f"  {'1. Entry (primary)':<30}{len(primary_trades)}")
+            print(f"  {'Primary PnL':<30}{sum(t['pnl'] for t in primary_trades):+.2f}")
+            print(f"  {'2. Entry (retrade)':<30}{len(retrade_trades)}")
+            print(f"  {'Retrade PnL':<30}{rt_pnl:+.2f}")
+            print(f"  {'Retrade WR':<30}{rt_wr:.1f}%")
             if total_pnl:
-                print(
-                    f"  {'Retrade katkisi (toplam PnL)':<30}%{rt_pnl/total_pnl*100:.1f}"
-                )
+                print(f"  {'Retrade PnL/total':<30}%{rt_pnl/total_pnl*100:.1f}")
+            print(f"  {'Retrade TP/SL/OPEN':<30}{rt_tp}/{rt_sl}/{rt_open}")
+            print(f"  {'Retrade ort. trailing':<30}{rt_trail:.1f}")
 
         trailed = [t for t in trades if t.get("trailing_count", 0) > 0]
         not_trailed = [t for t in trades if t.get("trailing_count", 0) == 0]
@@ -622,6 +654,45 @@ def run_for_symbol(symbol: str, cfg: dict):
     print()
     print("=" * 78)
 
+    metrics = {"symbol": symbol, "total_trades": len(trades)}
+    if trades:
+        total_pnl = sum(t["pnl"] for t in trades)
+        pnl_base = sum(t.get("pnl_base", 0) for t in trades)
+        wins = [t for t in trades if t["pnl"] > 0]
+        wr = len(wins) / len(trades) * 100
+
+        dd_max = 0.0
+        dd_peak = initial_capital
+        running = initial_capital
+        for t in trades:
+            running += t["pnl"]
+            if running > dd_peak:
+                dd_peak = running
+            dd = (dd_peak - running) / dd_peak * 100 if dd_peak > 0 else 0
+            if dd > dd_max:
+                dd_max = dd
+
+        wt = sum(t["rr"] for t in wins) / len(wins) if wins else 0
+        lt = sum(t["rr"] for t in trades if t["pnl"] <= 0) / max(len([t for t in trades if t["pnl"] <= 0]), 1)
+        pf = abs(wt / lt) if wt > 0 and lt != 0 else 0
+
+        primary_trades = [t for t in trades if not t.get("is_retrade", False)]
+        retrade_trades = [t for t in trades if t.get("is_retrade", False)]
+        rt_wins = [t for t in retrade_trades if t["pnl"] > 0]
+
+        metrics.update({
+            "total_pnl": total_pnl, "pnl_base": pnl_base,
+            "wr": wr, "max_dd": dd_max, "profit_factor": pf,
+            "primary_trades": len(primary_trades), "retrade_trades": len(retrade_trades),
+            "primary_pnl": sum(t["pnl"] for t in primary_trades),
+            "retrade_pnl": sum(t["pnl"] for t in retrade_trades),
+            "primary_pnl_base": sum(t.get("pnl_base", 0) for t in primary_trades),
+            "retrade_pnl_base": sum(t.get("pnl_base", 0) for t in retrade_trades),
+            "rt_wr": len(rt_wins) / len(retrade_trades) * 100 if retrade_trades else 0,
+            "risk_primary": risk_primary, "risk_retrade": risk_retrade,
+        })
+    return metrics
+
 
 def main():
     parser = argparse.ArgumentParser(description="Parametric Sniper Backtest Analyzer")
@@ -632,8 +703,96 @@ def main():
     args = parser.parse_args()
 
     if args.all:
+        results = []
         for sym in COINS:
-            run_for_symbol(sym, get_config(sym))
+            m = run_for_symbol(sym, get_config(sym))
+            if m:
+                results.append(m)
+
+        print("\n\n")
+        print("=" * 110)
+        print("  BASELINE (risk=1%) vs CUSTOM RISK — KARSILASTIRMA")
+        print("=" * 110)
+        header = (
+            f"  {'Sembol':<10}"
+            f" {'Risk P/R':<14}"
+            f" {'Islem':<7}"
+            f" {'PnL(base)':<12}"
+            f" {'PnL(cust)':<12}"
+            f" {'ΔPnL':<10}"
+            f" {'WR':<7}"
+            f" {'MaxDD':<8}"
+            f" {'PF':<7}"
+            f" {'Retrd%':<8}"
+        )
+        print(header)
+        print("  " + "-" * 105)
+
+        total_pnl_base = 0.0
+        total_pnl_cust = 0.0
+        for m in results:
+            sym = m["symbol"]
+            rp = m["risk_primary"]
+            rr = m["risk_retrade"]
+            nt = m["total_trades"]
+            pb = m["pnl_base"]
+            pc = m["total_pnl"]
+            dp = pc - pb
+            wr = m["wr"]
+            dd = m["max_dd"]
+            pf = m["profit_factor"]
+            rt_pct = m["retrade_pnl"] / pc * 100 if pc != 0 else 0
+
+            dp_s = f"{dp:+.1f}" + (" ⚠" if abs(dp) > 50 else "")
+            print(
+                f"  {sym:<10}"
+                f" {rp:.1%}/{rr:.1%}   "
+                f" {nt:<5}"
+                f" {pb:<+11.1f}"
+                f" {pc:<+11.1f}"
+                f" {dp_s:<12}"
+                f" {wr:<5.1f}%"
+                f" {dd:<6.1f}%"
+                f" {pf:<5.2f}"
+                f" {rt_pct:<5.1f}%"
+            )
+            total_pnl_base += pb
+            total_pnl_cust += pc
+
+        print("  " + "-" * 105)
+        total_dp = total_pnl_cust - total_pnl_base
+        print(
+            f"  {'TOPLAM':<10}"
+            f" {'':<14}"
+            f" {'':<5}"
+            f" {total_pnl_base:<+11.1f}"
+            f" {total_pnl_cust:<+11.1f}"
+            f" {total_dp:<+10.1f}"
+            f" {'':<7}"
+            f" {'':<8}"
+            f" {'':<7}"
+            f" {'':<8}"
+        )
+
+        # CSV kaydet
+        report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+        os.makedirs(report_dir, exist_ok=True)
+        csv_path = os.path.join(report_dir, "risk_comparison.csv")
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["symbol", "risk_primary", "risk_retrade", "trades",
+                        "pnl_base", "pnl_custom", "delta_pnl",
+                        "wr", "max_dd", "profit_factor", "retrade_pnl_pct"])
+            for m in results:
+                rt_pct = m["retrade_pnl"] / m["total_pnl"] * 100 if m["total_pnl"] != 0 else 0
+                w.writerow([
+                    m["symbol"], m["risk_primary"], m["risk_retrade"],
+                    m["total_trades"], round(m["pnl_base"], 2),
+                    round(m["total_pnl"], 2), round(m["total_pnl"] - m["pnl_base"], 2),
+                    round(m["wr"], 1), round(m["max_dd"], 1),
+                    round(m["profit_factor"], 2), round(rt_pct, 1),
+                ])
+        print(f"\nRapor kaydedildi: {csv_path}")
     elif args.symbol:
         cfg = get_config(args.symbol)
         run_for_symbol(args.symbol, cfg)
