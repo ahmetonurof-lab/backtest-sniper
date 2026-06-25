@@ -34,15 +34,24 @@ class SessionState:
         self.sweep_direction: Literal["bullish", "bearish"] | None = None
         self.sweep_level: float | None = None
         self.trades_today: int = 0
-        self.last_date: str = ""
 
         # Retrade state — pivot bazli LBS/SBS sweep sonrasi 2. entry icin.
         self.retrade_armed: bool = False
         self.retrade_side: Literal["long", "short"] | None = None
         self.retrade_sweep_level: float = 0.0
         self.retrade_entry_bar: int = 0
+        self.retrade_fvg_attempts: int = 0
+        self.retrade_mode: str = "fvg"
 
-    def update(self, dt: datetime, open: float, high: float, low: float, close: float, atr: float = 0.0):
+    def update(
+        self,
+        dt: datetime,
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        atr: float = 0.0,
+    ):
         sess = detect_phase(dt)
         h = dt.hour
         today = dt.strftime("%Y-%m-%d")
@@ -51,10 +60,6 @@ class SessionState:
         if cbdr_key != self.cbdr_day:
             self._reset_for_new_cbdr_cycle()
             self.cbdr_day = cbdr_key
-
-        if today != self.last_date:
-            self.last_date = today
-            self.trades_today = 0
 
         if sess == SessionPhase.CBDR and not self.cbdr_locked:
             self._track_cbdr_body(open, close)
@@ -84,6 +89,9 @@ class SessionState:
         self.retrade_side = None
         self.retrade_sweep_level = 0.0
         self.retrade_entry_bar = 0
+        self.retrade_fvg_attempts = 0
+        self.retrade_mode = "fvg"
+        self.trades_today = 0
 
     def _track_cbdr_body(self, open: float, close: float):
         body_high = max(open, close)
@@ -109,7 +117,9 @@ class SessionState:
         elif low < self.london_low:
             self.london_low = low
 
-    def _check_cbdr_sweep(self, high: float, low: float, close: float, atr: float = 0.0):
+    def _check_cbdr_sweep(
+        self, high: float, low: float, close: float, atr: float = 0.0
+    ):
         tolerance = atr * 0.5 if atr > 0 else 10.0
 
         if high > self.cbdr_body_high + tolerance:
@@ -126,6 +136,7 @@ class SessionState:
                 self.sweep_direction = "bearish"
                 self.sweep_level = self.cbdr_body_low
                 self.daily_bias = DailyBias.BEARISH
+                return
 
 
 def detect_phase(dt: datetime) -> SessionPhase:

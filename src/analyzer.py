@@ -15,6 +15,9 @@ from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionPhase, SessionState, detect_phase_from_timestamp
 
+LONDON_RETEST_PCT = 0.003
+MAX_FVG_ATTEMPTS = 3
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
@@ -110,6 +113,9 @@ def run_for_symbol(symbol: str, cfg: dict):
         "retrade_wick_rejection": 0,
         "retrade_trigger_ready": 0,
         "retrade_entry": 0,
+        "retrade_lhr_checked": 0,
+        "retrade_lhr_inzone": 0,
+        "retrade_lhr_entry": 0,
     }
     total_signals = 0
     rejected_other = 0
@@ -201,9 +207,13 @@ def run_for_symbol(symbol: str, cfg: dict):
                     else entry_price - risk_pts * tp_rr
                 )
 
+            risk_dist = abs(sl - entry_price)
+            min_risk_dist = atr_val * 0.1
+            if risk_dist < min_risk_dist:
+                continue
             qty = (
-                (initial_capital * risk_primary) / abs(sl - entry_price)
-                if abs(sl - entry_price) > 0
+                (initial_capital * risk_primary) / risk_dist
+                if risk_dist > 0
                 else 0
             )
             if qty <= 0:
@@ -326,6 +336,8 @@ def run_for_symbol(symbol: str, cfg: dict):
                     ss.retrade_side = "short" if trade["side"] == "long" else "long"
                     ss.retrade_sweep_level = 0.0
                     ss.retrade_entry_bar = trade["entry_bar"]
+                    ss.retrade_fvg_attempts = 0
+                    ss.retrade_mode = "fvg"
                     pipeline["retrade_armed"] += 1
             else:
                 still_active.append(trade)
@@ -383,8 +395,6 @@ def run_for_symbol(symbol: str, cfg: dict):
 
             if rsm_retrade.can_trigger():
                 pipeline["retrade_trigger_ready"] += 1
-                # FIX #3: Sweep, primary entry barından sonra oluşmuş olmalı.
-                # bot.py ile hizalı: önceki sweep'e denk düşmeyi engeller.
                 if sweep_bar_idx is not None and sweep_bar_idx <= (ss.retrade_entry_bar or 0):
                     rsm_retrade.reset()
                 elif detect_phase_from_timestamp(current.timestamp) not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
@@ -396,9 +406,7 @@ def run_for_symbol(symbol: str, cfg: dict):
 
                     if ss.retrade_side == "long":
                         if retrade_fvg:
-                            retrade_sl = retrade_fvg.bottom - (
-                                retrade_risk_pts * fvg_buffer_mult
-                            )
+                            retrade_sl = retrade_fvg.bottom - (retrade_risk_pts * fvg_buffer_mult)
                         else:
                             retrade_sl = retrade_entry_price - retrade_risk_pts * 2
                         retrade_tp = (
@@ -408,9 +416,7 @@ def run_for_symbol(symbol: str, cfg: dict):
                         )
                     else:
                         if retrade_fvg:
-                            retrade_sl = retrade_fvg.top + (
-                                retrade_risk_pts * fvg_buffer_mult
-                            )
+                            retrade_sl = retrade_fvg.top + (retrade_risk_pts * fvg_buffer_mult)
                         else:
                             retrade_sl = retrade_entry_price + retrade_risk_pts * 2
                         retrade_tp = (
@@ -443,9 +449,64 @@ def run_for_symbol(symbol: str, cfg: dict):
                         active_trades.append(retrade_trade)
                         pipeline["retrade_entry"] += 1
                         ss.trades_today += 1
+                        rsm_retrade.reset()
+                        ss.retrade_armed = False
+                    else:
+                        ss.retrade_fvg_attempts += 1
+                        rsm_retrade.reset()
+            else:
+                ss.retrade_fvg_attempts += 1
 
-                    rsm_retrade.reset()
-                    ss.retrade_armed = False
+            # ── LHR fallback (FVG attempts exhausted) ──
+            if ss.retrade_fvg_attempts >= MAX_FVG_ATTEMPTS:
+                ss.retrade_mode = "lhr"
+                pipeline["retrade_lhr_checked"] += 1
+                lh = ss.london_high
+                ll = ss.london_low
+                if ss.retrade_side == "short" and lh > 0:
+                    zone_bottom = lh * (1 - LONDON_RETEST_PCT)
+                    zone_top = lh
+                    if zone_bottom <= current.close <= zone_top:
+                        pipeline["retrade_lhr_inzone"] += 1
+                        lhr_entry_price = current.close
+                        lhr_risk_pts = atr_val * 1.0
+                        lhr_sl = lh + lhr_risk_pts
+                        lhr_tp = ss.london_low if ss.london_low < lhr_entry_price else lhr_entry_price - lhr_risk_pts * tp_rr
+                        lhr_risk_dist = abs(lhr_sl - lhr_entry_price)
+                        lhr_min_risk_dist = atr_val * 0.1
+                        if lhr_risk_dist >= lhr_min_risk_dist:
+                            lhr_qty = (initial_capital * risk_retrade) / lhr_risk_dist if lhr_risk_dist > 0 else 0
+                            if lhr_qty > 0:
+                                active_trades.append({
+                                    "entry_bar": scan_bar, "entry_price": lhr_entry_price, "sl": lhr_sl, "tp": lhr_tp,
+                                    "qty": lhr_qty, "side": "short", "trigger_fvg": None,
+                                    "initial_sl": lhr_sl, "initial_tp": lhr_tp, "trailing_count": 0, "is_retrade": True,
+                                })
+                                pipeline["retrade_lhr_entry"] += 1
+                                ss.trades_today += 1
+                                ss.retrade_armed = False
+                elif ss.retrade_side == "long" and ll < float("inf"):
+                    zone_top = ll * (1 + LONDON_RETEST_PCT)
+                    zone_bottom = ll
+                    if zone_bottom <= current.close <= zone_top:
+                        pipeline["retrade_lhr_inzone"] += 1
+                        lhr_entry_price = current.close
+                        lhr_risk_pts = atr_val * 1.0
+                        lhr_sl = ll - lhr_risk_pts
+                        lhr_tp = ss.london_high if ss.london_high > lhr_entry_price else lhr_entry_price + lhr_risk_pts * tp_rr
+                        lhr_risk_dist = abs(lhr_sl - lhr_entry_price)
+                        lhr_min_risk_dist = atr_val * 0.1
+                        if lhr_risk_dist >= lhr_min_risk_dist:
+                            lhr_qty = (initial_capital * risk_retrade) / lhr_risk_dist if lhr_risk_dist > 0 else 0
+                            if lhr_qty > 0:
+                                active_trades.append({
+                                    "entry_bar": scan_bar, "entry_price": lhr_entry_price, "sl": lhr_sl, "tp": lhr_tp,
+                                    "qty": lhr_qty, "side": "long", "trigger_fvg": None,
+                                    "initial_sl": lhr_sl, "initial_tp": lhr_tp, "trailing_count": 0, "is_retrade": True,
+                                })
+                                pipeline["retrade_lhr_entry"] += 1
+                                ss.trades_today += 1
+                                ss.retrade_armed = False
 
     if bars_15m:
         last_price = bars_15m[-1].close
@@ -588,6 +649,13 @@ def run_for_symbol(symbol: str, cfg: dict):
         print(f"  {'retrade_armed':<30}{rt_armed}")
         print(f"  {'retrade_sweep':<30}{rt_sweep}")
         print(f"  {'retrade_entry':<30}{rt_entry}")
+        rt_lhr_checked = pipeline.get("retrade_lhr_checked", 0)
+        rt_lhr_inzone = pipeline.get("retrade_lhr_inzone", 0)
+        rt_lhr_entry = pipeline.get("retrade_lhr_entry", 0)
+        if rt_lhr_checked:
+            print(f"  {'retrade_lhr_checked':<30}{rt_lhr_checked}")
+            print(f"  {'retrade_lhr_inzone':<30}{rt_lhr_inzone}")
+            print(f"  {'retrade_lhr_entry':<30}{rt_lhr_entry}")
         if rt_armed > 0:
             print(f"  {'sweep/armed ratio':<30}{rt_sweep/rt_armed*100:.1f}%")
             print(f"  {'entry/sweep ratio':<30}{rt_entry/rt_sweep*100:.1f}%" if rt_sweep > 0 else "")
