@@ -114,7 +114,7 @@ def run_for_symbol(symbol: str, cfg: dict):
     total_signals = 0
     rejected_other = 0
 
-    for scan_bar in range(WINDOW, len(bars_15m), 5):
+    for scan_bar in range(WINDOW, len(bars_15m)):
         chunk = bars_15m[scan_bar - WINDOW : scan_bar + 1]
         current = bars_15m[scan_bar]
         atr_val = max(current.range, current.close * 0.0001)
