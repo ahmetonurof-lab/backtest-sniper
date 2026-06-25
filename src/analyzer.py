@@ -147,7 +147,7 @@ def run_for_symbol(symbol: str, cfg: dict):
             if rsm.state_name == "TRIGGER_READY":
                 pipeline["wick_rejection"] += 1
 
-        if rsm.can_trigger():
+        if rsm.can_trigger() and not active_trades:
             pipeline["trigger_ready"] += 1
             total_signals += 1
 
