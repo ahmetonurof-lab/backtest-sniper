@@ -57,4 +57,15 @@ TOPLAM    11,355  +1,601,025
 
 ICT fix daha az işlem açtı ve PnL daha düşük çıktı. Ancak strateji ICT prensiplerine uygun hale geldi ve sonuçlar kabul edilebilir seviyede (%64-76 WR, 2.5-5.9 PF aralığı).
 
+## Risk Ayarları (Final)
+
+| Coin   | Primary Risk | Retrade Risk | Gerekçe                          |
+|--------|-------------|--------------|----------------------------------|
+| LINK   | 1.0%        | 0.8%         | DD %19.5→%13.6, PnL ~30K         |
+| DOT    | 1.2%        | 0.9%         | DD %14.9→%12.0, PnL ~131K        |
+
+## Not
+
+LINK WR %52.7 — yapısal sorun olabilir. Farklı dönem backtesti ile teyit edilmesi önerilir.
+
 Bu tarihten itibaren **ICT likidite mantığı** ile devam edilecek.
