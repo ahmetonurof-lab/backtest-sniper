@@ -8,6 +8,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from fvg import detect_fvgs
 from models import Bar
 from retrace_state import RetraceStateMachine

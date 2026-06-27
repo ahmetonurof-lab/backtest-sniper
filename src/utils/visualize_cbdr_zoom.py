@@ -17,7 +17,7 @@ except ImportError:
     print("matplotlib yok: pip install matplotlib")
     sys.exit(1)
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from session import SessionState
 
 

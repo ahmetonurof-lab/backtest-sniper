@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import UTC, datetime
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from fvg import detect_fvgs
 from models import Bar
 
