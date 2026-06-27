@@ -125,17 +125,17 @@ class SessionState:
         if high > self.cbdr_body_high + tolerance:
             if close < self.cbdr_body_high:
                 self.sweep_confirmed = True
-                self.sweep_direction = "bullish"
+                self.sweep_direction = "bearish"
                 self.sweep_level = self.cbdr_body_high
-                self.daily_bias = DailyBias.BULLISH
+                self.daily_bias = DailyBias.BEARISH
                 return
 
         if low < self.cbdr_body_low - tolerance:
             if close > self.cbdr_body_low:
                 self.sweep_confirmed = True
-                self.sweep_direction = "bearish"
+                self.sweep_direction = "bullish"
                 self.sweep_level = self.cbdr_body_low
-                self.daily_bias = DailyBias.BEARISH
+                self.daily_bias = DailyBias.BULLISH
                 return
 
 
