@@ -2,7 +2,13 @@ INITIAL_CAPITAL = 10000.0
 RISK_PER_TRADE = 0.01
 SL_ATR_MULT = 1.5
 TP_RR = 2.0
-FVG_BUFFER_MULT = 0.25
+FVG_BUFFER_MULT = 0.50
+
+# Trailing constants (live bot port)
+ATR_TRAIL_MULT = 0.25
+TRAIL_MIN_MOVE_MULT = 0.20
+BE_RISK_MULT = 1.0
+BE_SPREAD_PTS = 0.0
 
 COINS: dict[str, dict] = {
     "BTCUSDT": {"min_fvg_size": 10.0},
