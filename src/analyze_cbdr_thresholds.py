@@ -11,7 +11,7 @@ import math
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from collections import defaultdict
 
 os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
@@ -25,91 +25,18 @@ from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
-from session import DailyBias
+from session import DailyBias, SessionState
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ─── Session configs ───────────────────────────────────────────────
 # Her session kendi start/end saatleriyle izole state'te calisir.
+# Canli SessionState kullanilir (IctRangeState kopyasi kaldirildi).
 SESSION_CONFIGS = {
     'REAL_CBDR':   {'start': 19, 'end': 1},   # ICT Real CBDR
     'DEFAULT':     {'start': 22, 'end': 2},   # Senin default saatlerin
     'ASIA_RANGE':  {'start': 1,  'end': 5},    # Asya seansi
 }
-
-
-class IctRangeState:
-    def __init__(self, start_hour: int, end_hour: int):
-        self.start = start_hour
-        self.end = end_hour
-        self.spans_midnight = start_hour > end_hour
-        self.range_high = 0.0
-        self.range_low = float("inf")
-        self.range_locked = False
-        self.range_day = ""
-        self.daily_bias = DailyBias.NEUTRAL
-        self.sweep_confirmed = False
-        self.sweep_direction: str | None = None
-        self.sweep_level: float | None = None
-        self.trades_today = 0
-
-    def _in_window(self, h: int) -> bool:
-        if self.spans_midnight:
-            return h >= self.start or h < self.end
-        return self.start <= h < self.end
-
-    def _day_key(self, dt: datetime, h: int) -> str:
-        today = dt.strftime("%Y-%m-%d")
-        if h >= self.start:
-            return today
-        return (dt - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    def update(self, dt, open, high, low, close, atr=0):
-        h = dt.hour
-        rk = self._day_key(dt, h)
-        locked_before = self.range_locked
-        if rk != self.range_day:
-            self._reset()
-            self.range_day = rk
-        if self._in_window(h) and not self.range_locked:
-            self._track_body(open, close)
-        if not self._in_window(h) and not self.range_locked and self.range_high > 0:
-            self.range_locked = True
-        if self.range_locked and not self.sweep_confirmed:
-            self._check_sweep(high, low, close, atr)
-        return self.range_locked and not locked_before
-
-    def _reset(self):
-        self.range_high = 0.0
-        self.range_low = float("inf")
-        self.range_locked = False
-        self.daily_bias = DailyBias.NEUTRAL
-        self.sweep_confirmed = False
-        self.sweep_direction = None
-        self.sweep_level = None
-        self.trades_today = 0
-
-    def _track_body(self, open, close):
-        bh = max(open, close)
-        bl = min(open, close)
-        if bh > self.range_high:
-            self.range_high = bh
-        if bl < self.range_low:
-            self.range_low = bl
-
-    def _check_sweep(self, high, low, close, atr=0):
-        tol = atr * 0.5 if atr > 0 else 10.0
-        if high > self.range_high + tol and close < self.range_high:
-            self.sweep_confirmed = True
-            self.sweep_direction = "bearish"
-            self.sweep_level = self.range_high
-            self.daily_bias = DailyBias.BEARISH
-            return
-        if low < self.range_low - tol and close > self.range_low:
-            self.sweep_confirmed = True
-            self.sweep_direction = "bullish"
-            self.sweep_level = self.range_low
-            self.daily_bias = DailyBias.BULLISH
 
 
 def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
@@ -174,8 +101,9 @@ def fvg_close_confirmed(fvg, all_bars):
 def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hours: dict = None):
     """
     Run CBDR backtest for a specific session config.
-    session_hours: {'start': int, 'end': int} — IctRangeState'a parametre olarak gecer.
+    session_hours: {'start': int, 'end': int} — SessionState'a parametre olarak gecer.
     Her session kendi izole state'iyle calisir, global state karismaz.
+    Canli sniper/src/session.py'deki SessionState kullanilir (IctRangeState kopyasi yok).
     Return: (daily_rows, wins, losses, trade_records)
     trade_records: overlap filtrelemesi icin her trade'in unique ID'sini icerir.
     """
@@ -205,8 +133,11 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
     if not b15:
         return None
 
-    # Dinamik IctRangeState — her session kendi saatleriyle izole
-    rs = IctRangeState(session_hours['start'], session_hours['end'])
+    # Canli SessionState — her session kendi saatleriyle izole (IctRangeState kopyasi kaldirildi)
+    sh = session_hours['start']
+    eh = session_hours['end']
+    spans_midnight = sh > eh
+    ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
 
     day_cbdr = {}
@@ -241,29 +172,32 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
         except Exception:
             continue
 
-        just_locked = rs.update(edt, cur.open, cur.high, cur.low, cur.close, atr)
+        locked_before = ss.cbdr_locked
+        ss.update(edt, cur.open, cur.high, cur.low, cur.close, atr)
+        just_locked = ss.cbdr_locked and not locked_before
 
-        if just_locked and rs.range_high > 0:
-            w = ((rs.range_high - rs.range_low) / rs.range_low) * 100
-            day_cbdr[rs.range_day] = round(w, 4)
+        if just_locked and ss.cbdr_body_high > 0:
+            w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
+            day_cbdr[ss.cbdr_day] = round(w, 4)
 
-        if rs.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(direction=rs.sweep_direction or "bullish",
-                         level=rs.sweep_level or 0.0, bar_index=cur.index)
+        if ss.sweep_confirmed and rsm.state_name == "IDLE":
+            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
+                         level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
             rsm.on_sweep_confirmed(chunk, cur, atr)
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
-            db = rs.daily_bias
+            db = ss.daily_bias
             if (sd == "bullish" and db == DailyBias.BEARISH) or \
                (sd == "bearish" and db == DailyBias.BULLISH) or \
                db == DailyBias.NEUTRAL:
                 rsm.reset()
                 continue
             h = edt.hour
-            if rs._in_window(h):
+            # _in_window: spans_midnight mantigi (SessionState ile uyumlu)
+            if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
                 rsm.reset()
                 continue
 
@@ -317,7 +251,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 rsm.reset()
                 continue
 
-            entry_day = rs.range_day
+            entry_day = ss.cbdr_day
             trade_id = f"{session_name}_{entry_day}_{sb}"  # unique trade ID (session + gun + bar index)
             active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                            "qty": qty, "side": side, "trigger_fvg": tf,
