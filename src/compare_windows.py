@@ -31,11 +31,11 @@ SESSION_CONFIGS = {
 
 
 def compute_stats(trade_list, initial_balance):
-    """(session_name, pnl, result) listesinden istatistik hesapla."""
+    """(trade_id, sname, pnl, result, sym) listesinden istatistik hesapla."""
     n = len(trade_list)
     if n == 0:
         return {'trades': 0, 'wr': 0, 'pf': 0, 'mdd': 0, 'avg_mae': 0, 'pnl': 0}
-    pnls = [t[1] for t in trade_list]
+    pnls = [t[2] for t in trade_list]  # index 2 = pnl
     total_pnl = sum(pnls)
     wins = sum(1 for p in pnls if p > 0)
     wr = wins / n * 100 if n > 0 else 0
