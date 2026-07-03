@@ -550,9 +550,10 @@ def compute_session_stats(trade_records, initial_balance):
 
     losses_list = [r[2] for r in trade_records if r[2] < 0]
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
+    total_pnl = sum(r[2] for r in trade_records)
 
     return {'total_trades': n, 'win_pct': win_pct, 'profit_factor': profit_factor,
-            'max_dd_pct': max_dd_pct, 'avg_mae': avg_mae}
+            'max_dd_pct': max_dd_pct, 'avg_mae': avg_mae, 'total_pnl': total_pnl}
 
 
 def run_session_analysis(sym: str):
@@ -619,14 +620,14 @@ def run_session_analysis(sym: str):
         total_unique_trades += stats['total_trades']
 
     # 4. Adim: Karsilastirmali tabloyu bas
-    print(f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ─────────────────────────────────┐")
-    print(f"  │ {'Session':<14} {'Total':>7} {'Unique':>7} {'Win%':>7} {'PF':>7} {'MaxDD%':>8} {'AvgMAE':>9} │")
-    print(f"  ├{'─'*14}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*8}┼{'─'*9}┤")
+    print(f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ──────────────────────────────────────┐")
+    print(f"  │ {'Session':<14} {'Total':>7} {'Unique':>7} {'Win%':>7} {'PF':>7} {'MaxDD%':>8} {'AvgMAE':>9} {'PnL':>10} │")
+    print(f"  ├{'─'*14}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*8}┼{'─'*9}┼{'─'*10}┤")
     for st in stats_rows:
         print(f"  │ {st['session']:<14} {st['total_trades_raw']:>7} {st['unique_trades']:>7} "
               f"{st['win_pct']:>5.1f}% {st['profit_factor']:>5.2f} "
-              f"{st['max_dd_pct']:>6.2f}% {st['avg_mae']:>7.2f} │")
-    print(f"  └{'─'*14}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*8}┴{'─'*9}┘")
+              f"{st['max_dd_pct']:>6.2f}% {st['avg_mae']:>7.2f} {st['total_pnl']:>+8.0f} │")
+    print(f"  └{'─'*14}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*8}┴{'─'*9}┴{'─'*10}┘")
     print(f"  Toplam: {total_all_trades} raw trade, {total_unique_trades} unique trade "
           f"({time.time()-t0:.0f}s)", flush=True)
 
@@ -693,11 +694,12 @@ def main():
                 'Profit_Factor': round(stats['profit_factor'], 2),
                 'MaxDD%': round(stats['max_dd_pct'], 2),
                 'Avg_MAE': round(stats['avg_mae'], 2),
+                'PnL': round(stats['total_pnl'], 0),
             })
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=['Coin', 'Session', 'Total_Trades_Raw', 'Unique_Trades',
-                                           'Win%', 'Profit_Factor', 'MaxDD%', 'Avg_MAE'])
+                                           'Win%', 'Profit_Factor', 'MaxDD%', 'Avg_MAE', 'PnL'])
         w.writeheader()
         w.writerows(csv_rows)
     print(f"\n  CSV rapor: {csv_path}")
@@ -713,12 +715,12 @@ def main():
     lines.append("")
     lines.append("## Multi-Session Comparison Table")
     lines.append("")
-    lines.append("| Coin | Session | Total Raw | Unique | Win% | PF | MaxDD% | Avg MAE |")
-    lines.append("|" + "|".join(["-"*8, "-"*10, "-"*11, "-"*8, "-"*6, "-"*5, "-"*8, "-"*9]) + "|")
+    lines.append("| Coin | Session | Total Raw | Unique | Win% | PF | MaxDD% | Avg MAE | PnL |")
+    lines.append("|" + "|".join(["-"*8, "-"*10, "-"*11, "-"*8, "-"*6, "-"*5, "-"*8, "-"*9, "-"*8]) + "|")
     for row in csv_rows:
         lines.append(f"| {row['Coin']:<8} | {row['Session']:<10} | {row['Total_Trades_Raw']:>9} | "
                       f"{row['Unique_Trades']:>6} | {row['Win%']:>4.1f}% | {row['Profit_Factor']:>3.2f} | "
-                      f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} |")
+                      f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} | {row['PnL']:>+8.0f} |")
     lines.append("")
 
     for sym in sorted(all_session_results):
@@ -736,6 +738,7 @@ def main():
             lines.append(f"- **Profit Factor:** {stats['profit_factor']:.2f}")
             lines.append(f"- **MaxDD%:** {stats['max_dd_pct']:.2f}%")
             lines.append(f"- **Avg MAE:** {stats['avg_mae']:.2f}")
+            lines.append(f"- **Total PnL:** {stats['total_pnl']:+.0f}")
             lines.append("")
 
     lines.append("---")
