@@ -233,6 +233,7 @@ def run_for_symbol(symbol: str, session_hours: dict = None):
                 "entry_bar": scan_bar, "entry_price": entry_price, "sl": sl, "tp": tp,
                 "qty": qty, "side": side, "trigger_fvg": trigger_fvg,
                 "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                "day_key": entry_dt.strftime("%Y-%m-%d"),
             }
             active_trades.append(new_trade)
             pipeline["new_entry"] += 1
@@ -440,7 +441,7 @@ def run_for_symbol(symbol: str, session_hours: dict = None):
 
     print(f"\n{'='*78}\n")
 
-    metrics = {"symbol": symbol, "total_trades": len(trades)}
+    metrics = {"symbol": symbol, "total_trades": len(trades), "trades": trades}
     if trades:
         total_pnl = sum(t["pnl"] for t in trades)
         wins = [t for t in trades if t["pnl"] > 0]
