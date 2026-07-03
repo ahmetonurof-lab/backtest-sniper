@@ -4,6 +4,7 @@ compare_windows.py — V3 pencereler arasi karsilastirma (multi-session).
 """
 # ruff: noqa: E402, E704, E701, E702 — path manipulation + legacy style
 import csv
+import io
 import os
 import sys
 import time
@@ -70,13 +71,18 @@ def main():
         sym_results = {}
 
         for sname, shours in SESSION_CONFIGS.items():
+            # run_for_symbol'un detayli ciktisini bastir (terminal sismesin)
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
             try:
                 result = analyzer_v3.run_for_symbol(sym, session_hours=shours)
-                if result is None:
-                    print(f"    [{sname}] VERI YOK / HATA", flush=True)
-                    continue
+            finally:
+                sys.stdout = old_stdout
+            if result is None:
+                print(f"    [{sname}] VERI YOK / HATA", flush=True)
+                continue
+            try:
                 sym_results[sname] = result
-                # Trade record'larini topla (analyzer_v3 trades listesinden)
                 for t in result.get('trades', []):
                     entry_day = t.get('day_key', '')
                     bar_idx = t.get('entry_bar', 0)
@@ -85,7 +91,6 @@ def main():
                 print(f"    [{sname}] {result.get('total_trades', 0)} islem, WR={result.get('wr', 0):.1f}%", flush=True)
             except Exception as e:
                 print(f"    [{sname}] HATA: {e}", flush=True)
-                continue
 
         if sym_results:
             all_symbol_results[sym] = sym_results
