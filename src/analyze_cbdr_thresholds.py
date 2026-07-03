@@ -591,13 +591,13 @@ def run_session_analysis(sym: str):
         print(f"  [{sym}] HICBIR SESSION CALISMADI", flush=True)
         return None
 
-    # 2. Adim: Overlap filtrele — ayni (gun, bar_index) sadece ilk session'a sayilsin
+    # 2. Adim: Overlap filtrele — ayni bar_index (sb) sadece ilk session'a sayilsin
     # trade_id = {session_name}_{entry_day}_{sb}
-    # overlap_key = entry_day_sb kombinasyonu
+    # overlap_key = sb (bar index) — hangi session olursa olsun ayni bardaki trade tek sayilir
     seen_overlap = set()
     unique_trade_records = []
     for tid, sname, pnl, result in all_trade_records:
-        overlap_key = '_'.join(tid.split('_')[1:])  # entry_day_sb
+        overlap_key = tid.rsplit('_', 1)[-1]  # sb (bar index)
         if overlap_key not in seen_overlap:
             seen_overlap.add(overlap_key)
             unique_trade_records.append((tid, sname, pnl, result))

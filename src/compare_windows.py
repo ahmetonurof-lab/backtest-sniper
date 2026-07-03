@@ -91,11 +91,11 @@ def main():
             all_symbol_results[sym] = sym_results
             print(f"  [{sym}] {time.time()-sym_start:.0f}s", flush=True)
 
-    # ── Overlap filtrele ──
+    # ── Overlap filtrele (bar_index bazli — session'dan bagimsiz) ──
     unique_records = []
     seen_keys = set()
     for tid, sname, pnl, result, sym in all_trade_records:
-        ok = tid.split('_', 1)[1] if '_' in tid else tid  # entry_day_sb
+        ok = tid.rsplit('_', 1)[-1] if '_' in tid else tid  # sb (bar index)
         if ok not in seen_keys:
             seen_keys.add(ok)
             unique_records.append((tid, sname, pnl, result, sym))
