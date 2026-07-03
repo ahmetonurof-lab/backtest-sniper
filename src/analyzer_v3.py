@@ -1,16 +1,24 @@
 """
 analyzer_v3.py — Aggressive Multi-Entry Trend Rider.
 Unlimited primary entries per day. No retrade, no fallback.
+All imports resolve from sniper/src via sys.path.
 """
+# ruff: noqa: E402, E704, E701, E702, F401, F541 — path manipulation + legacy style
 import argparse
 import csv
 import os
 import sys
 from datetime import datetime, timezone
 
-from coins_config import get_config, COINS, RISK_PER_TRADE
+os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
+_SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
+if _SNIPER_SRC not in sys.path:
+    sys.path.insert(0, _SNIPER_SRC)
+
+import config as cfg
 from fvg import detect_fvgs
-from models import Bar
+from indicators import calculate_true_range, update_atr
+from models import Bar, ATR_PERIOD
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionPhase, SessionState, detect_phase_from_timestamp
 
@@ -18,11 +26,12 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def load_data(filepath):
+    """CSV'den bar verisi yukle. UTC normalize (DST koruma)."""
     bars = []
     with open(filepath, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(reader):
-            ts = int(datetime.strptime(row["open_time"], "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+            ts = int(datetime.strptime(row["open_time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
             bars.append(Bar(index=i, open=float(row["open"]), high=float(row["high"]),
                             low=float(row["low"]), close=float(row["close"]),
                             volume=float(row["volume"]), is_closed=True, timestamp=ts))
@@ -42,8 +51,6 @@ def resample_15m(bars_1m):
 
 
 def fvg_close_confirmed(fvg, all_bars: list) -> bool:
-    """Live bot _fvg_close_confirmed() portu: FVG icinde kapali 15m mumu var mi?
-    Wick yetmez, govde kapanisi lazim. Far-side close gorurse False doner."""
     scan_from = fvg.real_index + 2
     for b in all_bars:
         if b.index < scan_from:
@@ -61,33 +68,40 @@ def fvg_close_confirmed(fvg, all_bars: list) -> bool:
     return False
 
 
-def run_for_symbol(symbol: str, cfg: dict):
-    csv_file = os.path.join(os.path.dirname(__file__), "data", f"{symbol}_1m.csv")
-    if not os.path.isfile(csv_file):
-        print(f"[SKIP] {symbol} — data file not found: {csv_file}")
+def run_for_symbol(symbol: str, session_hours: dict = None):
+    """
+    V3 backtest for one symbol.
+    session_hours: {'start': int, 'end': int} — SessionState'a parametre.
+                   None = default (22-02).
+    """
+    data_file = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
+    if not os.path.isfile(data_file):
+        print(f"[SKIP] {symbol} — data file not found: {data_file}")
         return
+    csv_file = data_file
 
-    min_fvg_size = cfg["min_fvg_size"]
-    initial_capital = cfg["initial_capital"]
-    risk_per_trade = cfg["risk_per_trade"]
-    risk_primary = cfg.get("risk_primary", risk_per_trade)
-    sl_atr_mult = cfg["sl_atr_mult"]
-    tp_rr = cfg["tp_rr"]
-    fvg_buffer_mult = cfg["fvg_buffer_mult"]
-
-    # Trailing constants (live bot port)
-    ATR_TRAIL_MULT_V3 = cfg.get("atr_trail_mult", 0.25)
-    TRAIL_MIN_MOVE_MULT_V3 = cfg.get("trail_min_move_mult", 0.20)
-    BE_RISK_MULT_V3 = cfg.get("be_risk_mult", 1.0)
-    BE_SPREAD_PTS_V3 = cfg.get("be_spread_pts", 0.0)
+    initial_capital = cfg.INITIAL_BALANCE
+    risk_per_trade = cfg.RISK_PER_TRADE
+    sl_atr_mult = cfg.SL_ATR_MULT
+    tp_rr = cfg.TP_RR
+    fvg_buffer_mult = cfg.FVG_BUFFER_MULT
+    ATR_TRAIL_MULT_V3 = cfg.ATR_TRAIL_MULT
+    TRAIL_MIN_MOVE_MULT_V3 = cfg.TRAIL_MIN_MOVE_MULT
+    BE_RISK_MULT_V3 = cfg.BE_RISK_MULT
+    BE_SPREAD_PTS_V3 = cfg.BE_SPREAD_PTS
+    FVG_WICK_RATIO_MAX = cfg.FVG_WICK_RATIO_MAX
+    FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
 
     print(f"\nLoading {symbol}...")
     bars_1m = load_data(csv_file)
     bars_15m = resample_15m(bars_1m)
     print(f"  {symbol} | 1m: {len(bars_1m):,} bars | 15m: {len(bars_15m):,} bars")
 
-    ss = SessionState()
-    rsm = RetraceStateMachine(min_fvg_size=min_fvg_size)
+    if session_hours:
+        ss = SessionState(start_hour=session_hours['start'], end_hour=session_hours['end'])
+    else:
+        ss = SessionState()  # default 22-02
+    rsm = RetraceStateMachine(max_wick_ratio=FVG_WICK_RATIO_MAX)
     trades = []
     active_trades = []
     WINDOW = 500
@@ -101,10 +115,20 @@ def run_for_symbol(symbol: str, cfg: dict):
     total_signals = 0
     rejected_other = 0
 
+    atr_val: float = 0.0
+    prev_close: float = bars_15m[0].open
+    for bar in bars_15m[1:WINDOW]:
+        tr = calculate_true_range(bar, prev_close)
+        atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
+        prev_close = bar.close
+
     for scan_bar in range(WINDOW, len(bars_15m)):
         chunk = bars_15m[scan_bar - WINDOW: scan_bar + 1]
         current = bars_15m[scan_bar]
-        atr_val = max(current.range, current.close * 0.0001)
+
+        tr = calculate_true_range(current, prev_close)
+        atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
+        prev_close = current.close
 
         try:
             entry_dt = datetime.fromtimestamp(current.timestamp / 1000, tz=timezone.utc)
@@ -115,20 +139,17 @@ def run_for_symbol(symbol: str, cfg: dict):
         if ss.cbdr_locked: pipeline["cbdr_locked"] += 1
         if ss.sweep_confirmed: pipeline["sweep_detected"] += 1
 
-        # Feed sweep → RSM if idle
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
             pipeline["sweep_fed"] += 1
             rsm.on_sweep(direction=ss.sweep_direction or "bullish",
-                         level=ss.sweep_level or 0.0, bar_index=current.index)
+                         level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
             pipeline["fvg_scanned"] += 1
-            rsm.on_sweep_confirmed(chunk, current)
+            rsm.on_sweep_confirmed(chunk, current, atr_val)
             if rsm.state_name == "TRIGGER_READY":
                 pipeline["wick_rejection"] += 1
 
-        # ── UNLIMITED PRIMARY ENTRY ──
-        # Only guard: no overlapping position for same asset
         if rsm.can_trigger() and not active_trades:
             pipeline["trigger_ready"] += 1
             total_signals += 1
@@ -154,7 +175,6 @@ def run_for_symbol(symbol: str, cfg: dict):
             risk_pts = atr_val * sl_atr_mult
             trigger_fvg = rsm.trigger_fvg
 
-            # ── Live bot SL/TP formul (V3: adaptif buffer, risk_dist*tp_rr, MAX_SL cap) ──
             MAX_SL_DIST_MULT_V3 = 2.0
             FVG_BUFFER_MIN_FACTOR_V3 = 0.10
 
@@ -203,7 +223,7 @@ def run_for_symbol(symbol: str, cfg: dict):
 
             min_risk_dist = atr_val * 0.1
             if risk_dist < min_risk_dist: continue
-            qty = (initial_capital * risk_primary) / risk_dist if risk_dist > 0 else 0
+            qty = (initial_capital * risk_per_trade) / risk_dist if risk_dist > 0 else 0
             if qty <= 0: rsm.reset(); rejected_other += 1; continue
 
             new_trade = {
@@ -214,18 +234,16 @@ def run_for_symbol(symbol: str, cfg: dict):
             active_trades.append(new_trade)
             pipeline["new_entry"] += 1
             ss.trades_today += 1
-            rsm.reset()   # reset RSM → IDLE, ready for next setup
+            rsm.reset()
 
-        # ── TRAILING (live bot port: BE + FVG close-confirmed + ATR buffer + min move) ──
         if active_trades and current.is_closed:
-            # Break-even: first trail only, move SL to entry after 1R profit
             for trade in active_trades:
                 if trade.get("closed"): continue
                 if trade.get("trailing_count", 0) > 0: continue
                 side = trade["side"]
                 entry = trade["entry_price"]
-                risk_pts = abs(trade["initial_sl"] - entry)
-                threshold = risk_pts * BE_RISK_MULT_V3
+                risk_pts_t = abs(trade["initial_sl"] - entry)
+                threshold = risk_pts_t * BE_RISK_MULT_V3
                 be_sl = entry + BE_SPREAD_PTS_V3 if side == "long" else entry - BE_SPREAD_PTS_V3
                 if side == "long":
                     if current.high < entry + threshold or trade["sl"] >= be_sl: continue
@@ -235,8 +253,8 @@ def run_for_symbol(symbol: str, cfg: dict):
                 trade["trailing_count"] = 1
                 pipeline["trailing_sl_updates"] += 1
 
-            # FVG-based trailing: close-confirmed FVGs only, ATR buffer, min move threshold
-            trail_chunk = chunk[:-1]  # exclude current bar, same as live bot
+            trail_chunk = chunk[:-1]
+            min_fvg_size = max(atr_val * FVG_MIN_SIZE_ATR_MULT, 1e-8)
             current_fvgs = detect_fvgs(trail_chunk, lookback=min(50, len(trail_chunk)), timeframe="15m", min_fvg_size=min_fvg_size)
 
             for trade in active_trades:
@@ -244,21 +262,20 @@ def run_for_symbol(symbol: str, cfg: dict):
                 side = trade["side"]
                 current_sl = trade["sl"]
                 current_tp = trade["tp"]
-                risk_pts = abs(trade["initial_sl"] - trade["entry_price"])
+                risk_pts_t = abs(trade["initial_sl"] - trade["entry_price"])
                 local_trail_count = 0
                 updated = False
 
                 for fvg in current_fvgs:
                     if side == "long" and fvg.direction != "bullish": continue
                     if side == "short" and fvg.direction != "bearish": continue
-                    # Must be close-confirmed (live bot _fvg_close_confirmed rule)
                     if not fvg_close_confirmed(fvg, trail_chunk): continue
 
                     atr_buffer = atr_val * ATR_TRAIL_MULT_V3
 
                     if side == "long":
                         new_sl = fvg.bottom - atr_buffer
-                        if new_sl > current_sl and (new_sl - current_sl) > risk_pts * TRAIL_MIN_MOVE_MULT_V3:
+                        if new_sl > current_sl and (new_sl - current_sl) > risk_pts_t * TRAIL_MIN_MOVE_MULT_V3:
                             sl_diff = new_sl - current_sl
                             current_sl = new_sl
                             current_tp += sl_diff
@@ -266,7 +283,7 @@ def run_for_symbol(symbol: str, cfg: dict):
                             updated = True
                     else:
                         new_sl = fvg.top + atr_buffer
-                        if new_sl < current_sl and (current_sl - new_sl) > risk_pts * TRAIL_MIN_MOVE_MULT_V3:
+                        if new_sl < current_sl and (current_sl - new_sl) > risk_pts_t * TRAIL_MIN_MOVE_MULT_V3:
                             sl_diff = current_sl - new_sl
                             current_sl = new_sl
                             current_tp -= sl_diff
@@ -280,7 +297,6 @@ def run_for_symbol(symbol: str, cfg: dict):
                     pipeline["trailing_sl_updates"] += 1
                     pipeline["trailing_tp_updates"] += 1
 
-        # ── EXIT CHECK ──
         still_active = []
         for trade in active_trades:
             if trade.get("closed"): continue
@@ -307,13 +323,11 @@ def run_for_symbol(symbol: str, cfg: dict):
                 trade["rr"] = round(diff / risk if risk > 0 else 0, 2)
                 trades.append(trade)
                 pipeline["closed"] += 1
-                # No retrade arming — just let RSM (already IDLE) catch next sweep
             else:
                 still_active.append(trade)
 
         active_trades = still_active
 
-    # Close open trades at end
     if bars_15m:
         last_price = bars_15m[-1].close
         for trade in active_trades:
@@ -329,12 +343,11 @@ def run_for_symbol(symbol: str, cfg: dict):
                 trades.append(trade)
                 pipeline["closed"] += 1
 
-    # ── REPORT ──
     print(f"\n{'='*78}")
     print(f"  SNIPER V3 — {symbol} | {len(trades)} Islem")
     print(f"{'='*78}")
     print(f"  Parameters: SL=FVG edge +/- buffer | TP=London High/Low veya {tp_rr}R")
-    print(f"                FVG buffer={fvg_buffer_mult}x risk_pts | min_fvg={min_fvg_size} | Session=NY+LON | Unlimited entry")
+    print(f"                FVG buffer={fvg_buffer_mult}x risk_pts | Session=NY+LON | Unlimited entry")
 
     print("\n  PIPELINE")
     print(f"  {'-'*56}")
@@ -448,8 +461,8 @@ def main():
 
     if args.all:
         results = []
-        for sym in COINS:
-            m = run_for_symbol(sym, get_config(sym))
+        for sym in cfg.SYMBOLS:
+            m = run_for_symbol(sym)
             if m: results.append(m)
 
         print("\n\n")
@@ -477,7 +490,7 @@ def main():
                            round(m["wr"], 1), round(m["max_dd"], 1), round(m["profit_factor"], 2)])
         print(f"\nRapor kaydedildi: {csv_path}")
     elif args.symbol:
-        run_for_symbol(args.symbol, get_config(args.symbol))
+        run_for_symbol(args.symbol)
     else:
         parser.print_help()
 
