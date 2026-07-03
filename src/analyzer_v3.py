@@ -6,6 +6,7 @@ All imports resolve from sniper/src via sys.path.
 # ruff: noqa: E402, E704, E701, E702, F401, F541 — path manipulation + legacy style
 import argparse
 import csv
+import functools
 import os
 import sys
 from datetime import datetime, timezone
@@ -25,8 +26,10 @@ from session import DailyBias, SessionPhase, SessionState, detect_phase_from_tim
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
+@functools.lru_cache(maxsize=32)
 def load_data(filepath):
-    """CSV'den bar verisi yukle. UTC normalize (DST koruma)."""
+    """CSV'den bar verisi yukle. UTC normalize (DST koruma).
+    @lru_cache: ayni dosya 2. kez istenince direkt memory'den doner."""
     bars = []
     with open(filepath, encoding="utf-8") as f:
         reader = csv.DictReader(f)
