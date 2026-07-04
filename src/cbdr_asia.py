@@ -365,63 +365,77 @@ def collect_daily_data(symbol: str):
     return daily_rows, wins, losses, trade_records
 
 
+# ─── Sabit CBDR esikleri ────────────────────────────────────
+CBDR_BUCKETS = [
+    (0, 1.0, "0-1%"),
+    (1.0, 1.5, "1-1.5%"),
+    (1.5, 2.0, "1.5-2%"),
+    (2.0, 3.0, "2-3%"),
+    (3.0, 5.0, "3-5%"),
+    (5.0, 999, ">5%"),
+]
+
+
+def cbdr_bucket(cbdr_pct: float) -> int:
+    """CBDR yuzdesine gore bucket index'i doner (0-5)."""
+    for i, (lo, hi, _) in enumerate(CBDR_BUCKETS):
+        if lo <= cbdr_pct < hi:
+            return i
+    return len(CBDR_BUCKETS) - 1
+
+
 def analyze_thresholds(daily_rows, symbol: str, min_bucket_trades: int = 100):
     valid = [d for d in daily_rows if d["cbdr_pct"] is not None and d["trades"] > 0]
-    if len(valid) < 5:
+    if len(valid) < 3:
         return None
 
-    valid.sort(key=lambda x: x["cbdr_pct"])
-    n = len(valid)
-    bucket_size = max(1, n // 5)
+    # Sabit CBDR esigine gore bucket'la
+    bucket_data = {i: {"days": set(), "trades": 0, "wins": 0, "be": 0, "losses": 0, "pnl": 0.0}
+                   for i in range(len(CBDR_BUCKETS))}
+    for d in valid:
+        bi = cbdr_bucket(d["cbdr_pct"])
+        bd = bucket_data[bi]
+        bd["days"].add(d["day_key"])
+        bd["trades"] += d["trades"]
+        bd["wins"] += d["wins"]
+        bd["be"] += d["be"]
+        bd["losses"] += d["losses"]
+        bd["pnl"] += d["pnl"]
+
     buckets = []
-    for i in range(0, n, bucket_size):
-        bucket = valid[i:min(i + bucket_size, n)]
-        if not bucket:
-            break
-        bt = sum(d["trades"] for d in bucket)
-        bwins = sum(d["wins"] for d in bucket)
-        bbe = sum(d["be"] for d in bucket)
-        bloss = sum(d["losses"] for d in bucket)
-        bp = sum(d["pnl"] for d in bucket)
-        b_wr = round(bwins / bt * 100, 1) if bt > 0 else 0
-        b_ber = round((bwins + bbe) / bt * 100, 1) if bt > 0 else 0
+    for i, (lo, hi, label) in enumerate(CBDR_BUCKETS):
+        bd = bucket_data[i]
+        if bd["trades"] == 0:
+            continue
+        lo_pct = lo
+        hi_pct = hi if hi < 999 else max(d["cbdr_pct"] for d in valid)
+        b_wr = round(bd["wins"] / bd["trades"] * 100, 1) if bd["trades"] > 0 else 0
+        b_ber = round((bd["wins"] + bd["be"]) / bd["trades"] * 100, 1) if bd["trades"] > 0 else 0
         buckets.append({
-            "lo_pct": bucket[0]["cbdr_pct"],
-            "hi_pct": bucket[-1]["cbdr_pct"],
-            "range": f"{bucket[0]['cbdr_pct']:.2f}-{bucket[-1]['cbdr_pct']:.2f}",
-            "days": len(bucket),
-            "trades": bt,
-            "wins": bwins,
-            "be": bbe,
-            "losses": bloss,
+            "range": label,
+            "lo_pct": lo_pct,
+            "hi_pct": round(hi_pct, 2),
+            "days": len(bd["days"]),
+            "trades": bd["trades"],
+            "wins": bd["wins"],
+            "be": bd["be"],
+            "losses": bd["losses"],
             "wr": b_wr,
             "be_plus_rate": b_ber,
-            "pnl": round(bp, 2),
+            "pnl": round(bd["pnl"], 2),
         })
 
-    total_trades = sum(d["trades"] for d in valid)
-    total_wins = sum(d["wins"] for d in valid)
+    total_trades = sum(b["trades"] for b in buckets)
+    total_wins = sum(b["wins"] for b in buckets)
     overall_wr = total_wins / total_trades if total_trades > 0 else 0
 
+    # Wilson fail limit: en kotu WR bucket'ini bul
     fail_limit = None
-    for i, b in enumerate(buckets):
+    for b in buckets:
         if b["trades"] < min_bucket_trades:
             continue
-        if wilson_upper(b["wins"], b["trades"]) >= overall_wr:
-            continue
-        remaining = buckets[i:]
-        sig_count = 0
-        for r in remaining:
-            if r["trades"] >= min_bucket_trades and wilson_upper(r["wins"], r["trades"]) < overall_wr:
-                sig_count += 1
-                if sig_count >= 3:
-                    excluded = sum(r2["trades"] for r2 in buckets if r2["lo_pct"] >= b["lo_pct"])
-                    if excluded <= 0.80 * total_trades:
-                        fail_limit = b["lo_pct"]
-                    break
-            else:
-                break
-        if fail_limit is not None:
+        if b["wr"] > 0 and wilson_upper(b["wins"], b["trades"]) < overall_wr:
+            fail_limit = b["lo_pct"]
             break
 
     return {
