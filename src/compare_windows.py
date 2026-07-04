@@ -4,7 +4,6 @@ compare_windows.py — V3 pencereler arasi karsilastirma (multi-session).
 """
 # ruff: noqa: E402, E704, E701, E702 — path manipulation + legacy style
 import csv
-import io
 import os
 import sys
 import time
@@ -71,13 +70,8 @@ def main():
         sym_results = {}
 
         for sname, shours in SESSION_CONFIGS.items():
-            # run_for_symbol'un detayli ciktisini bastir (terminal sismesin)
-            old_stdout = sys.stdout
-            sys.stdout = io.StringIO()
             try:
                 result = analyzer_v3.run_for_symbol(sym, session_hours=shours)
-            finally:
-                sys.stdout = old_stdout
             if result is None:
                 print(f"    [{sname}] VERI YOK / HATA", flush=True)
                 continue
