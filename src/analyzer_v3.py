@@ -168,7 +168,7 @@ def run_for_symbol(symbol: str, session_hours: dict = None):
                 rsm.reset(); rejected_other += 1; continue
             pipeline["filter_bias"] += 1
 
-            phase = detect_phase_from_timestamp(current.timestamp)
+            phase = detect_phase_from_timestamp(current.timestamp, session_hours)
             if phase not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
                 pipeline["filter_session"] += 1
                 rsm.reset(); rejected_other += 1; continue
