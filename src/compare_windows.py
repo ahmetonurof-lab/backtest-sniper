@@ -24,7 +24,7 @@ import analyzer_v3
 REPORT_DIR = os.path.join(os.path.dirname(__file__), "..", "reports")
 os.makedirs(REPORT_DIR, exist_ok=True)
 
-FULL_LOG = os.path.join(REPORT_DIR, "v3_window_comparison_full.txt")
+FULL_LOG = os.path.join(REPORT_DIR, "v3_window_comparison_full.log")
 
 # ─── Session configs (analyze_cbdr_thresholds.py ile uyumlu) ───
 SESSION_CONFIGS = {
