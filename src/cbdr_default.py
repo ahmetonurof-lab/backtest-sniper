@@ -25,6 +25,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
+from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -86,6 +87,9 @@ def fvg_close_confirmed(fvg, all_bars):
             if fvg.bottom <= b.close <= fvg.top:
                 return True
     return False
+
+
+_LOGGER = None  # module-level ref, set in main()
 
 
 def collect_daily_data(symbol: str):
@@ -318,6 +322,25 @@ def collect_daily_data(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
+                # QuantLogger
+                if _LOGGER is not None:
+                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
+                    _LOGGER.log_trade({
+                        "symbol": symbol,
+                        "session": SESSION_NAME,
+                        "side": t["side"].upper(),
+                        "entry_time": edt,
+                        "entry_price": round(t["entry_price"], 6),
+                        "exit_price": round(t["exit_price"], 6),
+                        "result": t["result"],
+                        "final_pnl_usd": round(t["pnl"], 2),
+                        "risk_usd": round(risk_usd, 2),
+                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
+                        "trailing_count": t.get("trailing_count", 0),
+                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                        "atr": round(atr, 6),
+                    })
             else:
                 sa.append(t)
         active = sa
@@ -338,6 +361,25 @@ def collect_daily_data(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
+                # QuantLogger — OPEN trade
+                if _LOGGER is not None:
+                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
+                    _LOGGER.log_trade({
+                        "symbol": symbol,
+                        "session": SESSION_NAME,
+                        "side": t["side"].upper(),
+                        "entry_time": edt,
+                        "entry_price": round(t["entry_price"], 6),
+                        "exit_price": round(t["exit_price"], 6),
+                        "result": "OPEN",
+                        "final_pnl_usd": round(t["pnl"], 2),
+                        "risk_usd": round(risk_usd, 2),
+                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
+                        "trailing_count": t.get("trailing_count", 0),
+                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                        "atr": round(atr, 6),
+                    })
 
     print(f"\r    [DEFAULT] %100 ({total_bars}/{total_bars})", flush=True)
     daily_rows = []
@@ -494,6 +536,11 @@ def main():
     print(f"  CBDR ESIK ANALIZI — {SESSION_NAME} [{SESSION_HOURS['start']:02d}:00-{SESSION_HOURS['end']:02d}:00]")
     print("=" * 100)
 
+    # QuantLogger — tum trade'leri .parquet'e kaydet
+    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", f"trades_{SESSION_NAME.lower()}.parquet")
+    global _LOGGER
+    _LOGGER = QuantLogger(parquet_path)
+
     all_symbols = sorted(cfg.SYMBOLS)
     results_data = []  # (sym, stats, analysis) for report
 
@@ -526,6 +573,11 @@ def main():
             for b in analysis["buckets"]:
                 print(f"    {b['range']:<16} {b['days']:>4} {b['trades']:>6} {b['wins']:>5} {b['be']:>4} {b['losses']:>5} "
                       f"{b['wr']:>4.1f}% {b['be_plus_rate']:>4.1f}% {b['pnl']:>+9.0f}")
+
+    # ── Parquet'e kaydet ve logger'i kapat (summary re-run'lari double-log yapmasin) ──
+    if _LOGGER is not None:
+        _LOGGER.save_and_clear()
+        _LOGGER = None
 
     # ── Summary table (terminal) ──
     print(f"\n{'='*100}")
