@@ -565,7 +565,24 @@ def run_session_analysis(sym: str):
     print(f"  Toplam: {total_all_trades} raw trade, {total_unique_trades} unique trade "
           f"({time.time()-t0:.0f}s)", flush=True)
 
-    return session_raw_data, unique_trade_records
+    # 5. Adim: Her session icin CBDR genisligi bucket analizi (Wilson score)
+    threshold_results = {}
+    for sname in session_names_ordered:
+        daily_rows = session_raw_data[sname]['daily_rows']
+        analysis = analyze_thresholds(daily_rows, sym)
+        if analysis is None:
+            continue
+        threshold_results[sname] = analysis
+        fl = analysis["fail_limit"]
+        fl_str = f"%{fl:.2f}" if fl is not None else "BULUNAMADI"
+        wil_str = "✓" if analysis.get("wilson_found") else "—"
+        print(f"\n  [{sym}] {sname} — CBDR% Bucket Analizi (fail limit: {fl_str}, Wilson: {wil_str})")
+        print(f"  {'Aralik%':<18} {'Gun':>4} {'Islem':>6} {'WR%':>6} {'PnL':>10}")
+        print(f"  {'-'*48}")
+        for b in analysis["buckets"]:
+            print(f"  {b['range']:<18} {b['days']:>4} {b['trades']:>6} {b['wr']:>5.1f}% {b['pnl']:>+9.0f}")
+
+    return session_raw_data, unique_trade_records, threshold_results
 
 
 def main():
@@ -583,26 +600,7 @@ def main():
         result = run_session_analysis(sym)
         if result is None:
             continue
-        all_session_results[sym] = result
-
-    # ── Bucket analizi (REAL_CBDR bazinda) ──
-    # Orijinal analyze_thresholds hala calisir, REAL_CBDR session'u icin
-    print(f"\n{'='*120}")
-    print("  BUCKET (PERCENTIL) DETAYLARI — REAL_CBDR Session")
-    print(f"{'='*120}")
-    for sym in sorted(all_session_results):
-        session_raw, _ = all_session_results[sym]
-        if 'REAL_CBDR' not in session_raw:
-            continue
-        daily_rows = session_raw['REAL_CBDR']['daily_rows']
-        analysis = analyze_thresholds(daily_rows, sym)
-        if analysis is None:
-            continue
-        print(f"\n  [{sym}] CBDR% araligina gore WR dagilimi:")
-        print(f"  {'Aralik%':<18} {'Gun':>4} {'Islem':>6} {'WR%':>6} {'PnL':>10}")
-        print(f"  {'-'*48}")
-        for b in analysis["buckets"]:
-            print(f"  {b['range']:<18} {b['days']:>4} {b['trades']:>6} {b['wr']:>5.1f}% {b['pnl']:>+9.0f}")
+        all_session_results[sym] = result  # (session_raw, unique_trades, threshold_results)
 
     # ── Ozet CSV & MD rapor ──
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
@@ -614,12 +612,13 @@ def main():
     # Session bazinda CSV satirlari
     csv_rows = []
     for sym in sorted(all_session_results):
-        session_raw, unique_trades = all_session_results[sym]
+        session_raw, unique_trades, threshold_results = all_session_results[sym]
         for sname in SESSION_CONFIGS:
             if sname not in session_raw:
                 continue
             session_trades = [r for r in unique_trades if r[1] == sname]
             stats = compute_session_stats(session_trades, cfg.INITIAL_BALANCE)
+            thr = threshold_results.get(sname, {})
             csv_rows.append({
                 'Coin': sym, 'Session': sname,
                 'Total_Trades_Raw': len(session_raw[sname]['trade_records']),
@@ -629,11 +628,14 @@ def main():
                 'MaxDD%': round(stats['max_dd_pct'], 2),
                 'Avg_MAE': round(stats['avg_mae'], 2),
                 'PnL': round(stats['total_pnl'], 0),
+                'Fail_Limit': f"{thr['fail_limit']:.2f}%" if thr.get('fail_limit') else 'BULUNAMADI',
+                'Wilson': thr.get('wilson_found', False),
             })
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=['Coin', 'Session', 'Total_Trades_Raw', 'Unique_Trades',
-                                           'Win%', 'Profit_Factor', 'MaxDD%', 'Avg_MAE', 'PnL'])
+                                           'Win%', 'Profit_Factor', 'MaxDD%', 'Avg_MAE', 'PnL',
+                                           'Fail_Limit', 'Wilson'])
         w.writeheader()
         w.writerows(csv_rows)
     print(f"\n  CSV rapor: {csv_path}")
@@ -649,16 +651,17 @@ def main():
     lines.append("")
     lines.append("## Multi-Session Comparison Table")
     lines.append("")
-    lines.append("| Coin | Session | Total Raw | Unique | Win% | PF | MaxDD% | Avg MAE | PnL |")
-    lines.append("|" + "|".join(["-"*8, "-"*10, "-"*11, "-"*8, "-"*6, "-"*5, "-"*8, "-"*9, "-"*8]) + "|")
+    lines.append("| Coin | Session | Total Raw | Unique | Win% | PF | MaxDD% | Avg MAE | PnL | Fail Limit | Wilson |")
+    lines.append("|" + "|".join(["-"*8, "-"*10, "-"*11, "-"*8, "-"*6, "-"*5, "-"*8, "-"*9, "-"*8, "-"*13, "-"*8]) + "|")
     for row in csv_rows:
         lines.append(f"| {row['Coin']:<8} | {row['Session']:<10} | {row['Total_Trades_Raw']:>9} | "
                       f"{row['Unique_Trades']:>6} | {row['Win%']:>4.1f}% | {row['Profit_Factor']:>3.2f} | "
-                      f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} | {row['PnL']:>+8.0f} |")
+                      f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} | {row['PnL']:>+8.0f} | "
+                      f"{row['Fail_Limit']:>10} | {'✓' if row['Wilson'] else '—':>3} |")
     lines.append("")
 
     for sym in sorted(all_session_results):
-        session_raw, unique_trades = all_session_results[sym]
+        session_raw, unique_trades, threshold_results = all_session_results[sym]
         for sname in SESSION_CONFIGS:
             if sname not in session_raw:
                 continue
@@ -673,6 +676,16 @@ def main():
             lines.append(f"- **MaxDD%:** {stats['max_dd_pct']:.2f}%")
             lines.append(f"- **Avg MAE:** {stats['avg_mae']:.2f}")
             lines.append(f"- **Total PnL:** {stats['total_pnl']:+.0f}")
+            thr = threshold_results.get(sname, {})
+            if thr:
+                fl_str = f"{thr['fail_limit']:.2f}%" if thr.get('fail_limit') else 'BULUNAMADI'
+                wil_str = '✓' if thr.get('wilson_found') else '—'
+                lines.append(f"- **Fail Limit:** {fl_str} (Wilson: {wil_str})")
+                lines.append("")
+                lines.append(f"| CBDR% Araligi | Gun | Islem | WR% | PnL |")
+                lines.append(f"|{'-'*14}:|{'-'*4}:|{'-'*6}:|{'-'*5}:|{'-'*8}:|")
+                for b in thr.get("buckets", []):
+                    lines.append(f"| {b['range']:<14} | {b['days']:>4} | {b['trades']:>6} | {b['wr']:>4.1f}% | {b['pnl']:>+7.0f} |")
             lines.append("")
 
     lines.append("---")
