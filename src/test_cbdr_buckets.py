@@ -128,7 +128,7 @@ def run(symbol: str, session_name: str = "REAL_CBDR", sh: dict = None):
             if ex and "exit_price" in t:
                 diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
                 t["pnl"] = round(diff * t["qty"], 2)
-                day_trades.setdefault(t.get("day_key", ""), []).append({"pnl": t["pnl"]})
+                day_trades.setdefault(t.get("day_key", ""), []).append({"pnl": t["pnl"], "result": t["result"], "trail": t.get("trailing_count", 0)})
             else: sa.append(t)
         active = sa
 
@@ -139,7 +139,7 @@ def run(symbol: str, session_name: str = "REAL_CBDR", sh: dict = None):
                 t["exit_price"] = lp; t["result"] = "OPEN"; t["closed"] = True
                 diff = (lp - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - lp)
                 t["pnl"] = round(diff * t["qty"], 2)
-                day_trades.setdefault(t.get("day_key", ""), []).append({"pnl": t["pnl"]})
+                day_trades.setdefault(t.get("day_key", ""), []).append({"pnl": t["pnl"], "result": t["result"], "trail": t.get("trailing_count", 0)})
 
     # Bucket
     print(f"\n  {symbol} — {session_name} [{sh['start']:02d}:00-{sh['end']:02d}:00]")
@@ -157,8 +157,17 @@ def run(symbol: str, session_name: str = "REAL_CBDR", sh: dict = None):
         pnls = [t['pnl'] for t in all_t]; wins = sum(1 for p in pnls if p > 0); wr = wins / n * 100
         tp = sum(pnls); gp = sum(p for p in pnls if p > 0) or 0; gl = abs(sum(p for p in pnls if p < 0)) or 1
         aw = gp / max(wins, 1); al = gl / max(n - wins, 1)
+        # Trailing ve SL/TP detayi
+        trailed = [t for t in all_t if t.get('trail', 0) > 0]
+        sl1 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) == 0]
+        sl2 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) > 0]
+        tp_cnt = sum(1 for t in all_t if t.get('result') == 'TP')
+        t_pnl = sum(t['pnl'] for t in trailed) if trailed else 0
+        sl1_pnl = sum(t['pnl'] for t in sl1) if sl1 else 0
+        sl2_pnl = sum(t['pnl'] for t in sl2) if sl2 else 0
         lbl = f"{lo:.0f}-{hi:.0f}%" if hi >= 10 else f"{lo:.1f}-{hi:.1f}%"
         print(f"  {lbl:<12} {len(b):>4} {n:>5} {wr:>5.1f}% {gp/gl:>5.2f} {aw/al:>6.2f} {tp:>+9.0f}")
+        print(f"  {'':>12} {'trail':>5}{len(trailed):>5} {t_pnl:>+8.0f} | SL1:{len(sl1):>4} {sl1_pnl:>+8.0f} | SL2:{len(sl2):>4} {sl2_pnl:>+8.0f} | TP:{tp_cnt:>4}")
 
 
 def _load(fp):
