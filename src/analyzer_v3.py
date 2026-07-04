@@ -169,7 +169,13 @@ def run_for_symbol(symbol: str, session_hours: dict = None):
             pipeline["filter_bias"] += 1
 
             phase = detect_phase_from_timestamp(current.timestamp, session_hours)
-            if phase not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
+            # session_hours verildiyse: sadece CBDR window'unu blokla (NY/London siniri yok)
+            # session_hours verilmediyse (default): orijinal hardcoded NY/London filtresi
+            if session_hours:
+                if phase == SessionPhase.CBDR:
+                    pipeline["filter_session"] += 1
+                    rsm.reset(); rejected_other += 1; continue
+            elif phase not in (SessionPhase.NEWYORK, SessionPhase.LONDON):
                 pipeline["filter_session"] += 1
                 rsm.reset(); rejected_other += 1; continue
 
