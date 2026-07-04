@@ -59,9 +59,10 @@ def compute_stats(trade_list, initial_balance):
 
 
 def tee_print(text, log_fh, end="\n"):
-    """Terminal'e ve log dosyasina ayni anda yaz."""
+    """Terminal'e ve log dosyasina ayni anda yaz. Non-ASCII temizlenir."""
     print(text, end=end, flush=True)
-    log_fh.write(text + end)
+    clean = text.encode("ascii", "replace").decode("ascii")
+    log_fh.write(clean + end)
     log_fh.flush()
 
 
@@ -81,7 +82,7 @@ def main():
     for sym in sorted(cfg.SYMBOLS):
         sym_start = time.time()
         print(f"\n  [{sym}] Calisiyor...", flush=True)
-        log_fh.write(f"\n=== [{sym}] ================================================\n")
+        log_fh.write(f"\n=== [{sym}] ================================================\n".encode("ascii", "replace").decode("ascii"))
         sym_results = {}
 
         for sname, shours in SESSION_CONFIGS.items():
@@ -93,8 +94,11 @@ def main():
             finally:
                 verbose = sys.stdout.getvalue()
                 sys.stdout = old_stdout
-            log_fh.write(verbose)
+            # Non-ASCII karakterleri temizle (VS Code binary algilamasin)
+            clean = verbose.encode("ascii", "replace").decode("ascii")
+            log_fh.write(clean)
             log_fh.flush()
+
 
             if result is None:
                 print(f"    [{sname}] VERI YOK / HATA", flush=True)
