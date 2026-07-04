@@ -155,19 +155,27 @@ def run(symbol: str, session_name: str = "REAL_CBDR", sh: dict = None):
             print(f"  {lbl:<12} {len(b):>4} {n:>5} {'':>6} {'':>6} {'':>7} {'':>10}  (yetersiz)")
             continue
         pnls = [t['pnl'] for t in all_t]; wins = sum(1 for p in pnls if p > 0); wr = wins / n * 100
-        tp = sum(pnls); gp = sum(p for p in pnls if p > 0) or 0; gl = abs(sum(p for p in pnls if p < 0)) or 1
+        total_pnl = sum(pnls); gp = sum(p for p in pnls if p > 0) or 0; gl = abs(sum(p for p in pnls if p < 0)) or 1
         aw = gp / max(wins, 1); al = gl / max(n - wins, 1)
-        # Trailing ve SL/TP detayi
-        trailed = [t for t in all_t if t.get('trail', 0) > 0]
-        sl1 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) == 0]
-        sl2 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) > 0]
-        tp_cnt = sum(1 for t in all_t if t.get('result') == 'TP')
-        t_pnl = sum(t['pnl'] for t in trailed) if trailed else 0
-        sl1_pnl = sum(t['pnl'] for t in sl1) if sl1 else 0
+        # Kategori detayi
+        sl = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) == 0]   # direkt stop
+        be = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) == 1]    # 1 trail, kismen kurtarilmis
+        sl2 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) >= 2]   # trailing calisti, karda
+        tp_l = [t for t in all_t if t.get('result') == 'TP']                             # TP vurdu
+        sl_cnt, be_cnt, sl2_cnt, tp_cnt = len(sl), len(be), len(sl2), len(tp_l)
+        sl_pnl = sum(t['pnl'] for t in sl) if sl else 0
+        be_pnl = sum(t['pnl'] for t in be) if be else 0
         sl2_pnl = sum(t['pnl'] for t in sl2) if sl2 else 0
+        tp_pnl = sum(t['pnl'] for t in tp_l) if tp_l else 0
+        # Cash-Flow WR: cuzdana arti birakan islemler
+        cf_wins = [t for t in all_t if t['pnl'] > 0]
+        cf_wr = len(cf_wins) / n * 100 if n > 0 else 0
+        # BE+ Rate: TP + BE (zarar yazdirmayan) / total
+        be_plus = (tp_cnt + be_cnt) / n * 100 if n > 0 else 0
+        # R-Multiple: ortalama R degeri (ortalama kazanan / ortalama kaybeden)
         lbl = f"{lo:.0f}-{hi:.0f}%" if hi >= 10 else f"{lo:.1f}-{hi:.1f}%"
-        print(f"  {lbl:<12} {len(b):>4} {n:>5} {wr:>5.1f}% {gp/gl:>5.2f} {aw/al:>6.2f} {tp:>+9.0f}")
-        print(f"  {'':>12} {'trail':>5}{len(trailed):>5} {t_pnl:>+8.0f} | SL1:{len(sl1):>4} {sl1_pnl:>+8.0f} | SL2:{len(sl2):>4} {sl2_pnl:>+8.0f} | TP:{tp_cnt:>4}")
+        print(f"  {lbl:<12} {len(b):>4} {n:>5} {wr:>5.1f}% CF={cf_wr:>4.1f}% BE+={be_plus:>4.1f}% PF={gp/gl:>5.2f} {total_pnl:>+9.0f}")
+        print(f"  {'':>12} SL:{sl_cnt:>3} {sl_pnl:>+8.0f} | BE:{be_cnt:>3} {be_pnl:>+8.0f} | SL2:{sl2_cnt:>3} {sl2_pnl:>+8.0f} | TP:{tp_cnt:>3} {tp_pnl:>+8.0f}")
 
 
 def _load(fp):
