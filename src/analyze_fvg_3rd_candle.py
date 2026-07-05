@@ -14,6 +14,7 @@ Kullanım:
 import csv
 import math
 import os
+import random
 import sys
 import time
 from collections import defaultdict
@@ -41,6 +42,9 @@ EXPANSION_ATR_MULT = 1.5       # C3 gövdesi ATR'nin bu katından büyükse
 EXPANSION_BODY_RANGE_RATIO = 0.70  # body/range oranı bu değerden büyükse
 REJECTION_ATR_MULT = 1.0        # C3 ters yön gövdesi ATR'nin bu katından büyükse
 INVALIDATION_ATR_MULT = 1.0     # FVG'nin ters tarafını bu ATR kadar geçme = invalidate
+FEE_TAKER = 0.0004              # %0.04 taker komisyonu
+N_BOOTSTRAP = 1000              # bootstrap resample sayısı
+BOOTSTRAP_SEED = 42             # bootstrap rastgelelik tohumu
 
 SYMBOLS_TO_TEST = [
     "BTCUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
@@ -313,11 +317,16 @@ def simulate_rr(fvg: dict, bars_after: list[Bar]) -> dict:
     risk = abs(entry - stop)
     reward = abs(target - entry)
 
+    risk_pct = risk / entry if entry > 0 else 0.001
+    fee_per_leg_R = FEE_TAKER / risk_pct
+
     result = {
         "entry": entry, "stop": stop, "target": target,
         "risk": risk, "reward": reward, "rr": reward / risk if risk > 0 else 0,
         "hit_target": False, "hit_stop": False,
         "no_fill": False, "no_outcome": False,
+        "fee_per_leg_R": fee_per_leg_R,
+        "net_profit_R": 0.0,
     }
 
     # Önce entry'nin fill olup olmadığını kontrol et
@@ -331,6 +340,7 @@ def simulate_rr(fvg: dict, bars_after: list[Bar]) -> dict:
             break
     if not entered:
         result["no_fill"] = True
+        result["net_profit_R"] = 0.0
         return result
 
     # Entry'den sonraki barlarda stop mu target mı önce vuruluyor
@@ -344,13 +354,16 @@ def simulate_rr(fvg: dict, bars_after: list[Bar]) -> dict:
         # Aynı barda ikisi de tetiklenirse konservatif: stop önce vurulmuş say
         if hit_stop:
             result["hit_stop"] = True
+            result["net_profit_R"] = -1.0 - 2.0 * fee_per_leg_R
             return result
         if hit_target:
             result["hit_target"] = True
+            result["net_profit_R"] = 2.0 - 2.0 * fee_per_leg_R
             return result
 
     # LOOKBACK_BARS içinde ne stop ne target vurulmadı
     result["no_outcome"] = True
+    result["net_profit_R"] = -2.0 * fee_per_leg_R  # entry + varsayılan kapanış maliyeti
     return result
 
 
@@ -387,6 +400,7 @@ def analyze_symbol(symbol: str) -> dict:
         "continued": 0, "continued_10": 0, "continued_20": 0, "continued_40": 0,
         "bars_to_mitigate": [],
         "rr_wins": 0, "rr_losses": 0, "no_fill": 0, "no_outcome": 0,
+        "profits": [], "win_flags": [],
     })
 
     total_bars = len(b15)
@@ -432,6 +446,13 @@ def analyze_symbol(symbol: str) -> dict:
         if fvg_data["size"] < atr * 0.1:
             continue
 
+        # ATR debug: kullanılan ATR değeri (C3 öncesi)
+        fvg_data["atr_used"] = atr
+        fvg_data["tr_of_c3"] = tr
+        fvg_data["atr_after_c3"] = atr_val
+        fvg_data["fvg_hour"] = h
+        fvg_data["timestamp"] = c3.timestamp
+
         # Sınıflama
         category = classify_c3(fvg_data)
         fvg_data["category"] = category
@@ -466,8 +487,12 @@ def analyze_symbol(symbol: str) -> dict:
             co["continued_40"] += 1
         if rr.get("hit_target"):
             co["rr_wins"] += 1
+            co["profits"].append(rr["net_profit_R"])
+            co["win_flags"].append(1)
         if rr.get("hit_stop"):
             co["rr_losses"] += 1
+            co["profits"].append(rr["net_profit_R"])
+            co["win_flags"].append(0)
         if rr.get("no_fill"):
             co["no_fill"] += 1
         if rr.get("no_outcome"):
@@ -483,6 +508,123 @@ def analyze_symbol(symbol: str) -> dict:
         "category_outcomes": dict(category_outcomes),
         "fvgs": fvgs,
     }
+
+
+# ─── Bootstrap CI ────────────────────────────────────────────
+def bootstrap_ci(values, n_resamples=N_BOOTSTRAP, ci=95, seed=BOOTSTRAP_SEED):
+    """Bootstrap %95 CI for the mean. Returns (lower, upper, mean)."""
+    rng = random.Random(seed)
+    n = len(values)
+    if n < 3:
+        return (None, None, sum(values) / n if n else 0)
+    means = []
+    for _ in range(n_resamples):
+        s = 0.0
+        for _ in range(n):
+            s += values[rng.randint(0, n - 1)]
+        means.append(s / n)
+    alpha = (100 - ci) / 2
+    lo = sorted(means)[int(n_resamples * alpha / 100)]
+    hi = sorted(means)[int(n_resamples * (100 - alpha) / 100)]
+    return (lo, hi, sum(values) / n)
+
+
+# ─── ATR Self-Reference Proof ─────────────────────────────────
+def print_atr_proof(all_results):
+    """5 rastgele FVG seç, C3 öncesi/sonrası ATR'yi göster."""
+    print("\n" + "-" * 80)
+    print("  ATR SELF-REFERENCE KANITI")
+    print("  C3 öncesi ATR (sınıflamada kullanılan) ≠ C3 sonrası ATR")
+    print("-" * 80)
+    all_fvgs = []
+    for r in all_results:
+        if r is None:
+            continue
+        all_fvgs.extend(r["fvgs"])
+    if len(all_fvgs) < 5:
+        print("  Yetersiz FVG — atlanıyor.")
+        return
+    rng = random.Random(BOOTSTRAP_SEED)
+    chosen = rng.sample(all_fvgs, min(5, len(all_fvgs)))
+    for i, f in enumerate(chosen, 1):
+        print(f"  #{i} cat={f['category']:>14s} dir={f['direction']:>7s}  "
+              f"atr_before_C3={f['atr_used']:.4f}  "
+              f"tr_of_C3={f['tr_of_c3']:.4f}  "
+              f"atr_after_C3={f['atr_after_c3']:.4f}  "
+              f"diff={'SAME' if abs(f['atr_used'] - f['atr_after_c3']) < 0.0001 else 'DIFF'}")
+
+
+# ─── Coin Korelasyonu ─────────────────────────────────────────
+def print_coin_correlation(all_results):
+    """Her coin için saat dilimlerindeki FVG dağılımı ve BTC ile örtüşme."""
+    print("\n" + "-" * 80)
+    print("  COIN KORELASYONU & EFEKTİF ÖRNEKLEM")
+    print("-" * 80)
+    # Per-coin, per-hour FVG count
+    coin_hour = {}
+    coin_days = {}
+    for r in all_results:
+        if r is None:
+            continue
+        sym = r["symbol"]
+        ch = defaultdict(int)
+        cd = set()
+        for f in r["fvgs"]:
+            hr = f.get("fvg_hour", -1)
+            ch[hr] += 1
+            ts = f.get("timestamp", 0)
+            if ts:
+                dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).date()
+                cd.add(dt)
+        coin_hour[sym] = dict(ch)
+        coin_days[sym] = len(cd)
+    all_coins = sorted(coin_hour.keys())
+    if not all_coins:
+        return
+
+    # Tablo başlığı
+    hours = sorted({h for ch in coin_hour.values() for h in ch})
+    header = f"  {'Coin':<10s} {'Toplam':>6s} {'Gün':>4s}"
+    for h in hours:
+        header += f" {h:02d}:00"
+    print(header)
+    print("  " + "-" * len(header))
+    btc_hours = coin_hour.get("BTCUSDT", {})
+    btc_total = sum(btc_hours.values())
+    for sym in all_coins:
+        ch = coin_hour[sym]
+        total = sum(ch.values())
+        days = coin_days[sym]
+        row = f"  {sym:<10s} {total:>6d} {days:>4d}"
+        for h in hours:
+            cnt = ch.get(h, 0)
+            if btc_hours.get(h, 0) > 0 and cnt > 0:
+                row += f"  {cnt:>2d}*"
+            else:
+                row += f"  {cnt:>2d} "
+        print(row)
+
+    # BTC ile ortalama overlap
+    if btc_total > 0:
+        overlaps = []
+        for sym in all_coins:
+            if sym == "BTCUSDT":
+                continue
+            ch = coin_hour[sym]
+            overlap_pct = 0.0
+            for h in hours:
+                if btc_hours.get(h, 0) > 0 and ch.get(h, 0) > 0:
+                    overlap_pct += 1.0
+            if hours:
+                overlap_pct = overlap_pct / len(hours) * 100
+            overlaps.append((overlap_pct, sym))
+        avg_overlap = sum(o for o, _ in overlaps) / len(overlaps) if overlaps else 0
+        print(f"\n  BTC saat dilimi örtüşme ortalaması: {avg_overlap:.1f}%")
+    # Efektif örneklem: eşsiz gün sayısı ortalaması
+    avg_days = sum(coin_days.values()) / len(coin_days)
+    print(f"  Ortalama eşsiz gün (efektif bağımsız örneklem): {avg_days:.0f}")
+    min_days = min(coin_days.values())
+    print(f"  En düşük gün: {min_days}")
 
 
 # ─── Raporlama ───────────────────────────────────────────────
@@ -548,6 +690,7 @@ def print_report(all_results: list[dict]):
         "continued": 0, "continued_10": 0, "continued_20": 0, "continued_40": 0,
         "bars_to_mitigate": [],
         "rr_wins": 0, "rr_losses": 0, "no_fill": 0, "no_outcome": 0,
+        "profits": [], "win_flags": [],
     })
     for r in all_results:
         if r is None:
@@ -566,6 +709,8 @@ def print_report(all_results: list[dict]):
             a["rr_losses"] += data["rr_losses"]
             a["no_fill"] += data.get("no_fill", 0)
             a["no_outcome"] += data.get("no_outcome", 0)
+            a["profits"].extend(data.get("profits", []))
+            a["win_flags"].extend(data.get("win_flags", []))
 
     header = f"  {'Kategori':<16} {'FVG':>6} {'Mit%':>7} {'Inv%':>7} {'Cont10%':>8} {'Cont40%':>8} {'AvgBar':>7} {'RR_W%':>7} {'Exp':>8} {'NoFill':>7}"
     print(f"  {'-'*len(header)}")
@@ -657,6 +802,43 @@ def print_report(all_results: list[dict]):
         rr_total = a["rr_wins"] + a["rr_losses"]
         exp_val = (a["rr_wins"] * 2 - a["rr_losses"] * 1) / max(rr_total, 1)
         print(f"    {cat:<16} {a['rr_wins']:>3}W / {a['rr_losses']:>3}L = {exp_val:>+.2f}R expectancy")
+        # Show net expectancy with commission
+        profits = a.get("profits", [])
+        if profits:
+            net_exp = sum(profits) / len(profits)
+            print(f"    {'':>16} Net (%%0.04 taker): {net_exp:>+.2f}R expectancy")
+
+    # Bootstrap CI for REJECTION
+    print(f"\n{'='*100}")
+    print(f"  BOOTSTRAP CI (%95 GÜVEN ARALIĞI) — REJECTION")
+    print(f"  {N_BOOTSTRAP} resample, seed={BOOTSTRAP_SEED}")
+    print(f"{'='*100}")
+    rej = agg.get("REJECTION", {})
+    rej_profits = rej.get("profits", [])
+    rej_wins = rej.get("win_flags", [])
+    if len(rej_profits) >= 3:
+        wr_lo, wr_hi, wr_mean = bootstrap_ci(rej_wins)
+        exp_lo, exp_hi, exp_mean = bootstrap_ci(rej_profits)
+        print(f"  WR bootstrap:       {wr_mean*100:.1f}%  [%95 CI: {wr_lo*100:.1f}% - {wr_hi*100:.1f}%]")
+        print(f"  Expectancy bootstrap: {exp_mean:+.2f}R [%95 CI: {exp_lo:+.2f}R - {exp_hi:+.2f}R]")
+        # Cont@20 non-monotonic check
+        print(f"\n  Non-Monotonik Cont@20 Check:")
+        print(f"    REJECTION Cont@10={rej.get('continued_10', 0)/max(rej.get('mitigated',1),1)*100:.1f}%")
+        print(f"    REJECTION Cont@20={rej.get('continued_20', 0)/max(rej.get('mitigated',1),1)*100:.1f}%")
+        print(f"    REJECTION Cont@40={rej.get('continued_40', 0)/max(rej.get('mitigated',1),1)*100:.1f}%")
+        wr_diff = abs(wr_hi - wr_lo)
+        if wr_diff > 10:
+            print(f"    ⚠️ WR CI genişliği {wr_diff:.1f}% — Cont@20 dalgalanma gürültüden kaynaklanıyor olabilir")
+        else:
+            print(f"    ✅ WR CI genişliği {wr_diff:.1f}% — Cont@20 sapma güvenilir pattern olabilir")
+    else:
+        print(f"  Yetersiz REJECTION örneği ({len(rej_profits)}). Bootstrap atlanıyor.")
+
+    # ATR proof
+    print_atr_proof(all_results)
+
+    # Coin correlation
+    print_coin_correlation(all_results)
 
 
 def write_md_report(results, agg, all_hours=None):
@@ -827,6 +1009,108 @@ def write_md_report(results, agg, all_hours=None):
     else:
         report_lines.append("*Saat verisi toplanamadı.*")
 
+    # Bootstrap CI for REJECTION
+    report_lines.append("")
+    report_lines.append("## Bootstrap CI — REJECTION")
+    report_lines.append("")
+    report_lines.append(f"**{N_BOOTSTRAP} resample, %95 güven aralığı, seed={BOOTSTRAP_SEED}**")
+    report_lines.append("")
+    rej_r = agg.get("REJECTION", {})
+    rej_profits = rej_r.get("profits", [])
+    rej_wins = rej_r.get("win_flags", [])
+    if len(rej_profits) >= 3:
+        wr_lo, wr_hi, wr_mean = bootstrap_ci(rej_wins)
+        exp_lo, exp_hi, exp_mean = bootstrap_ci(rej_profits)
+        report_lines.append(f"- WR: {wr_mean*100:.1f}% [%95 CI: {wr_lo*100:.1f}% — {wr_hi*100:.1f}%]")
+        report_lines.append(f"- Expectancy: {exp_mean:+.2f}R [%95 CI: {exp_lo:+.2f}R — {exp_hi:+.2f}R]")
+        # Non-monotonic
+        rej_m = max(rej_r.get("mitigated", 1), 1)
+        c10 = rej_r.get("continued_10", 0) / rej_m * 100
+        c20 = rej_r.get("continued_20", 0) / rej_m * 100
+        c40 = rej_r.get("continued_40", 0) / rej_m * 100
+        report_lines.append("")
+        report_lines.append("**Non-Monotonik Cont@20 Check:**")
+        report_lines.append(f"- Cont@10: {c10:.1f}%")
+        report_lines.append(f"- Cont@20: {c20:.1f}%")
+        report_lines.append(f"- Cont@40: {c40:.1f}%")
+        wr_diff = abs(wr_hi - wr_lo)
+        if wr_diff > 10:
+            report_lines.append(f"- ⚠️ WR CI genişliği {wr_diff:.1f}% — Cont@20 dalgalanma gürültüden kaynaklanıyor olabilir.")
+        else:
+            report_lines.append(f"- ✅ WR CI genişliği {wr_diff:.1f}% — Cont@20 sapma güvenilir pattern olabilir.")
+    else:
+        report_lines.append(f"Yetersiz REJECTION örneği ({len(rej_profits)}). Bootstrap atlanıyor.")
+
+    # Commission section
+    report_lines.append("")
+    report_lines.append("## Komisyon Sonrası Expectancy")
+    report_lines.append("")
+    report_lines.append(f"**Taker fee: %{FEE_TAKER*100:.2f} (round-trip %{FEE_TAKER*200:.2f})**")
+    report_lines.append("")
+    report_lines.append("| Kategori | Brüt Exp | Net Exp | Fark |")
+    report_lines.append("|---|---|---|---|")
+    for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+        a = agg.get(cat, {})
+        profs = a.get("profits", [])
+        if not profs:
+            continue
+        rt = a.get("rr_wins", 0) + a.get("rr_losses", 0) + a.get("no_outcome", 0)
+        gross_exp = (a.get("rr_wins", 0) * 2 - a.get("rr_losses", 0) * 1) / max(rt, 1)
+        net_exp = sum(profs) / len(profs)
+        report_lines.append(f"| {cat} | {gross_exp:+.3f}R | {net_exp:+.3f}R | {net_exp - gross_exp:+.3f}R |")
+
+    # ATR Self-Reference Proof
+    report_lines.append("")
+    report_lines.append("## ATR Self-Reference Kanıtı")
+    report_lines.append("")
+    report_lines.append("**C3 öncesi ATR (sınıflamada kullanılan) vs C3 sonrası ATR**")
+    report_lines.append("")
+    report_lines.append("| # | Kategori | Yön | ATR (C3 öncesi) | TR(C3) | ATR (C3 sonrası) | Fark |")
+    report_lines.append("|---|---|---|---|---|---|---|")
+    all_fvgs = [f for r in results if r for f in r["fvgs"]]
+    if len(all_fvgs) >= 5:
+        rng = random.Random(BOOTSTRAP_SEED)
+        chosen = rng.sample(all_fvgs, min(5, len(all_fvgs)))
+        for i, f in enumerate(chosen, 1):
+            diff_label = "SAME" if abs(f['atr_used'] - f['atr_after_c3']) < 0.0001 else "FARKLI"
+            report_lines.append(f"| {i} | {f['category']} | {f['direction']} | {f['atr_used']:.4f} | {f['tr_of_c3']:.4f} | {f['atr_after_c3']:.4f} | {diff_label} |")
+    else:
+        report_lines.append("| Yetersiz FVG — atlanıyor | | | | | |")
+
+    # Coin korelasyonu
+    report_lines.append("")
+    report_lines.append("## Coin Korelasyonu & Efektif Örneklem")
+    report_lines.append("")
+    report_lines.append("| Coin | Toplam FVG | Eşsiz Gün | Saat Dilimleri |")
+    report_lines.append("|---|---|---|---|")
+    coin_hour = {}
+    coin_days = {}
+    for r in results:
+        if r is None:
+            continue
+        sym = r["symbol"]
+        ch = defaultdict(int)
+        cd = set()
+        for f in r["fvgs"]:
+            hr = f.get("fvg_hour", -1)
+            ch[hr] += 1
+            ts = f.get("timestamp", 0)
+            if ts:
+                dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).date()
+                cd.add(dt)
+        coin_hour[sym] = dict(ch)
+        coin_days[sym] = len(cd)
+    for sym in sorted(coin_hour.keys()):
+        ch = coin_hour[sym]
+        total = sum(ch.values())
+        days = coin_days[sym]
+        hours_str = ", ".join(f"{h:02d}:00({ch[h]})" for h in sorted(ch.keys()))
+        report_lines.append(f"| {sym} | {total} | {days} | {hours_str} |")
+    avg_days = sum(coin_days.values()) / len(coin_days)
+    report_lines.append(f"| **Ortalama** | | **{avg_days:.0f}** | |")
+    min_days = min(coin_days.values())
+    report_lines.append(f"| **Min** | | **{min_days}** | |")
+
     report_lines.append("")
     report_lines.append("---")
     report_lines.append("*Auto-generated by analyze_fvg_3rd_candle.py (düzeltilmiş sürüm)*")
@@ -867,6 +1151,7 @@ def main():
         "continued": 0, "continued_10": 0, "continued_20": 0, "continued_40": 0,
         "bars_to_mitigate": [],
         "rr_wins": 0, "rr_losses": 0, "no_fill": 0, "no_outcome": 0,
+        "profits": [], "win_flags": [],
     })
     for r in results:
         if r is None:
@@ -885,6 +1170,8 @@ def main():
             a["rr_losses"] += data["rr_losses"]
             a["no_fill"] += data.get("no_fill", 0)
             a["no_outcome"] += data.get("no_outcome", 0)
+            a["profits"].extend(data.get("profits", []))
+            a["win_flags"].extend(data.get("win_flags", []))
     
     # Aggregate session hour data for sanity check
     all_hours = defaultdict(int)
