@@ -428,6 +428,21 @@ def percentile_sorted(vals, p):
     idx = max(0, min(len(vals)-1, int(len(vals)*p/100)))
     return vals[idx]
 
+def _rank_vector(vals):
+    """O(n log n) rank assignment (1-based) with fractional ranking for ties."""
+    paired = sorted((v, i) for i, v in enumerate(vals))
+    ranks = [0] * len(vals)
+    i = 0
+    while i < len(vals):
+        j = i
+        while j < len(vals) and paired[j][0] == paired[i][0]:
+            j += 1
+        avg = (i + 1 + j) / 2.0
+        for k in range(i, j):
+            ranks[paired[k][1]] = avg
+        i = j
+    return ranks
+
 def cumulative_mit_curve(fvgs, max_b=200):
     mit_times = sorted([f["outcome"]["bars_to_mitigate"] for f in fvgs if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
     total = len(fvgs)
@@ -480,9 +495,9 @@ def volatility_regime_analysis(fvgs, b15, window=50):
     atr_vals = [b15[i].high-b15[i].low for i in range(len(b15))]
     regime_results = defaultdict(lambda: {"count": 0, "mitigated": 0, "bars": [], "profits": [], "continuation_10": 0})
     for f in fvgs:
-        idx = f["c3"].index
-        lo = max(0, idx-window)
-        recent_atr = atr_vals[lo:idx]
+        pos = f["c3_pos"]
+        lo = max(0, pos-window)
+        recent_atr = atr_vals[lo:pos]
         if len(recent_atr) < 10:
             continue
         cur_atr = f["atr"]
@@ -945,8 +960,8 @@ def build_report(all_coin_data):
                 row.append("N/A")
             else:
                 n = len(x)
-                rx = [sorted(x).index(v)+1 for v in x]
-                ry = [sorted(y).index(v)+1 for v in y]
+                rx = _rank_vector(x)
+                ry = _rank_vector(y)
                 d2 = sum((rx[i]-ry[i])**2 for i in range(n))
                 rho = 1 - 6*d2/(n*(n*n-1)) if n > 1 else 0
                 row.append(f"{rho:>+.4f}")
