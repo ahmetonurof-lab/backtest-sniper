@@ -31,6 +31,10 @@ INVALIDATION_ATR_MULT = 1.0
 FEE_TAKER = 0.0004
 N_BOOTSTRAP = 1000
 BOOTSTRAP_SEED = 42
+SWEEP_LOOKBACK = 20
+DEPTH_BUCKETS = [(0, 25, "0-25%"), (25, 50, "25-50%"), (50, 75, "50-75%"), (75, 100, "75-100%"), (100, 150, "100-150%"), (150, 9999, ">150%")]
+BODY_RATIO_Q = [0, 25, 50, 75, 100]
+CONT_WINDOWS = [10, 20, 40]
 
 SYMBOLS_TO_TEST = [
     "BTCUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
@@ -67,6 +71,45 @@ def detect_fvg_3candle(c1, c2, c3, atr):
         gap = c1.low - c3.high
         return {"direction": "bearish", "top": c1.low, "bottom": c3.high, "size": gap, "c1": c1, "c2": c2, "c3": c3, "bar_index": c2.index, "atr": atr}
     return None
+
+def calc_c2_anatomy(c2):
+    body = abs(c2.close - c2.open)
+    rng = c2.high - c2.low
+    if rng == 0:
+        return {"body_ratio": 0.0, "upper_wick_ratio": 0.0, "lower_wick_ratio": 0.0, "clv": 0.0}
+    return {
+        "body_ratio": round(body / rng, 4),
+        "upper_wick_ratio": round((c2.high - max(c2.open, c2.close)) / rng, 4),
+        "lower_wick_ratio": round((min(c2.open, c2.close) - c2.low) / rng, 4),
+        "clv": round(((c2.close - c2.low) - (c2.high - c2.close)) / rng, 4),
+    }
+
+def detect_sweep(b15, c3_pos, lookback=20):
+    """Detect BSL/SSL sweep before FVG. Uses list positions in b15."""
+    lo = max(0, c3_pos - lookback - 30)
+    pre_bars = b15[lo:c3_pos]
+    if len(pre_bars) < 6:
+        return {"swept_high": False, "swept_low": False}
+    swings_h, swings_l = [], []
+    for i in range(2, len(pre_bars)-2):
+        h, l = pre_bars[i].high, pre_bars[i].low
+        if h > pre_bars[i-2].high and h > pre_bars[i-1].high and h > pre_bars[i+1].high and h > pre_bars[i+2].high:
+            swings_h.append((lo+i, h))
+        if l < pre_bars[i-2].low and l < pre_bars[i-1].low and l < pre_bars[i+1].low and l < pre_bars[i+2].low:
+            swings_l.append((lo+i, l))
+    swept_h, swept_l = False, False
+    recent = b15[max(0, c3_pos-lookback):c3_pos]
+    for idx, pr in swings_h:
+        for b in recent:
+            if b.index > idx and b.high > pr and b.close < pr:
+                swept_h = True; break
+        if swept_h: break
+    for idx, pr in swings_l:
+        for b in recent:
+            if b.index > idx and b.low < pr and b.close > pr:
+                swept_l = True; break
+        if swept_l: break
+    return {"swept_high": swept_h, "swept_low": swept_l}
 
 def classify_c3(fvg):
     c3 = fvg["c3"]
@@ -189,6 +232,83 @@ def simulate_rr(fvg, bars_after):
             result["hit_target"] = True; result["net_profit_R"] = 2.0 - 2.0*fee_per_leg_R; return result
     result["no_outcome"] = True; result["net_profit_R"] = -2.0*fee_per_leg_R; return result
 
+def simulate_rr_new(fvg, bars_after):
+    direction = fvg["direction"]
+    gap_top, gap_bottom = fvg["top"], fvg["bottom"]
+    gap_width = max(fvg["size"], 0.000001)
+    if direction == "bullish":
+        entry_price = gap_top
+        target_price = entry_price + gap_width * 2.0
+    else:
+        entry_price = gap_bottom
+        target_price = entry_price - gap_width * 2.0
+    risk_pct = gap_width / max(entry_price, 0.000001)
+    fee_leg_R = FEE_TAKER / max(risk_pct, 0.000001)
+
+    r = {"touched": False, "entry_bar": None, "entry_price": entry_price,
+         "hit_target": False, "hit_stop": False, "no_outcome": True,
+         "net_profit_R": 0.0, "risk": gap_width,
+         "max_depth_pct": 0.0, "max_depth_class": None,
+         "first_touch_depth": None, "first_touch_class": None,
+         "touches": [], "invalidation_bar": None, "outcome_bar": None,
+         "continuation_10": False, "continuation_20": False, "continuation_40": False}
+
+    entered = False
+    for offset, b in enumerate(bars_after):
+        if offset >= LOOKBACK_BARS:
+            break
+        touches = b.high >= gap_bottom and b.low <= gap_top
+        if not entered:
+            if touches:
+                entered = True
+                r["touched"] = True
+                r["entry_bar"] = offset
+            else:
+                continue
+
+        tinfo = None
+        if touches:
+            depth = max(0, (gap_top - b.low) / gap_width * 100) if direction == "bullish" else max(0, (b.high - gap_bottom) / gap_width * 100)
+            ci = gap_bottom <= b.close <= gap_top
+            tinfo = {"bar": offset, "depth_pct": round(depth, 1), "wick_only": not ci, "close_in_fvg": ci}
+            r["touches"].append(tinfo)
+            if depth > r["max_depth_pct"]:
+                r["max_depth_pct"] = depth
+                r["max_depth_class"] = "WICK_ONLY" if not ci else "BODY_CLOSE"
+            if r["first_touch_depth"] is None:
+                r["first_touch_depth"] = round(depth, 1)
+                r["first_touch_class"] = "WICK_ONLY" if not ci else "BODY_CLOSE"
+
+        inval = (direction == "bullish" and b.close < gap_bottom) or (direction == "bearish" and b.close > gap_top)
+        if inval:
+            r["hit_stop"] = True; r["no_outcome"] = False
+            r["invalidation_bar"] = offset; r["outcome_bar"] = offset
+            r["net_profit_R"] = -1.0 - 2.0 * fee_leg_R
+            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
+            return r
+
+        hit_t = (direction == "bullish" and b.high >= target_price) or (direction == "bearish" and b.low <= target_price)
+        if hit_t:
+            r["hit_target"] = True; r["no_outcome"] = False
+            r["outcome_bar"] = offset
+            r["net_profit_R"] = 2.0 - 2.0 * fee_leg_R
+            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
+            return r
+
+    if entered:
+        r["no_outcome"] = True
+        r["net_profit_R"] = -2.0 * fee_leg_R
+        _check_continuation(r, bars_after, len(bars_after)-1, direction, entry_price, gap_width)
+    return r
+
+def _check_continuation(r, bars_after, from_idx, direction, entry_price, gap_width):
+    for win in CONT_WINDOWS:
+        key = f"continuation_{win}"
+        fo = from_idx + win
+        if fo < len(bars_after):
+            fb = bars_after[fo]
+            r[key] = (direction == "bullish" and fb.high >= entry_price + gap_width) or (direction == "bearish" and fb.low <= entry_price - gap_width)
+
 # ─── Analiz ──────────────────────────────────────────────────
 def analyze_coin(symbol):
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
@@ -236,6 +356,9 @@ def analyze_coin(symbol):
         fvg_data["fvg_hour"] = h
         fvg_data["timestamp"] = c3.timestamp
         fvg_data["day_of_week"] = edt.weekday()
+        fvg_data["c3_pos"] = sb
+        fvg_data["c2_anatomy"] = calc_c2_anatomy(c2)
+        fvg_data["sweep"] = detect_sweep(b15, sb, SWEEP_LOOKBACK)
         bars_after = b15[sb+1:min(sb+LOOKBACK_BARS, total_bars)]
         fvg_data["outcome"] = track_fvg_outcome(fvg_data, bars_after)
         fvg_data["rr"] = simulate_rr(fvg_data, bars_after)
@@ -775,6 +898,273 @@ def build_report(all_coin_data):
         L("")
 
     L("---")
+    L("")
+
+    # ═══════════════════════════════════════════════════════════
+    # BÖLÜM 9: C2 Mum Anatomisi × Continuation Analizi
+    # ═══════════════════════════════════════════════════════════
+    L("## 9. C2 Mum Anatomisi × Continuation")
+    L("")
+    L("### 9a. C2 Anatomi Metrikleri — Tanımlayıcı İstatistikler")
+    L("")
+    L("| Metrik | p25 | p50 | p75 | Ortalama |")
+    L("|---|---|---|---|---|")
+    for metrik in ["body_ratio", "upper_wick_ratio", "lower_wick_ratio", "clv", "gap_atr_ratio"]:
+        vals = []
+        for coin_data in all_coin_data.values():
+            for f in coin_data["fvgs"]:
+                if metrik == "gap_atr_ratio":
+                    vals.append(f["size"] / max(f["atr"], 0.0001))
+                else:
+                    vals.append(f["c2_anatomy"].get(metrik, 0))
+        if not vals: continue
+        sv = sorted(vals)
+        L(f"| {metrik:<20s} | {percentile_sorted(sv,25):>+.4f} | {percentile_sorted(sv,50):>+.4f} | {percentile_sorted(sv,75):>+.4f} | {sum(vals)/len(vals):>+.4f} |")
+
+    L("")
+    L("### 9b. Spearman Korelasyonu: C2 Metrikleri × Continuation")
+    L("")
+    L("C2 anatomisi ile continuation (1×gap_width hareket, 10/20/40 bar) arasındaki monotik ilişki.")
+    L("")
+    L("| Metrik | Cont@10 rho | Cont@20 rho | Cont@40 rho |")
+    L("|---|---|---|---|")
+    for metrik in ["body_ratio", "upper_wick_ratio", "lower_wick_ratio", "clv", "gap_atr_ratio"]:
+        row = [f"{metrik:<20s}"]
+        for win in CONT_WINDOWS:
+            x, y = [], []
+            for coin_data in all_coin_data.values():
+                for f in coin_data["fvgs"]:
+                    rn = f.get("rr_new", {})
+                    if not rn.get("touched"):
+                        continue
+                    if metrik == "gap_atr_ratio":
+                        x.append(f["size"] / max(f["atr"], 0.0001))
+                    else:
+                        x.append(f["c2_anatomy"].get(metrik, 0))
+                    y.append(1 if rn.get(f"continuation_{win}") else 0)
+            if len(set(y)) < 2 or len(x) < 5:
+                row.append("N/A")
+            else:
+                n = len(x)
+                rx = [sorted(x).index(v)+1 for v in x]
+                ry = [sorted(y).index(v)+1 for v in y]
+                d2 = sum((rx[i]-ry[i])**2 for i in range(n))
+                rho = 1 - 6*d2/(n*(n*n-1)) if n > 1 else 0
+                row.append(f"{rho:>+.4f}")
+        L("| " + " | ".join(row) + " |")
+
+    L("")
+    L("### 9c. Body_Ratio Quartile × Continuation (Kategori Bağımsız)")
+    L("")
+    L("FVG'ler C2 body_ratio'ya göre 4 quartile bölünür. Aynı kategori içinde bile body_ratio fark yaratıyor mu?")
+    L("")
+    L("| Kategori | Body_Q | N | Mit% | Cont@10% | NetExp (rr_new) |")
+    L("|---|---|---|---|---|---|")
+    for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+        cf = []
+        for coin_data in all_coin_data.values():
+            for f in coin_data["fvgs"]:
+                if f["category"] == cat and f.get("c2_anatomy"):
+                    cf.append(f)
+        if not cf: continue
+        ratios = sorted([f["c2_anatomy"]["body_ratio"] for f in cf])
+        qs = [0, 25, 50, 75, 100]
+        qvals = [percentile_sorted(ratios, q) for q in qs]
+        for qi in range(4):
+            lo, hi = qvals[qi], qvals[qi+1]
+            grp = [f for f in cf if lo <= f["c2_anatomy"]["body_ratio"] <= hi]
+            n = len(grp)
+            if n < 3: continue
+            mit = sum(1 for f in grp if f.get("rr_new", {}).get("touched")) / n * 100
+            cont = sum(1 for f in grp if f.get("rr_new", {}).get("continuation_10")) / max(sum(1 for f in grp if f.get("rr_new", {}).get("touched")),1) * 100
+            profs = [f["rr_new"]["net_profit_R"] for f in grp if f.get("rr_new", {}).get("hit_target") or f.get("rr_new", {}).get("hit_stop")]
+            ne = sum(profs)/len(profs) if profs else 0
+            L(f"| {cat:<13s} | Q{qi+1}({lo:.2f}-{hi:.2f}) | {n:>4d} | {mit:>5.1f} | {cont:>5.1f} | {ne:>+6.2f}R |")
+
+    L("")
+    L("---")
+    L("")
+
+    # ═══════════════════════════════════════════════════════════
+    # BÖLÜM 10: Retracement Derinliği × Continuation
+    # ═══════════════════════════════════════════════════════════
+    L("## 10. Retracement Derinliği × Continuation")
+    L("")
+    L("Her touched-FVG, maksimum depth_pct'ine göre bir derinlik ve max_depth'a ulaşılan bar'ın close tipine göre WICK_ONLY/BODY_CLOSE olarak sınıflandırılır.")
+    L("")
+    L("| Derinlik | WICK_ONLY N | WICK_ONLY Cont@10% | WICK_ONLY Cont@40% | WICK_ONLY NetExp | BODY_CLOSE N | BODY_CLOSE Cont@10% | BODY_CLOSE Cont@40% | BODY_CLOSE NetExp |")
+    L("|---|---|---|---|---|---|---|---|---|")
+    for dlo, dhi, dlabel in DEPTH_BUCKETS:
+        row = [dlabel]
+        for touch_class in ["WICK_ONLY", "BODY_CLOSE"]:
+            grp = []
+            for coin_data in all_coin_data.values():
+                for f in coin_data["fvgs"]:
+                    rn = f.get("rr_new", {})
+                    if not rn.get("touched"):
+                        continue
+                    cls = rn.get("max_depth_class") or rn.get("first_touch_class", "WICK_ONLY")
+                    dp = rn.get("max_depth_pct", 0)
+                    if cls == touch_class and dlo <= dp < dhi:
+                        grp.append(f)
+            n = len(grp)
+            if n < 3:
+                row.extend(["0", "N/A", "N/A", "N/A"] if n == 0 else [f"{n}", "N/A", "N/A", "N/A"])
+                continue
+            cont10 = sum(1 for f in grp if f["rr_new"].get("continuation_10")) / n * 100
+            cont40 = sum(1 for f in grp if f["rr_new"].get("continuation_40")) / n * 100
+            profs = [f["rr_new"]["net_profit_R"] for f in grp if f["rr_new"].get("hit_target") or f["rr_new"].get("hit_stop")]
+            ne = sum(profs)/len(profs) if profs else 0
+            row.extend([f"{n}", f"{cont10:.1f}", f"{cont40:.1f}", f"{ne:+.2f}R"])
+        L("| " + " | ".join(row) + " |")
+
+    L("")
+    L("---")
+    L("")
+
+    # ═══════════════════════════════════════════════════════════
+    # BÖLÜM 11: Eski Invalidation Kuralı Karşılaştırması
+    # ═══════════════════════════════════════════════════════════
+    L("## 11. Eski vs Yeni Entry/Invalidation Karşılaştırması")
+    L("")
+    L("**Eski kural:** Entry=FVG ortası, Invalidation=1.0×ATR ötesi kapanış, close-inside-filter var")
+    L("**Yeni kural:** Entry=ilk wick teması (gap sınırı), Invalidation=close < gap_bottom (bullish) / close > gap_top (bearish), close-inside-filter yok")
+    L("")
+    L("| Kategori | Model | Toplam | Touched | Win% | NetExp | Avg Risk |")
+    L("|---|---|---|---|---|---|---|")
+    for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+        for model_key, model_label in [("rr", "ESKİ"), ("rr_new", "YENİ")]:
+            grp = []
+            for coin_data in all_coin_data.values():
+                for f in coin_data["fvgs"]:
+                    if f["category"] == cat and f.get(model_key):
+                        grp.append(f)
+            if not grp: continue
+            n = len(grp)
+            touched = sum(1 for f in grp if model_key != "rr_new" or f["rr_new"].get("touched"))
+            wins = sum(1 for f in grp if f[model_key].get("hit_target"))
+            losses = sum(1 for f in grp if f[model_key].get("hit_stop"))
+            rt = wins + losses
+            wr = wins/rt*100 if rt > 0 else 0
+            profs = [f[model_key]["net_profit_R"] for f in grp if f[model_key].get("hit_target") or f[model_key].get("hit_stop")]
+            ne = sum(profs)/len(profs) if profs else 0
+            risk = sum(f[model_key].get("risk", 0) for f in grp if isinstance(f[model_key].get("risk"), (int,float))) / max(n,1)
+            L(f"| {cat:<13s} | {model_label:<4s} | {n:>4d} | {touched:>4d} | {wr:>5.1f} | {ne:>+6.2f}R | {risk:>8.4f} |")
+
+    L("")
+    L("---")
+    L("")
+
+    # ═══════════════════════════════════════════════════════════
+    # BÖLÜM 12: BSL/SSL Sweep Filtreli Analiz
+    # ═══════════════════════════════════════════════════════════
+    L("## 12. BSL/SSL Sweep Filtreli Analiz (Sadece Sweep-Sonrası FVG'ler)")
+    L("")
+    L("### 12a. Sweep × Kategori Dağılımı")
+    L("")
+    L("| Kategori | Toplam | Sweep Var (%) | Sweep Yok (%) |")
+    L("|---|---|---|---|")
+    for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+        cf = []
+        for coin_data in all_coin_data.values():
+            for f in coin_data["fvgs"]:
+                if f["category"] == cat:
+                    cf.append(f)
+        n = len(cf)
+        sw = sum(1 for f in cf if f["sweep"]["swept_high"] or f["sweep"]["swept_low"])
+        L(f"| {cat:<13s} | {n:>4d} | {sw:>4d} ({sw/max(n,1)*100:.1f}%) | {n-sw:>4d} ({(n-sw)/max(n,1)*100:.1f}%) |")
+
+    L("")
+    L("### 12b. Derinlik Tablosu (Sadece Sweep-Sonrası FVG'ler)")
+    L("")
+    L("| Derinlik | WICK_ONLY N | WICK_ONLY Cont@10% | WICK_ONLY NetExp | BODY_CLOSE N | BODY_CLOSE Cont@10% | BODY_CLOSE NetExp |")
+    L("|---|---|---|---|---|---|---|---|")
+    for dlo, dhi, dlabel in DEPTH_BUCKETS:
+        row = [dlabel]
+        for touch_class in ["WICK_ONLY", "BODY_CLOSE"]:
+            grp = []
+            for coin_data in all_coin_data.values():
+                for f in coin_data["fvgs"]:
+                    if not (f["sweep"]["swept_high"] or f["sweep"]["swept_low"]):
+                        continue
+                    rn = f.get("rr_new", {})
+                    if not rn.get("touched"):
+                        continue
+                    cls = rn.get("max_depth_class") or rn.get("first_touch_class", "WICK_ONLY")
+                    dp = rn.get("max_depth_pct", 0)
+                    if cls == touch_class and dlo <= dp < dhi:
+                        grp.append(f)
+            n = len(grp)
+            if n < 3:
+                row.extend(["0", "N/A", "N/A"] if n == 0 else [f"{n}", "N/A", "N/A"])
+                continue
+            cont10 = sum(1 for f in grp if f["rr_new"].get("continuation_10")) / n * 100
+            profs = [f["rr_new"]["net_profit_R"] for f in grp if f["rr_new"].get("hit_target") or f["rr_new"].get("hit_stop")]
+            ne = sum(profs)/len(profs) if profs else 0
+            row.extend([f"{n}", f"{cont10:.1f}", f"{ne:+.2f}R"])
+        L("| " + " | ".join(row) + " |")
+
+    L("")
+    L("### 12c. Sweep-Sonrası FVG'lerde C2 Body_Ratio Quartile (Kategori Bağımsız)")
+    L("")
+    L("| Body_Q | N | Cont@10% | NetExp |")
+    L("|---|---|---|---|")
+    cf_sweep = []
+    for coin_data in all_coin_data.values():
+        for f in coin_data["fvgs"]:
+            if f["sweep"]["swept_high"] or f["sweep"]["swept_low"]:
+                cf_sweep.append(f)
+    if cf_sweep:
+        ratios = sorted([f["c2_anatomy"]["body_ratio"] for f in cf_sweep])
+        qvals = [percentile_sorted(ratios, q) for q in [0, 25, 50, 75, 100]]
+        for qi in range(4):
+            lo, hi = qvals[qi], qvals[qi+1]
+            grp = [f for f in cf_sweep if lo <= f["c2_anatomy"]["body_ratio"] <= hi]
+            n = len(grp)
+            if n < 3: continue
+            touched = sum(1 for f in grp if f.get("rr_new", {}).get("touched"))
+            cont10 = sum(1 for f in grp if f.get("rr_new", {}).get("continuation_10")) / max(touched, 1) * 100
+            profs = [f["rr_new"]["net_profit_R"] for f in grp if f["rr_new"].get("hit_target") or f["rr_new"].get("hit_stop")]
+            ne = sum(profs)/len(profs) if profs else 0
+            L(f"| Q{qi+1}({lo:.2f}-{hi:.2f}) | {n:>4d} | {cont10:>5.1f} | {ne:>+6.2f}R |")
+
+    L("")
+    L("---")
+    L("")
+
+    # ═══════════════════════════════════════════════════════════
+    # BÖLÜM 13: Hipotez Testi — "Derinlik arttıkça continuation artar mı?"
+    # ═══════════════════════════════════════════════════════════
+    L("## 13. Hipotez Testi: Derinlik × Continuation İlişkisi")
+    L("")
+    L("Bootstrapped CI karşılaştırması: yüksek depth (>50%) vs düşük depth (≤50%) continuation oranları.")
+    L("")
+
+    for cls_label, cls_filter in [("TÜM FVG'ler", lambda f: True),
+                                    ("WICK_ONLY", lambda f: f.get("rr_new", {}).get("max_depth_class") == "WICK_ONLY"),
+                                    ("BODY_CLOSE", lambda f: f.get("rr_new", {}).get("max_depth_class") == "BODY_CLOSE")]:
+        shallow, deep = [], []
+        for coin_data in all_coin_data.values():
+            for f in coin_data["fvgs"]:
+                rn = f.get("rr_new", {})
+                if not rn.get("touched") or not cls_filter(f): continue
+                dp = rn.get("max_depth_pct", 0)
+                cont = 1 if rn.get("continuation_10") else 0
+                if dp <= 50:
+                    shallow.append(cont)
+                else:
+                    deep.append(cont)
+        if len(shallow) >= 3 and len(deep) >= 3:
+            sci = bootstrap_ci(shallow)
+            dci = bootstrap_ci(deep)
+            overlap_cont = not (dci[1] < sci[0] or dci[0] > sci[1])
+            verdict = "ANLAMLI FARK YOK" if overlap_cont else f"{'✅ Derin > Sığ (yüksek depth daha iyi)' if dci[2] > sci[2] else '❌ Sığ > Derin (düşük depth daha iyi)'}"
+            L(f"- **{cls_label}** — Sığ(≤50%, n={len(shallow)}): {sci[2]:.3f} [{sci[0]:.3f},{sci[1]:.3f}] | Derin(>50%, n={len(deep)}): {dci[2]:.3f} [{dci[0]:.3f},{dci[1]:.3f}] | {verdict}")
+        else:
+            L(f"- **{cls_label}** — YETERSİZ ÖRNEKLEM (sığ={len(shallow)}, derin={len(deep)})")
+
+    L("")
+    L("---")
     L("*Auto-generated by fvg_coin_profile.py*")
     return "\n".join(lines)
 
@@ -799,6 +1189,9 @@ def main():
         for idx, f in enumerate(fvgs):
             bos_mss = detect_bos_mss(f, b15, hi, lo)
             f["bos_mss"] = bos_mss
+        print(f"    [{sym}] Yeni simulasyon hesaplaniyor...", flush=True)
+        for f in fvgs:
+            f["rr_new"] = simulate_rr_new(f, b15[f["c3_pos"]+1:min(f["c3_pos"]+1+LOOKBACK_BARS, len(b15))])
         all_coin_data[sym] = {"fvgs": fvgs, "b15": b15, "total": len(fvgs)}
         print(f"    [{sym}] {len(fvgs)} FVG tamam")
 
