@@ -25,6 +25,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
+from session_router import get_cbdr_multiplier
 from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -223,7 +224,20 @@ def collect_daily_data(symbol: str):
             if rd < atr * 0.1:
                 rsm.reset()
                 continue
-            qty = (ic * rpt) / rd if rd > 0 else 0
+
+            # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
+            h = edt.hour
+            el_mult = cfg.EARLY_LONDON_RISK_MULT if 2 <= h < 8 else 1.0
+            cbdr_w = None
+            if ss.cbdr_body_low > 0 and not math.isinf(ss.cbdr_body_low):
+                cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
+            cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+            if cbdr_mult == 0.0:
+                rsm.reset()
+                continue
+            final_mult = el_mult * cbdr_mult
+
+            qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
             if qty <= 0:
                 rsm.reset()
                 continue

@@ -167,15 +167,26 @@ def run(symbol: str, session_name: str = "REAL_CBDR", sh: dict = None):
         be_pnl = sum(t['pnl'] for t in be) if be else 0
         sl2_pnl = sum(t['pnl'] for t in sl2) if sl2 else 0
         tp_pnl = sum(t['pnl'] for t in tp_l) if tp_l else 0
-        # Cash-Flow WR: cuzdana arti birakan islemler
-        cf_wins = [t for t in all_t if t['pnl'] > 0]
-        cf_wr = len(cf_wins) / n * 100 if n > 0 else 0
-        # BE+ Rate: TP + BE (zarar yazdirmayan) / total
-        be_plus = (tp_cnt + be_cnt) / n * 100 if n > 0 else 0
-        # R-Multiple: ortalama R degeri (ortalama kazanan / ortalama kaybeden)
+        # Gercek PnL bazli siniflandirma (etiket degil!)
+        wins = [t for t in all_t if t['pnl'] > 0]
+        be = [t for t in all_t if t['pnl'] == 0]
+        losses = [t for t in all_t if t['pnl'] < 0]
+        w_n, be_n, l_n = len(wins), len(be), len(losses)
+        w_pnl = sum(t['pnl'] for t in wins) or 0
+        be_pnl = sum(t['pnl'] for t in be) or 0
+        l_pnl = sum(t['pnl'] for t in losses) or 0
+        # Eski kategori detayi (karsilastirma icin)
+        sl = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) == 0]
+        sl1 = [t for t in all_t if t.get('result') == 'SL' and t.get('trail', 0) >= 1]
+        tp_l = [t for t in all_t if t.get('result') == 'TP']
+        # Cash-Flow WR = PnL > 0 olanlar
+        cf_wr = w_n / n * 100 if n > 0 else 0
+        # BE+ = PnL >= 0 olanlar (zarar yazdirmayan)
+        be_plus = (w_n + be_n) / n * 100 if n > 0 else 0
         lbl = f"{lo:.0f}-{hi:.0f}%" if hi >= 10 else f"{lo:.1f}-{hi:.1f}%"
-        print(f"  {lbl:<12} {len(b):>4} {n:>5} {wr:>5.1f}% CF={cf_wr:>4.1f}% BE+={be_plus:>4.1f}% PF={gp/gl:>5.2f} {total_pnl:>+9.0f}")
-        print(f"  {'':>12} SL:{sl_cnt:>3} {sl_pnl:>+8.0f} | BE:{be_cnt:>3} {be_pnl:>+8.0f} | SL2:{sl2_cnt:>3} {sl2_pnl:>+8.0f} | TP:{tp_cnt:>3} {tp_pnl:>+8.0f}")
+        print(f"  {lbl:<12} {len(b):>4} {n:>5} WR={wr:>4.1f}% CF={cf_wr:>4.1f}% BE+={be_plus:>4.1f}% PF={gp/gl:>5.2f} {total_pnl:>+9.0f}")
+        print(f"  {'':>12} WIN:{w_n:>3} {w_pnl:>+8.0f} | BE:{be_n:>3} {be_pnl:>+8.0f} | LOSS:{l_n:>3} {l_pnl:>+8.0f}")
+        print(f"  {'':>12} (SL-:{len(sl):>3} | SL1+:{len(sl1):>3} | TP:{len(tp_l):>3})")
 
 
 def _load(fp):

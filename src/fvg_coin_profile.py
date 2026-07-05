@@ -98,15 +98,15 @@ def detect_sweep(b15, c3_pos, lookback=20):
         if l < pre_bars[i-2].low and l < pre_bars[i-1].low and l < pre_bars[i+1].low and l < pre_bars[i+2].low:
             swings_l.append((lo+i, l))
     swept_h, swept_l = False, False
-    recent = b15[max(0, c3_pos-lookback):c3_pos]
+    recent_start = max(0, c3_pos-lookback)
     for idx, pr in swings_h:
-        for b in recent:
-            if b.index > idx and b.high > pr and b.close < pr:
+        for j in range(recent_start, c3_pos):
+            if j > idx and b15[j].high > pr and b15[j].close < pr:
                 swept_h = True; break
         if swept_h: break
     for idx, pr in swings_l:
-        for b in recent:
-            if b.index > idx and b.low < pr and b.close > pr:
+        for j in range(recent_start, c3_pos):
+            if j > idx and b15[j].low < pr and b15[j].close > pr:
                 swept_l = True; break
         if swept_l: break
     return {"swept_high": swept_h, "swept_low": swept_l}
@@ -369,50 +369,49 @@ def analyze_coin(symbol):
 
 # ─── BOS/MSS ─────────────────────────────────────────────────
 def find_all_swing_points(b15):
-    """Pre-compute ALL fractal swing points once per coin."""
+    """Pre-compute ALL fractal swing points once per coin. Uses b15 list positions (i), NOT bar.index."""
     hi_idx, hi_pr, lo_idx, lo_pr = [], [], [], []
     for i in range(2, len(b15)-2):
         h, l = b15[i].high, b15[i].low
         if (h > b15[i-2].high and h > b15[i-1].high and h > b15[i+1].high and h > b15[i+2].high):
-            hi_idx.append(b15[i].index); hi_pr.append(h)
+            hi_idx.append(i); hi_pr.append(h)
         if (l < b15[i-2].low and l < b15[i-1].low and l < b15[i+1].low and l < b15[i+2].low):
-            lo_idx.append(b15[i].index); lo_pr.append(l)
+            lo_idx.append(i); lo_pr.append(l)
     return (hi_idx, hi_pr), (lo_idx, lo_pr)
 
-def _filter_swings(c3_idx, hi, lo):
-    sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_idx-50 <= hi[0][i] < c3_idx]
-    sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_idx-50 <= lo[0][i] < c3_idx]
+def _filter_swings(c3_pos, hi, lo, window=50):
+    sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_pos-window <= hi[0][i] < c3_pos]
+    sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_pos-window <= lo[0][i] < c3_pos]
     return sw_h, sw_l
 
 def detect_bos_mss(fvg, b15, hi, lo):
-    c3_idx = fvg["c3"].index
-    sw_h, sw_l = _filter_swings(c3_idx, hi, lo)
+    c3_pos = fvg["c3_pos"]
+    sw_h, sw_l = _filter_swings(c3_pos, hi, lo)
     trend = "ranging"
     if len(sw_h) >= 2 and len(sw_l) >= 2:
         if sw_h[-1][1] >= sw_h[-2][1] and sw_l[-1][1] >= sw_l[-2][1]:
             trend = "uptrend"
         elif sw_h[-1][1] < sw_h[-2][1] and sw_l[-1][1] < sw_l[-2][1]:
             trend = "downtrend"
-    # Pre window (20 bars before C3) — max/min close shortcut
-    pre_start = max(0, c3_idx-20)
-    pre_closes = [b.close for b in b15[pre_start:c3_idx] if b.index < c3_idx] if c3_idx > pre_start else []
+    pre_start = max(0, c3_pos-20)
+    pre_closes = [b.close for b in b15[pre_start:c3_pos]] if c3_pos > pre_start else []
     pre_max_c = max(pre_closes, default=0)
     pre_min_c = min(pre_closes, default=0)
-    pre_bos = any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) if trend == "uptrend" else (
-               any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "downtrend" else False)
-    pre_mss = any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "uptrend" else (
-               any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) if trend == "downtrend" else
-               any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) or any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l))
-    post_end = min(c3_idx+21, len(b15))
-    post_closes = [b.close for b in b15[c3_idx+1:post_end] if b.index > c3_idx] if post_end > c3_idx+1 else []
+    pre_bos = any(pos < c3_pos and pre_max_c > pr for pos, pr in sw_h) if trend == "uptrend" else (
+               any(pos < c3_pos and pre_min_c < pr for pos, pr in sw_l) if trend == "downtrend" else False)
+    pre_mss = any(pos < c3_pos and pre_min_c < pr for pos, pr in sw_l) if trend == "uptrend" else (
+               any(pos < c3_pos and pre_max_c > pr for pos, pr in sw_h) if trend == "downtrend" else
+               any(pos < c3_pos and pre_max_c > pr for pos, pr in sw_h) or any(pos < c3_pos and pre_min_c < pr for pos, pr in sw_l))
+    post_end = min(c3_pos+21, len(b15))
+    post_closes = [b.close for b in b15[c3_pos+1:post_end]] if post_end > c3_pos+1 else []
     post_max_c = max(post_closes, default=0)
     post_min_c = min(post_closes, default=0)
     wt = "downtrend" if trend == "uptrend" else ("uptrend" if trend == "downtrend" else "ranging")
-    post_bos = any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if wt == "uptrend" else (
-                any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if wt == "downtrend" else False)
-    post_mss = any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if wt == "uptrend" else (
-                any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if wt == "downtrend" else
-                any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) or any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l))
+    post_bos = any(pos < c3_pos and post_max_c > pr for pos, pr in sw_h) if wt == "uptrend" else (
+                any(pos < c3_pos and post_min_c < pr for pos, pr in sw_l) if wt == "downtrend" else False)
+    post_mss = any(pos < c3_pos and post_min_c < pr for pos, pr in sw_l) if wt == "uptrend" else (
+                any(pos < c3_pos and post_max_c > pr for pos, pr in sw_h) if wt == "downtrend" else
+                any(pos < c3_pos and post_max_c > pr for pos, pr in sw_h) or any(pos < c3_pos and post_min_c < pr for pos, pr in sw_l))
     pre_bos, pre_mss = bool(pre_bos), bool(pre_mss)
     post_bos, post_mss = bool(post_bos), bool(post_mss)
     group = "NONE"
