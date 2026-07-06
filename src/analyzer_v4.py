@@ -35,11 +35,6 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 SESSION_NAME = "MULTI_SESSION"  # her coin kendi session'inda (get_session_hours ile)
 SESSION_HOURS = {'start': 22, 'end': 2}
 
-# ─── RiskManager circuit breaker thresholds ─────────────────────
-DD_TRIP = 15.0
-DD_RESET = 10.0
-
-
 def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     if trades == 0:
         return 1.0
@@ -135,11 +130,6 @@ def collect_daily_data(symbol: str):
     wins = []
     losses = []
     trade_records = []
-
-    # RiskManager state (DD circuit breaker)
-    running_pnl = 0.0
-    peak_equity = float(ic)
-    circuit_broken = False
 
     atr_val = 0.0
     prev_close = b15[0].open
@@ -264,20 +254,10 @@ def collect_daily_data(symbol: str):
                 rsm.reset()
                 continue
 
-            # ── RiskManager: circuit breaker + EL + CBDR (live bot: bot.py:550-569) ──
-            current_equity = ic + running_pnl
-            current_dd = ((peak_equity - current_equity) / peak_equity) * 100 if peak_equity > 0 else 0
-            if circuit_broken and current_dd <= DD_RESET:
-                circuit_broken = False
-            elif not circuit_broken and current_dd >= DD_TRIP:
-                circuit_broken = True
+            # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
             h = edt.hour
-            is_early_london = 2 <= h < 8
-            if circuit_broken:
-                final_mult = 1.0 * min(cbdr_mult, 1.0)
-            else:
-                el_mult = cfg.EARLY_LONDON_RISK_MULT if is_early_london else 1.0
-                final_mult = el_mult * cbdr_mult
+            el_mult = cfg.EARLY_LONDON_RISK_MULT if 2 <= h < 8 else 1.0
+            final_mult = el_mult * cbdr_mult
 
             qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
             if qty <= 0:
@@ -331,12 +311,6 @@ def collect_daily_data(symbol: str):
                     ab2 = atr * ATM
                     if s2 == "long":
                         ns = fvg.bottom - ab2
-                        if ns >= cur.close:
-                            t["exit_price"] = cur.close
-                            t["exit_bar"] = sb
-                            t["result"] = "TRAIL_CLOSE"
-                            t["closed"] = True
-                            break
                         if ns > csl and (ns - csl) > rpt2 * TMM:
                             sd2 = ns - csl
                             csl = ns
@@ -345,12 +319,6 @@ def collect_daily_data(symbol: str):
                             upd = True
                     else:
                         ns = fvg.top + ab2
-                        if ns <= cur.close:
-                            t["exit_price"] = cur.close
-                            t["exit_bar"] = sb
-                            t["result"] = "TRAIL_CLOSE"
-                            t["closed"] = True
-                            break
                         if ns < csl and (csl - ns) > rpt2 * TMM:
                             sd2 = csl - ns
                             csl = ns
@@ -361,42 +329,6 @@ def collect_daily_data(symbol: str):
                     t["sl"] = csl
                     t["tp"] = ctp
                     t["trailing_count"] = t.get("trailing_count", 0) + ltc
-
-        # ── Process TRAIL_CLOSE trades (exit_now from trailing loop) ──
-        for t in active:
-            if t.get("closed") and t.get("result") == "TRAIL_CLOSE":
-                diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
-                t["pnl"] = round(diff * t["qty"], 2)
-                day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": "TRAIL_CLOSE", "pnl": t["pnl"],
-                                        "hour": t.get("entry_hour"), "month": t.get("entry_month"),
-                                        "is_el": 2 <= t.get("entry_hour", 0) < 8})
-                if t["pnl"] > 0:
-                    wins.append(t)
-                else:
-                    losses.append(t)
-                running_pnl += t["pnl"]
-                current_equity = ic + running_pnl
-                if current_equity > peak_equity:
-                    peak_equity = current_equity
-                if _LOGGER is not None:
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
-                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({
-                        "symbol": symbol,
-                        "session": _sname,
-                        "side": t["side"].upper(),
-                        "entry_time": edt,
-                        "entry_price": round(t["entry_price"], 6),
-                        "exit_price": round(t["exit_price"], 6),
-                        "result": "TRAIL_CLOSE",
-                        "final_pnl_usd": round(t["pnl"], 2),
-                        "risk_usd": round(risk_usd, 2),
-                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
-                        "trailing_count": t.get("trailing_count", 0),
-                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
-                        "atr": round(atr, 6),
-                    })
 
         sa = []
         for t in active:
@@ -428,11 +360,6 @@ def collect_daily_data(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
-                # RiskManager: update running PnL + peak equity
-                running_pnl += t["pnl"]
-                current_equity = ic + running_pnl
-                if current_equity > peak_equity:
-                    peak_equity = current_equity
                 # QuantLogger
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
@@ -474,11 +401,6 @@ def collect_daily_data(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
-                # RiskManager: update running PnL + peak equity (OPEN trade)
-                running_pnl += t["pnl"]
-                current_equity = ic + running_pnl
-                if current_equity > peak_equity:
-                    peak_equity = current_equity
                 # QuantLogger — OPEN trade
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
