@@ -27,7 +27,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid
+from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid, get_session_hours
 from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -84,7 +84,7 @@ def resample_15m(bars_1m):
         c = bars_1m[i:i + 15]
         if len(c) < 15:
             break
-        m15.append(Bar(index=c[0].index, open=c[0].open,
+        m15.append(Bar(index=len(m15), open=c[0].open,
                        high=max(b.high for b in c), low=min(b.low for b in c),
                        close=c[-1].close, volume=sum(b.volume for b in c),
                        is_closed=True, timestamp=c[0].timestamp))
@@ -608,6 +608,7 @@ def collect_fvg_profile(symbol: str):
                 classic_fvg["tr_of_c3"] = tr
                 classic_fvg["atr_after_c3"] = atr_val
                 classic_fvg["fvg_hour"] = h
+                classic_fvg["month"] = edt.month
                 classic_fvg["timestamp"] = c3_bar.timestamp
                 classic_fvg["day_of_week"] = edt.weekday()
                 classic_fvg["c3_pos"] = sb
@@ -628,6 +629,9 @@ def collect_fvg_profile(symbol: str):
                     "category": "UNKNOWN",
                     "c1": c1_bar, "c2": c2_bar, "c3": c3_bar,
                     "c3_pos": sb,
+                    "fvg_hour": h,
+                    "month": edt.month,
+                    "day_of_week": edt.weekday(),
                     "c2_anatomy": calc_c2_anatomy(c2_bar) if c2_bar else {},
                     "sweep": detect_sweep(b15, sb, SWEEP_LOOKBACK),
                     "v4_rejected": None,
@@ -1559,6 +1563,155 @@ def build_report(all_coin_data, results_data):
               f"Derin(>50%, n={len(deep)}): {dci[2]:.3f} [{dci[0]:.3f},{dci[1]:.3f}] | {verdict}")
         else:
             L(f"- **{cls_label}** — YETERSIZ ORNEKLEM (sig={len(shallow)}, derin={len(deep)})")
+    L("")
+    # ═══════════════════════════════════════════════════
+    # BOLUM 13: Early London (02:00-08:00 UTC) Performansi
+    # ═══════════════════════════════════════════════════
+    L("---")
+    L("")
+    L("## 13. Early London (02:00-08:00 UTC) Performansi")
+    L("")
+    L("| Coin | Kategori | EL_N | EL_Mit% | EL_NetExp | Normal_N | Normal_Mit% | Normal_NetExp | Delta_Mit | Delta_Exp |")
+    L("|---|---|---|---|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            if not cf:
+                continue
+            el = [f for f in cf if 2 <= f.get("fvg_hour", 0) < 8]
+            norm = [f for f in cf if not (2 <= f.get("fvg_hour", 0) < 8)]
+            if not el and not norm:
+                continue
+            def _fvg_stats(grp):
+                n = len(grp)
+                mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
+                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                ne = sum(profs) / len(profs) if profs else 0
+                return n, mit, ne
+            en, em, ee = _fvg_stats(el)
+            nn, nm, ne = _fvg_stats(norm)
+            dm = em - nm
+            de = ee - ne
+            L(f"| {sym:<8s} | {cat:<13s} | {en:>4d} | {em:>5.1f} | {ee:>+7.2f}R | "
+              f"{nn:>4d} | {nm:>5.1f} | {ne:>+7.2f}R | {dm:>+5.1f} | {de:>+7.2f}R |")
+    L("")
+
+    # ═══════════════════════════════════════════════════
+    # BOLUM 14: Coin × Aylik/Sezon Analizi
+    # ═══════════════════════════════════════════════════
+    L("---")
+    L("")
+    L("## 14. Coin × Aylik / Sezon Analizi")
+    L("")
+    L("### 14a. Coin × Ay Mitigasyon Orani")
+    L("")
+    L("| Coin | Kategori | Ay | N | Mit% | NetExp |")
+    L("|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            if len(cf) < 10:
+                continue
+            by_month = defaultdict(list)
+            for f in cf:
+                by_month[f.get("month", 0)].append(f)
+            for month in sorted(by_month):
+                grp = by_month[month]
+                n = len(grp)
+                mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
+                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                ne = sum(profs) / len(profs) if profs else 0
+                L(f"| {sym:<8s} | {cat:<13s} | {month:>2d} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
+    L("")
+
+    L("### 14b. Coin × Uc Aylik (Quarterly)")
+    L("")
+    L("| Coin | Kategori | Q | N | Mit% | NetExp |")
+    L("|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            if len(cf) < 10:
+                continue
+            by_q = defaultdict(list)
+            for f in cf:
+                m = f.get("month", 0)
+                q = (m - 1) // 3 + 1 if 1 <= m <= 12 else 0
+                by_q[q].append(f)
+            for q in sorted(by_q):
+                grp = by_q[q]
+                n = len(grp)
+                mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
+                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                ne = sum(profs) / len(profs) if profs else 0
+                L(f"| {sym:<8s} | {cat:<13s} | Q{q} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
+    L("")
+
+    # ═══════════════════════════════════════════════════
+    # BOLUM 15: Coin Bazli Esik Onerileri
+    # ═══════════════════════════════════════════════════
+    L("---")
+    L("")
+    L("## 15. Coin Bazli Esik Onerileri")
+    L("")
+    L("Per-coin: optimal iptal bar (DR noktasi), FVG expiry, seans, ve en iyi kategori.")
+    L("")
+    L("| Coin | Session | BestCat | Expiry (bar) | CONS_DR | EXP_DR | REJ_DR | BestMonth | WorstMonth |")
+    L("|---|---|---|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+
+        # Best category via bootstrap
+        best_cat = "BELIRSIZ"
+        best_exp = -999
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            n = len(cf)
+            profs = [f["rr"]["net_profit_R"] for f in cf if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            ci = bootstrap_ci(profs) if len(profs) >= 3 else (None, None, None)
+            if ci[2] is not None and ci[2] > best_exp and n >= 30 and not (ci[1] < 0 or ci[0] > 0):
+                best_exp = ci[2]
+                best_cat = f"{cat} ({ci[2]:+.2f}R)"
+
+        # DR per category
+        drs = {}
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            if len(cf) < 5:
+                drs[cat] = "N/A"
+            else:
+                _, dr = cumulative_mit_curve(cf)
+                drs[cat] = f"{dr}b"
+
+        # Per-coin session from config
+        sh = get_session_hours(sym)
+        session_label = f"{sh['start']:02d}:00-{sh['end']:02d}:00"
+
+        # Best/worst month
+        by_month = defaultdict(list)
+        for f in fvgs:
+            by_month[f.get("month", 0)].append(f)
+        best_m = max(by_month, key=lambda m: sum(f["rr"]["net_profit_R"] for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")) / max(len([f for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]), 1)) if by_month else 0
+        worst_m = min(by_month, key=lambda m: sum(f["rr"]["net_profit_R"] for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")) / max(len([f for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]), 1)) if by_month else 0
+
+        L(f"| {sym:<8s} | {session_label:<10s} | {best_cat:<12s} | {cfg.GLOBAL_FVG_EXPIRY_BARS:>3d}b | "
+          f"{drs.get('CONSOLIDATION','N/A'):>5s} | {drs.get('EXPANSION','N/A'):>5s} | {drs.get('REJECTION','N/A'):>5s} | "
+          f"{best_m:>4d} | {worst_m:>4d} |")
     L("")
     L("---")
     L("*Auto-generated by fvg_profile_v4.py*")

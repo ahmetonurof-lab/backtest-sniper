@@ -70,7 +70,7 @@ def resample_15m(bars_1m):
         c = bars_1m[i:i + 15]
         if len(c) < 15:
             break
-        m15.append(Bar(index=c[0].index, open=c[0].open,
+        m15.append(Bar(index=len(m15), open=c[0].open,
                        high=max(b.high for b in c), low=min(b.low for b in c),
                        close=c[-1].close, volume=sum(b.volume for b in c),
                        is_closed=True, timestamp=c[0].timestamp))
@@ -284,7 +284,7 @@ def collect_daily_data(symbol: str):
             active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                            "qty": qty, "side": side, "trigger_fvg": tf,
                            "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                           "day_key": entry_day})
+                           "day_key": entry_day, "entry_hour": h, "entry_month": edt.month})
             rsm.reset()
 
         if active and cur.is_closed:
@@ -364,7 +364,9 @@ def collect_daily_data(symbol: str):
                 diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": "TRAIL_CLOSE", "pnl": t["pnl"]})
+                trade_records.append({"result": "TRAIL_CLOSE", "pnl": t["pnl"],
+                                        "hour": t.get("entry_hour"), "month": t.get("entry_month"),
+                                        "is_el": 2 <= t.get("entry_hour", 0) < 8})
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -415,7 +417,9 @@ def collect_daily_data(symbol: str):
                 diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"]})
+                trade_records.append({"result": t["result"], "pnl": t["pnl"],
+                                        "hour": t.get("entry_hour"), "month": t.get("entry_month"),
+                                        "is_el": 2 <= t.get("entry_hour", 0) < 8})
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -459,7 +463,9 @@ def collect_daily_data(symbol: str):
                 diff = (lp - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - lp)
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"]})
+                trade_records.append({"result": t["result"], "pnl": t["pnl"],
+                                        "hour": t.get("entry_hour"), "month": t.get("entry_month"),
+                                        "is_el": 2 <= t.get("entry_hour", 0) < 8})
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -650,7 +656,7 @@ def main():
     _LOGGER = QuantLogger(parquet_path)
 
     all_symbols = sorted(cfg.SYMBOLS)
-    results_data = []  # (sym, stats, analysis) for report
+    results_data = []  # (sym, stats, analysis, daily_rows, trade_records)
 
     for sym in all_symbols:
         print(f"\n  [{sym}] Basliyor...", flush=True)
@@ -665,7 +671,7 @@ def main():
 
         stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
         analysis = analyze_thresholds(daily_rows, sym)
-        results_data.append((sym, stats, analysis, daily_rows))
+        results_data.append((sym, stats, analysis, daily_rows, trade_records))
 
         print(f"    [{sym}] {stats['total_trades']} islem | "
               f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
@@ -693,7 +699,7 @@ def main():
     print(f"{'='*100}")
     print(f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10}")
     print(f"  {'-'*60}")
-    for sym, stats, ana, _ in results_data:
+    for sym, stats, ana, _, _ in results_data:
         print(f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
               f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f}")
     print(f"\n  Total time: {time.time()-t0:.0f}s")
@@ -703,6 +709,20 @@ def main():
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
     os.makedirs(report_dir, exist_ok=True)
     md_path = os.path.join(report_dir, f"analyzer_v4_{sname_lower}_report.md")
+
+    def sub_stats(trade_list):
+        n = len(trade_list)
+        if n == 0:
+            return {"n": 0, "wins": 0, "be": 0, "losses": 0, "wr": 0, "be_plus": 0, "pf": 0, "pnl": 0}
+        wins = sum(1 for r in trade_list if r["pnl"] > 0)
+        be = sum(1 for r in trade_list if r["pnl"] == 0)
+        losses = n - wins - be
+        gp = sum(r["pnl"] for r in trade_list if r["pnl"] > 0) or 0
+        gl = abs(sum(r["pnl"] for r in trade_list if r["pnl"] < 0)) or 1e-9
+        return {"n": n, "wins": wins, "be": be, "losses": losses,
+                "wr": wins / n * 100 if n else 0,
+                "be_plus": (wins + be) / n * 100 if n else 0,
+                "pf": gp / gl, "pnl": sum(r["pnl"] for r in trade_list)}
 
     lines = []
     sh = SESSION_HOURS['start']
@@ -718,13 +738,68 @@ def main():
     lines.append("")
     lines.append("| Coin | Trades | WIN | BE | LOSS | WR% | BE+% | PF | MaxDD% | PnL |")
     lines.append("|" + "|".join(["-"*8, "-"*8, "-"*6, "-"*5, "-"*6, "-"*6, "-"*6, "-"*5, "-"*8, "-"*8]) + "|")
-    for sym, stats, ana, _ in results_data:
+    for sym, stats, ana, _, _ in results_data:
         lines.append(f"| {sym:<8} | {stats['total_trades']:>6} | {stats['wins']:>4} | {stats['be']:>3} | {stats['losses']:>4} | "
                       f"{stats['win_pct']:>4.1f}% | {stats['be_plus_pct']:>4.1f}% | {stats['profit_factor']:>3.2f} | "
                       f"{stats['max_dd_pct']:>5.2f}% | {stats['total_pnl']:>+8.0f} |")
     lines.append("")
 
-    for sym, stats, ana, daily_rows in results_data:
+    # ── Early London per coin ──
+    lines.append("---")
+    lines.append("")
+    lines.append("## Early London (02:00-08:00 UTC) vs Normal")
+    lines.append("")
+    lines.append("| Coin | EL_Trades | EL_WR% | EL_PnL | Normal_Trades | Normal_WR% | Normal_PnL | Delta_WR | Delta_PnL |")
+    lines.append("|" + "|".join(["-"*8]*9) + "|")
+    for sym, stats, ana, _, trade_records in results_data:
+        el = [r for r in trade_records if r.get("is_el")]
+        norm = [r for r in trade_records if not r.get("is_el")]
+        es = sub_stats(el)
+        ns = sub_stats(norm)
+        dw = es["wr"] - ns["wr"] if ns["n"] else 0
+        dp = es["pnl"] - ns["pnl"]
+        lines.append(f"| {sym:<8} | {es['n']:>6d} | {es['wr']:>5.1f}% | {es['pnl']:>+8.0f} | "
+                     f"{ns['n']:>6d} | {ns['wr']:>5.1f}% | {ns['pnl']:>+8.0f} | "
+                     f"{dw:>+5.1f}% | {dp:>+8.0f} |")
+    lines.append("")
+
+    # ── Coin × Monthly ──
+    lines.append("---")
+    lines.append("")
+    lines.append("## Coin × Monthly Breakdown")
+    lines.append("")
+    lines.append("| Coin | Ay | Trades | WR% | BE+% | PnL |")
+    lines.append("|" + "|".join(["-"*8]*6) + "|")
+    for sym, stats, ana, _, trade_records in results_data:
+        by_month = defaultdict(list)
+        for r in trade_records:
+            by_month[r.get("month", 0)].append(r)
+        for month in sorted(by_month):
+            ms = sub_stats(by_month[month])
+            lines.append(f"| {sym:<8} | {month:>2d} | {ms['n']:>6d} | {ms['wr']:>5.1f}% | {ms['be_plus']:>5.1f}% | {ms['pnl']:>+8.0f} |")
+    lines.append("")
+
+    # ── Coin Bazli Eşik Onerileri ──
+    lines.append("---")
+    lines.append("")
+    lines.append("## Coin Bazli Esik Onerileri")
+    lines.append("")
+    lines.append("| Coin | TotalTrades | WR% | PnL | EL_WR% | EL_PnL% | BestMonth | WorstMonth |")
+    lines.append("|" + "|".join(["-"*8]*8) + "|")
+    for sym, stats, ana, _, trade_records in results_data:
+        el = [r for r in trade_records if r.get("is_el")]
+        by_month = defaultdict(list)
+        for r in trade_records:
+            by_month[r.get("month", 0)].append(r)
+        best_m = max(by_month, key=lambda m: sub_stats(by_month[m])["pnl"]) if by_month else 0
+        worst_m = min(by_month, key=lambda m: sub_stats(by_month[m])["pnl"]) if by_month else 0
+        el_s = sub_stats(el)
+        lines.append(f"| {sym:<8} | {stats['total_trades']:>6d} | {stats['win_pct']:>4.1f}% | {stats['total_pnl']:>+8.0f} | "
+                     f"{el_s['wr']:>5.1f}% | {el_s['pnl']:>+8.0f} | {best_m:>4d} | {worst_m:>4d} |")
+    lines.append("")
+
+    # ── Per-coin detail ──
+    for sym, stats, ana, daily_rows, trade_records in results_data:
         lines.append(f"### {sym}")
         lines.append("")
         lines.append(f"- **Total Trades:** {stats['total_trades']}")
@@ -734,10 +809,15 @@ def main():
         lines.append(f"- **PF:** {stats['profit_factor']:.2f}")
         lines.append(f"- **MaxDD%:** {stats['max_dd_pct']:.2f}%")
         lines.append(f"- **Total PnL:** {stats['total_pnl']:+.0f}")
+
+        el = [r for r in trade_records if r.get("is_el")]
+        el_s = sub_stats(el)
+        lines.append(f"- **Early London:** {el_s['n']} trades, WR={el_s['wr']:.1f}%, PnL={el_s['pnl']:+.0f}")
+
         if ana:
             fl = ana.get("fail_limit")
             fl_str = f"{fl:.2f}%" if fl is not None else "BULUNAMADI"
-            lines.append(f"- **Fail Limit:** {fl_str}")
+            lines.append(f"- **Fail Limit (CBDR%):** {fl_str}")
             lines.append("")
             lines.append(f"| CBDR% Araligi | Gun | Islem | WIN | BE | LOSS | WR% | BE+% | PnL |")
             lines.append(f"|{"-"*15}:|{"-"*4}:|{"-"*6}:|{"-"*5}:|{"-"*4}:|{"-"*6}:|{"-"*5}:|{"-"*5}:|{"-"*8}:|")
