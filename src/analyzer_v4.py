@@ -238,7 +238,7 @@ def collect_daily_data(symbol: str):
                     rel = (tf.top - tf.bottom) / atr if atr > 1e-8 else 0
                     rsm.reset()
                     continue
-                if not is_fvg_valid(tf.real_index, cur.index):
+                if not is_fvg_valid(tf.bar_index, cur.index):
                     rsm.reset()
                     continue
 
