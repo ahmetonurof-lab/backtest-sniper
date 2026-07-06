@@ -590,7 +590,7 @@ def collect_fvg_profile(symbol: str):
             # Reconstruct 3-candle FVG from V4's trigger_fvg.real_index
             v4_fvg = rsm.trigger_fvg
             if v4_fvg is not None:
-                ri = v4_fvg.real_index
+                ri = v4_fvg.bar_index
                 c2_bar = chunk[ri] if 0 <= ri < len(chunk) else None
                 c1_bar = chunk[ri - 1] if ri - 1 >= 0 else None
                 c3_bar = chunk[ri + 1] if ri + 1 < len(chunk) else None
