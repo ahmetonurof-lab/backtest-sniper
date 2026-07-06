@@ -33,7 +33,7 @@ from quant_logger import QuantLogger
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ─── Profil Parametreleri ───────────────────────────────────
-SESSION_NAME = "DEFAULT"
+SESSION_NAME = "MULTI_SESSION"  # her coin kendi session'inda (get_session_hours ile)
 SESSION_HOURS = {'start': 22, 'end': 2}
 DD_TRIP = 15.0
 DD_RESET = 10.0
@@ -510,8 +510,12 @@ def collect_fvg_profile(symbol: str):
     if not b15:
         return None, None
 
-    sh = SESSION_HOURS['start']
-    eh = SESSION_HOURS['end']
+    # Per-coin session from config (CBDR_RISK_MATRIX)
+    _profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
+    _sname = _profile.get("session", "DEFAULT")
+    _sh_info = get_session_hours(symbol)
+    sh = _sh_info['start']
+    eh = _sh_info['end']
     spans_midnight = sh > eh
     ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
@@ -544,7 +548,7 @@ def collect_fvg_profile(symbol: str):
     for sb in range(500, total_bars):
         if (sb - 500) % 5000 == 0:
             pct = (sb - 500) / (total_bars - 500) * 100
-            print(f"\r    [{SESSION_NAME}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
+            print(f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
         chunk = b15[sb - 500: sb + 1]
         cur = b15[sb]
         tr = calculate_true_range(cur, prev_close)
@@ -852,7 +856,7 @@ def collect_fvg_profile(symbol: str):
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": SESSION_NAME, "side": t["side"].upper(),
+                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
                         "entry_time": edt, "entry_price": round(t["entry_price"], 6),
                         "exit_price": round(t["exit_price"], 6), "result": "TRAIL_CLOSE",
                         "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
@@ -895,7 +899,7 @@ def collect_fvg_profile(symbol: str):
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": SESSION_NAME, "side": t["side"].upper(),
+                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
                         "entry_time": edt, "entry_price": round(t["entry_price"], 6),
                         "exit_price": round(t["exit_price"], 6), "result": t["result"],
                         "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
@@ -927,7 +931,7 @@ def collect_fvg_profile(symbol: str):
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": SESSION_NAME, "side": t["side"].upper(),
+                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
                         "entry_time": edt, "entry_price": round(t["entry_price"], 6),
                         "exit_price": round(t["exit_price"], 6), "result": "OPEN",
                         "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
@@ -935,7 +939,7 @@ def collect_fvg_profile(symbol: str):
                         "trailing_count": t.get("trailing_count", 0),
                         "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None, "atr": round(atr, 6),})
 
-    print(f"\r    [{SESSION_NAME}] %100 ({total_bars}/{total_bars})", flush=True)
+    print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
 
     # ── BOS/MSS for captured FVGs ──
     for f in captured_fvgs:
@@ -975,7 +979,7 @@ def build_report(all_coin_data, results_data):
         lines.append(s)
 
     L("# FVG Profile V4 — V4 Engine ile Kapsamli FVG Karakteristik Profili")
-    L(f"**Session:** {SESSION_NAME} [{SESSION_HOURS['start']:02d}:00-{SESSION_HOURS['end']:02d}:00]")
+    L("**Session:** MULTI_SESSION (her coin kendi session'inda — DEFAULT/REAL_CBDR/ASIA_RANGE)")
     L(f"**Engine:** V4 (live-identical) — Sweep → RSM → Quality → Entry → Trailing")
     L(f"**Coinler:** {', '.join(SYMBOLS_TO_TEST)}")
     L(f"**Tarih:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -1759,13 +1763,13 @@ def main():
     t0 = time.time()
     print("=" * 100)
     print("  FVG PROFILE V4 — V4 Engine ile Kapsamli FVG Karakteristik Profili")
-    print(f"  Session: {SESSION_NAME} [{SESSION_HOURS['start']:02d}:00-{SESSION_HOURS['end']:02d}:00]")
+    print("  Session: MULTI_SESSION (her coin kendi optimal session'inda)")
     print("  Engine: V4 (live-identical) — Sweep -> RSM -> Quality -> Entry -> Trailing")
     print(f"  Coinler: {', '.join(SYMBOLS_TO_TEST)}")
     print("=" * 100)
 
     # QuantLogger (same as analyzer_v4)
-    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", f"trades_{SESSION_NAME.lower()}.parquet")
+    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", "trades_multi_session.parquet")
     global _LOGGER
     _LOGGER = QuantLogger(parquet_path)
 
@@ -1773,7 +1777,10 @@ def main():
     results_data = []
 
     for sym in SYMBOLS_TO_TEST:
-        print(f"\n  [{sym}] Profil analizi basliyor...", flush=True)
+        profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
+        sname = profile.get("session", "DEFAULT")
+        sh_info = get_session_hours(sym)
+        print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
         result = collect_fvg_profile(sym)
         if result is None or result[0] is None:
             print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
@@ -1798,7 +1805,7 @@ def main():
 
     # ── Summary ──
     print(f"\n{'='*100}")
-    print(f"  SUMMARY — {SESSION_NAME}")
+    print(f"  SUMMARY — MULTI_SESSION (per-coin optimal session)")
     print(f"{'='*100}")
     print(f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'FVG':>6}")
     print(f"  {'-'*70}")
@@ -1820,10 +1827,15 @@ def main():
     os.makedirs(report_dir, exist_ok=True)
     md_path = os.path.join(report_dir, "fvg_profile_v4.md")
 
-    report = build_report(all_coin_data, results_data)
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write(report)
-    print(f"\n  Rapor: {md_path}")
+    try:
+        report = build_report(all_coin_data, results_data)
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(report)
+        print(f"\n  Rapor: {md_path}")
+    except Exception as e:
+        import traceback
+        print(f"\n  RAPOR YAZILAMADI: {e}")
+        traceback.print_exc()
     print(f"  Total: {time.time()-t0:.0f}s")
 
 

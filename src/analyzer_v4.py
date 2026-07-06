@@ -26,13 +26,13 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid
+from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid, get_session_hours
 from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ─── Session ──────────────────────────────────────────────────────
-SESSION_NAME = "DEFAULT"
+SESSION_NAME = "MULTI_SESSION"  # her coin kendi session'inda (get_session_hours ile)
 SESSION_HOURS = {'start': 22, 'end': 2}
 
 # ─── RiskManager circuit breaker thresholds ─────────────────────
@@ -119,8 +119,12 @@ def collect_daily_data(symbol: str):
     if not b15:
         return None
 
-    sh = SESSION_HOURS['start']
-    eh = SESSION_HOURS['end']
+    # Per-coin session from config (CBDR_RISK_MATRIX)
+    _profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
+    _sname = _profile.get("session", "DEFAULT")
+    _sh_info = get_session_hours(symbol)
+    sh = _sh_info['start']
+    eh = _sh_info['end']
     spans_midnight = sh > eh
     ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
@@ -148,7 +152,7 @@ def collect_daily_data(symbol: str):
     for sb in range(500, total_bars):
         if (sb - 500) % 5000 == 0:
             pct = (sb - 500) / (total_bars - 500) * 100
-            print(f"\r    [{SESSION_NAME}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
+            print(f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
         chunk = b15[sb - 500: sb + 1]
         cur = b15[sb]
         tr = calculate_true_range(cur, prev_close)
@@ -380,7 +384,7 @@ def collect_daily_data(symbol: str):
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
                     _LOGGER.log_trade({
                         "symbol": symbol,
-                        "session": SESSION_NAME,
+                        "session": _sname,
                         "side": t["side"].upper(),
                         "entry_time": edt,
                         "entry_price": round(t["entry_price"], 6),
@@ -435,7 +439,7 @@ def collect_daily_data(symbol: str):
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
                     _LOGGER.log_trade({
                         "symbol": symbol,
-                        "session": SESSION_NAME,
+                        "session": _sname,
                         "side": t["side"].upper(),
                         "entry_time": edt,
                         "entry_price": round(t["entry_price"], 6),
@@ -481,7 +485,7 @@ def collect_daily_data(symbol: str):
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
                     _LOGGER.log_trade({
                         "symbol": symbol,
-                        "session": SESSION_NAME,
+                        "session": _sname,
                         "side": t["side"].upper(),
                         "entry_time": edt,
                         "entry_price": round(t["entry_price"], 6),
@@ -495,7 +499,7 @@ def collect_daily_data(symbol: str):
                         "atr": round(atr, 6),
                     })
 
-    print(f"\r    [{SESSION_NAME}] %100 ({total_bars}/{total_bars})", flush=True)
+    print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
     daily_rows = []
     all_keys = sorted(set(list(day_cbdr.keys()) + list(day_trades.keys())))
     for dk in all_keys:
@@ -647,11 +651,11 @@ def compute_session_stats(trade_records, initial_balance):
 def main():
     t0 = time.time()
     print("=" * 100)
-    print(f"  ANALYZER V4 — {SESSION_NAME} [{SESSION_HOURS['start']:02d}:00-{SESSION_HOURS['end']:02d}:00]")
+    print("  ANALYZER V4 — MULTI_SESSION (her coin kendi optimal session'inda)")
     print("=" * 100)
 
     # QuantLogger — tum trade'leri .parquet'e kaydet
-    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", f"trades_{SESSION_NAME.lower()}.parquet")
+    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", "trades_analyzer_v4_multi_session.parquet")
     global _LOGGER
     _LOGGER = QuantLogger(parquet_path)
 
@@ -659,7 +663,10 @@ def main():
     results_data = []  # (sym, stats, analysis, daily_rows, trade_records)
 
     for sym in all_symbols:
-        print(f"\n  [{sym}] Basliyor...", flush=True)
+        _p = cfg.CBDR_RISK_MATRIX.get(sym, {})
+        _sn = _p.get("session", "DEFAULT")
+        _sh = get_session_hours(sym)
+        print(f"\n  [{sym}] Session={_sn} [{_sh['start']:02d}:00-{_sh['end']:02d}:00]", flush=True)
         result = collect_daily_data(sym)
         if result is None:
             print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
@@ -695,7 +702,7 @@ def main():
 
     # ── Summary table (terminal) ──
     print(f"\n{'='*100}")
-    print(f"  SUMMARY — {SESSION_NAME}")
+    print(f"  SUMMARY — MULTI_SESSION (per-coin optimal session)")
     print(f"{'='*100}")
     print(f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10}")
     print(f"  {'-'*60}")
@@ -705,10 +712,9 @@ def main():
     print(f"\n  Total time: {time.time()-t0:.0f}s")
 
     # ── Write MD report ──
-    sname_lower = SESSION_NAME.lower()
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
     os.makedirs(report_dir, exist_ok=True)
-    md_path = os.path.join(report_dir, f"analyzer_v4_{sname_lower}_report.md")
+    md_path = os.path.join(report_dir, "analyzer_v4_multi_session_report.md")
 
     def sub_stats(trade_list):
         n = len(trade_list)
@@ -725,13 +731,11 @@ def main():
                 "pf": gp / gl, "pnl": sum(r["pnl"] for r in trade_list)}
 
     lines = []
-    sh = SESSION_HOURS['start']
-    eh = SESSION_HOURS['end']
-    lines.append(f"# Analyzer V4 — {SESSION_NAME} [{sh:02d}:00-{eh:02d}:00]")
+    lines.append("# Analyzer V4 — MULTI_SESSION (per-coin optimal session)")
     lines.append("")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(f"**Strategy:** V4 — Sweep → FVG → Quality → Entry → Trailing → Exit (live-identical)")
-    lines.append(f"**Session:** {SESSION_NAME} [{sh:02d}:00-{eh:02d}:00]")
+    lines.append("**Strategy:** V4 — Sweep → FVG → Quality → Entry → Trailing → Exit (live-identical)")
+    lines.append("**Session:** MULTI_SESSION — her coin kendi optimal session'inda (DEFAULT/REAL_CBDR/ASIA_RANGE)")
     lines.append("**Overlap Filter:** None — single session standalone")
     lines.append("")
     lines.append("## Summary")
