@@ -689,7 +689,7 @@ def collect_fvg_profile(symbol: str):
                     rsm.reset()
                     captured_fvgs.append(classic_fvg)
                     continue
-                if not is_fvg_valid(tf.real_index, cur.index):
+                if not is_fvg_valid(tf.bar_index, cur.index):
                     classic_fvg["v4_rejected"] = "FVG_VALIDITY"
                     rsm.reset()
                     captured_fvgs.append(classic_fvg)
