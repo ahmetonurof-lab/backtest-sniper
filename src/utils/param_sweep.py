@@ -57,7 +57,7 @@ def resample_15m(bars_1m):
             break
         m15.append(
             Bar(
-                index=c[0].index,
+                index=len(m15),
                 open=c[0].open,
                 high=max(b.high for b in c),
                 low=min(b.low for b in c),

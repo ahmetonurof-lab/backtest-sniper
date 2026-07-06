@@ -75,7 +75,7 @@ def resample_15m(b1):
         c = b1[i:i+15]
         if len(c) < 15:
             break
-        m15.append(Bar(index=c[0].index, open=c[0].open, high=max(b.high for b in c),
+        m15.append(Bar(index=len(m15), open=c[0].open, high=max(b.high for b in c),
                        low=min(b.low for b in c), close=c[-1].close,
                        volume=sum(b.volume for b in c), is_closed=True, timestamp=c[0].timestamp))
     return m15

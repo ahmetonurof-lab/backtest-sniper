@@ -72,7 +72,7 @@ def resample_15m(bars_1m):
             break
         ts = chunk[0].timestamp
         m15.append(Bar(
-            index=chunk[0].index,
+            index=len(m15),
             open=chunk[0].open,
             high=max(b.high for b in chunk),
             low=min(b.low for b in chunk),

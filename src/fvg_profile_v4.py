@@ -39,7 +39,7 @@ SESSION_HOURS = {'start': 22, 'end': 2}
 
 LOOKBACK_BARS = 200
 SWEEP_LOOKBACK = 20
-N_BOOTSTRAP = 1000
+N_BOOTSTRAP = 100
 BOOTSTRAP_SEED = 42
 FEE_TAKER = 0.0004
 CONT_WINDOWS = [10, 20, 40]
@@ -47,9 +47,7 @@ DEPTH_BUCKETS = [(0, 25, "0-25%"), (25, 50, "25-50%"), (50, 75, "50-75%"),
                  (75, 100, "75-100%"), (100, 150, "100-150%"), (150, 9999, ">150%")]
 
 SYMBOLS_TO_TEST = [
-    "BTCUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
-    "XRPUSDT", "ATOMUSDT", "ADAUSDT", "APTUSDT", "DOTUSDT",
-    "NEARUSDT", "ETHUSDT", "SUIUSDT",
+    "BTCUSDT", "ETHUSDT",
 ]
 
 # ─── Helpers ─────────────────────────────────────────────────
@@ -489,6 +487,16 @@ _LOGGER = None
 
 def collect_fvg_profile(symbol: str):
     """V4 engine (live-identical) + captures every trigger-ready FVG with profiling data."""
+    try:
+        return _collect_fvg_profile_impl(symbol)
+    except Exception as e:
+        import traceback
+        print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
+        traceback.print_exc()
+        return None, None
+
+
+def _collect_fvg_profile_impl(symbol: str):
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
         return None, None
@@ -507,8 +515,10 @@ def collect_fvg_profile(symbol: str):
     b1 = load_data(csv_path)
     b15 = resample_15m(b1)
     if not b15:
+        print(f"    [{symbol}] resample_15m bos dondu")
         return None, None
 
+    print(f"    [{symbol}] {len(b1)} bar 1m -> {len(b15)} bar 15m")
     # Per-coin session from config (CBDR_RISK_MATRIX)
     _profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
     _sname = _profile.get("session", "DEFAULT")
@@ -911,6 +921,16 @@ def collect_fvg_profile(symbol: str):
             "wins": n_wins, "be": n_be, "losses": n_trades - n_wins - n_be, "pnl": total_pnl,
         })
 
+    day_cbdr_cnt = len(day_cbdr)
+    day_trades_cnt = len(day_trades)
+    trade_cnt = len(trade_records)
+    fvg_cnt = len(captured_fvgs)
+    print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
+          f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row")
+    if len(daily_rows) < 3:
+        print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
+              f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
+
     return daily_rows, wins, losses, trade_records, captured_fvgs
 
 
@@ -1145,7 +1165,9 @@ def build_report(all_coin_data, results_data):
     L("|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
-        b15 = coin_data["b15"]
+        b15 = coin_data.get("b15")
+        if b15 is None:
+            continue
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = [f for f in fvgs if f["category"] == cat]
             if len(cf) < 5:
@@ -1237,7 +1259,34 @@ def build_report(all_coin_data, results_data):
               f"{wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |")
     L("")
 
-    L("### 6b. Hipotez Testi: Teyitli (BOS/MSS) vs Teyitsiz (NONE)")
+    L("### 6b. Coin Bazli BOS/MSS Dagitimi")
+    L("")
+    L("| Coin | Kategori | N | NONE | BOS_ONLY | MSS_ONLY | BOTH | BOS+ MSS% |")
+    L("|---|---|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            if not cf:
+                continue
+            n = len(cf)
+            grp_counts = defaultdict(int)
+            for f in cf:
+                grp = f.get("bos_mss", {}).get("group", "NONE")
+                grp_counts[grp] += 1
+            none_n = grp_counts.get("NONE", 0)
+            bo_n = grp_counts.get("BOS_ONLY", 0)
+            ms_n = grp_counts.get("MSS_ONLY", 0)
+            both_n = grp_counts.get("BOTH", 0)
+            teyitli = bo_n + ms_n + both_n
+            teyit_pct = teyitli / n * 100 if n > 0 else 0
+            L(f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {none_n:>4d} | {bo_n:>4d} | {ms_n:>4d} | {both_n:>4d} | {teyit_pct:>5.1f}% |")
+    L("")
+
+    L("### 6c. Hipotez Testi: Teyitli (BOS/MSS) vs Teyitsiz (NONE)")
     L("")
     for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
         groups = defaultdict(list)
@@ -1454,11 +1503,46 @@ def build_report(all_coin_data, results_data):
     L("")
 
     # ═══════════════════════════════════════════════════
-    # BOLUM 11: V4 Filtre Kirilimi
+    # BOLUM 11: Entry Delay (FVG'den sonra ilk touch)
     # ═══════════════════════════════════════════════════
     L("---")
     L("")
-    L("## 11. V4 Filtre Kirilimi")
+    L("## 11. Entry Delay — FVG'den Kac Mum Sonra Ilk Touch?")
+    L("")
+    L("FVG olusumundan sonra fiyatin FVG bolgesine ilk kez girdigi mum sayisi.")
+    L("Dusuk = hizli reaksiyon, yuksek = gecikmeli giris.")
+    L("")
+    L("| Coin | Kategori | N_touch | p25 | p50 | p75 | <=5b | <=10b | <=20b |")
+    L("|---|---|---|---|---|---|---|---|---|")
+    for sym, coin_data in all_coin_data.items():
+        fvgs = coin_data["fvgs"]
+        cats = defaultdict(list)
+        for f in fvgs:
+            cats[f["category"]].append(f)
+        for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+            cf = cats.get(cat, [])
+            touched = [f["rr"]["entry_bar"] for f in cf
+                       if f.get("rr", {}).get("touched") and f["rr"].get("entry_bar") is not None]
+            if not touched:
+                continue
+            n = len(touched)
+            sv = sorted(touched)
+            p25 = percentile_sorted(sv, 25)
+            p50 = percentile_sorted(sv, 50)
+            p75 = percentile_sorted(sv, 75)
+            le5 = sum(1 for v in touched if v <= 5) / n * 100
+            le10 = sum(1 for v in touched if v <= 10) / n * 100
+            le20 = sum(1 for v in touched if v <= 20) / n * 100
+            L(f"| {sym:<8s} | {cat:<13s} | {n:>5d} | {p25:>3d} | {p50:>3d} | {p75:>3d} | "
+              f"{le5:>5.1f} | {le10:>5.1f} | {le20:>5.1f} |")
+    L("")
+
+    # ═══════════════════════════════════════════════════
+    # BOLUM 12: V4 Filtre Kirilimi
+    # ═══════════════════════════════════════════════════
+    L("---")
+    L("")
+    L("## 12. V4 Filtre Kirilimi")
     L("")
     L("V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.")
     L("")
@@ -1477,11 +1561,11 @@ def build_report(all_coin_data, results_data):
     L("")
 
     # ═══════════════════════════════════════════════════
-    # BOLUM 12: Derinlik Hipotez Testi
+    # BOLUM 13: Derinlik Hipotez Testi
     # ═══════════════════════════════════════════════════
     L("---")
     L("")
-    L("## 12. Hipotez Testi: Derinlik × Continuation Iliskisi")
+    L("## 13. Hipotez Testi: Derinlik × Continuation Iliskisi")
     L("")
     for cls_label, cls_filter in [("TUM FVG'ler", lambda f: True),
                                     ("WICK_ONLY", lambda f: f.get("rr", {}).get("max_depth_class") == "WICK_ONLY"),
@@ -1512,11 +1596,11 @@ def build_report(all_coin_data, results_data):
             L(f"- **{cls_label}** — YETERSIZ ORNEKLEM (sig={len(shallow)}, derin={len(deep)})")
     L("")
     # ═══════════════════════════════════════════════════
-    # BOLUM 13: Early London (02:00-08:00 UTC) Performansi
+    # BOLUM 14: Early London (02:00-08:00 UTC) Performansi
     # ═══════════════════════════════════════════════════
     L("---")
     L("")
-    L("## 13. Early London (02:00-08:00 UTC) Performansi")
+    L("## 14. Early London (02:00-08:00 UTC) Performansi")
     L("")
     L("| Coin | Kategori | EL_N | EL_Mit% | EL_NetExp | Normal_N | Normal_Mit% | Normal_NetExp | Delta_Mit | Delta_Exp |")
     L("|---|---|---|---|---|---|---|---|---|---|")
@@ -1548,13 +1632,13 @@ def build_report(all_coin_data, results_data):
     L("")
 
     # ═══════════════════════════════════════════════════
-    # BOLUM 14: Coin × Aylik/Sezon Analizi
+    # BOLUM 15: Coin × Aylik/Sezon Analizi
     # ═══════════════════════════════════════════════════
     L("---")
     L("")
-    L("## 14. Coin × Aylik / Sezon Analizi")
+    L("## 15. Coin × Aylik / Sezon Analizi")
     L("")
-    L("### 14a. Coin × Ay Mitigasyon Orani")
+    L("### 15a. Coin × Ay Mitigasyon Orani")
     L("")
     L("| Coin | Kategori | Ay | N | Mit% | NetExp |")
     L("|---|---|---|---|---|---|")
@@ -1579,7 +1663,7 @@ def build_report(all_coin_data, results_data):
                 L(f"| {sym:<8s} | {cat:<13s} | {month:>2d} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
     L("")
 
-    L("### 14b. Coin × Uc Aylik (Quarterly)")
+    L("### 15b. Coin × Uc Aylik (Quarterly)")
     L("")
     L("| Coin | Kategori | Q | N | Mit% | NetExp |")
     L("|---|---|---|---|---|---|")
@@ -1607,11 +1691,11 @@ def build_report(all_coin_data, results_data):
     L("")
 
     # ═══════════════════════════════════════════════════
-    # BOLUM 15: Coin Bazli Esik Onerileri
+    # BOLUM 16: Coin Bazli Esik Onerileri
     # ═══════════════════════════════════════════════════
     L("---")
     L("")
-    L("## 15. Coin Bazli Esik Onerileri")
+    L("## 16. Coin Bazli Esik Onerileri")
     L("")
     L("Per-coin: optimal iptal bar (DR noktasi), FVG expiry, seans, ve en iyi kategori.")
     L("")
@@ -1720,26 +1804,32 @@ def main():
     results_data = []
 
     for sym in SYMBOLS_TO_TEST:
-        profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
-        sname = profile.get("session", "DEFAULT")
-        sh_info = get_session_hours(sym)
-        print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
-        result = collect_fvg_profile(sym)
-        if result is None or result[0] is None:
-            print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
-            continue
-        daily_rows, wins, losses, trade_records, captured_fvgs = result
-        if len(daily_rows) < 3:
-            print(f"    [{sym}] YETERSIZ VERI", flush=True)
-            continue
+        try:
+            profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
+            sname = profile.get("session", "DEFAULT")
+            sh_info = get_session_hours(sym)
+            print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
+            result = collect_fvg_profile(sym)
+            if result is None or result[0] is None:
+                print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
+                continue
+            daily_rows, wins, losses, trade_records, captured_fvgs = result
+            if len(daily_rows) < 3:
+                print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
+                continue
 
-        stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
-        results_data.append((sym, stats, None, daily_rows, captured_fvgs))
-        all_coin_data[sym] = {"fvgs": captured_fvgs, "b15": None, "total": len(captured_fvgs)}
+            stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
+            results_data.append((sym, stats, None, daily_rows, captured_fvgs))
+            all_coin_data[sym] = {"fvgs": captured_fvgs, "b15": None, "total": len(captured_fvgs)}
 
-        print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
-              f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-              f"WR={stats['win_pct']:.1f}%")
+            print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
+                  f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                  f"WR={stats['win_pct']:.1f}%")
+        except Exception as e:
+            import traceback
+            print(f"    [{sym}] HATA: {e}")
+            traceback.print_exc()
+            continue
 
     # ── Parquet ──
     if _LOGGER is not None:
@@ -1761,9 +1851,12 @@ def main():
     for sym in all_coin_data:
         csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv")
         if os.path.isfile(csv_path):
-            b1 = load_data(csv_path)
-            b15 = resample_15m(b1)
-            all_coin_data[sym]["b15"] = b15
+            try:
+                b1 = load_data(csv_path)
+                b15 = resample_15m(b1)
+                all_coin_data[sym]["b15"] = b15
+            except Exception as e:
+                print(f"    [b15 reload] {sym}: atlandi — {e}")
 
     # ── MD Report ──
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
@@ -1774,7 +1867,12 @@ def main():
         report = build_report(all_coin_data, results_data)
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(report)
-        print(f"\n  Rapor: {md_path}")
+            f.flush()
+        if os.path.exists(md_path):
+            sz = os.path.getsize(md_path)
+            print(f"\n  Rapor: {md_path} ({sz:,} bytes)")
+        else:
+            print(f"\n  RAPOR YAZILAMADI: {md_path} mevcut degil")
     except Exception as e:
         import traceback
         print(f"\n  RAPOR YAZILAMADI: {e}")

@@ -70,7 +70,7 @@ def resample(bars_1m, n):
         c = bars_1m[i:i+n]
         if len(c) < n:
             break
-        out.append(Bar(index=c[0].index, open=c[0].open,
+        out.append(Bar(index=len(out), open=c[0].open,
                        high=max(b.high for b in c), low=min(b.low for b in c),
                        close=c[-1].close, volume=sum(b.volume for b in c),
                        is_closed=True, timestamp=c[0].timestamp))

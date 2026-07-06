@@ -49,7 +49,7 @@ def r15(b1):
     for i in range(0, len(b1), 15):
         c = b1[i:i+15]
         if len(c)<15: break
-        m.append(Bar(index=c[0].index, open=c[0].open,
+        m.append(Bar(index=len(m), open=c[0].open,
                      high=max(x.high for x in c), low=min(x.low for x in c),
                      close=c[-1].close, volume=sum(x.volume for x in c),
                      is_closed=True, timestamp=c[0].timestamp))
