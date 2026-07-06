@@ -47,7 +47,7 @@ DEPTH_BUCKETS = [(0, 25, "0-25%"), (25, 50, "25-50%"), (50, 75, "50-75%"),
                  (75, 100, "75-100%"), (100, 150, "100-150%"), (150, 9999, ">150%")]
 
 SYMBOLS_TO_TEST = [
-    "BTCUSDT", "ETHUSDT",
+    'BTCUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'XRPUSDT', 'ATOMUSDT', 'ADAUSDT', 'APTUSDT', 'DOTUSDT', 'NEARUSDT', 'ETHUSDT', 'SUIUSDT'
 ]
 
 # ─── Helpers ─────────────────────────────────────────────────
@@ -696,24 +696,21 @@ def _collect_fvg_profile_impl(symbol: str):
                 tp = ep - rd * tpr
 
             # ── FVG quality filter ──
+            quality_mult = 1.0
             if tf is not None:
                 if not is_high_quality_fvg(tf.top - tf.bottom, atr):
+                    quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_QUALITY"
-                    rsm.reset()
-                    captured_fvgs.append(classic_fvg)
-                    continue
-                if not is_fvg_valid(tf.bar_index, cur.index):
+                elif not is_fvg_valid(tf.bar_index, cur.index):
+                    quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_VALIDITY"
-                    rsm.reset()
-                    captured_fvgs.append(classic_fvg)
-                    continue
+                else:
+                    classic_fvg["v4_rejected"] = None
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = "MIN_RISK_DIST"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
 
             # ── CBDR + should_trade ──
             cbdr_w = None
@@ -721,46 +718,48 @@ def _collect_fvg_profile_impl(symbol: str):
                 cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
             if cbdr_mult == 0.0:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = "CBDR_MULT_ZERO"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
+            
             allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
             if not allowed:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = f"SHOULD_TRADE_{reason}"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
 
             # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
             h = edt.hour
             el_mult = cfg.EARLY_LONDON_RISK_MULT if 2 <= h < 8 else 1.0
-            final_mult = el_mult * cbdr_mult
+            final_mult = el_mult * cbdr_mult * quality_mult
 
             qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
-            if qty <= 0:
-                classic_fvg["v4_rejected"] = "QTY_ZERO"
+            
+            # --- FIX: Only enter if quality/validity checks passed (qty > 0)
+            # Do NOT reset RSM if we just failed a quality filter, 
+            # allow RSM to continue hunting for the next FVG in this sweep.
+            if qty > 0:
+                # ── ENTERED ──
+                classic_fvg["v4_rejected"] = "ENTERED"
+                classic_fvg["v4_entry_price"] = ep
+                classic_fvg["v4_sl"] = sl
+                classic_fvg["v4_tp"] = tp
+                classic_fvg["v4_qty"] = qty
+                classic_fvg["v4_side"] = side
+                classic_fvg["v4_cbdr_mult"] = cbdr_mult
+                classic_fvg["v4_final_mult"] = final_mult
+                captured_fvgs.append(classic_fvg)
+
+                entry_day = ss.cbdr_day
+                active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
+                               "qty": qty, "side": side, "trigger_fvg": tf,
+                               "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                               "day_key": entry_day})
                 rsm.reset()
+            else:
+                # Filtered setup: record as rejected, do NOT reset RSM.
+                if classic_fvg["v4_rejected"] is None:
+                    classic_fvg["v4_rejected"] = "QTY_ZERO"
                 captured_fvgs.append(classic_fvg)
                 continue
-
-            # ── ENTERED ──
-            classic_fvg["v4_rejected"] = "ENTERED"
-            classic_fvg["v4_entry_price"] = ep
-            classic_fvg["v4_sl"] = sl
-            classic_fvg["v4_tp"] = tp
-            classic_fvg["v4_qty"] = qty
-            classic_fvg["v4_side"] = side
-            classic_fvg["v4_cbdr_mult"] = cbdr_mult
-            classic_fvg["v4_final_mult"] = final_mult
-            captured_fvgs.append(classic_fvg)
-
-            entry_day = ss.cbdr_day
-            active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
-                           "qty": qty, "side": side, "trigger_fvg": tf,
-                           "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                           "day_key": entry_day})
-            rsm.reset()
 
         # ── Trailing (unchanged) ──
         if active and cur.is_closed:
@@ -1039,8 +1038,8 @@ def build_report(all_coin_data, results_data):
 
     L("### 2b. Kumulatif Mitigasyon Egrisi & Diminishing Returns")
     L("")
-    L("| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | DR_nok |")
-    L("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L("| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | 150b | 200b | DR_nok |")
+    L("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
         cats = defaultdict(list)
@@ -1430,8 +1429,14 @@ def build_report(all_coin_data, results_data):
                 row.append("N/A")
             else:
                 n = len(x)
-                rx = [sorted(x).index(v) + 1 for v in x]
-                ry = [sorted(y).index(v) + 1 for v in y]
+                def rank(vals):
+                    sorted_idx = sorted(range(len(vals)), key=lambda i: vals[i])
+                    ranks = [0] * len(vals)
+                    for r, i in enumerate(sorted_idx):
+                        ranks[i] = r + 1
+                    return ranks
+                rx = rank(x)
+                ry = rank(y)
                 d2 = sum((rx[i] - ry[i]) ** 2 for i in range(n))
                 rho = 1 - 6 * d2 / (n * (n * n - 1)) if n > 1 else 0
                 row.append(f"{rho:>+.4f}")
