@@ -17,6 +17,7 @@
 backtest-sniper/
 ├── src/
 │   ├── analyzer_v4.py           # V4 live-identical engine
+│   ├── fvg_profile_v5.py        # V5 profil (V4 motor kopyası + 16 bölümlü rapor)
 │   ├── fvg_profile_v4.py        # V4 12-katman profil (orijinal)
 │   ├── fvg_profile_v4_bypass.py # V4 bypass (A/B test)
 │   ├── analyzer_v3.py           # V3 engine
@@ -67,7 +68,8 @@ backtest-sniper/
 | TP_RR | 2.0 | Risk/Reward oranı |
 | FVG_MIN_SIZE_ATR_MULT | 0.06 | Min FVG boyutu (ATR bazlı) |
 | EARLY_LONDON_RISK_MULT | 1.5 | EL risk çarpanı |
-| GLOBAL_FVG_EXPIRY_BARS | 45 | FVG zaman aşımı |
+| GLOBAL_FVG_EXPIRY_BARS | 45 (global) | FVG zaman aşımı (V5'te coin bazlı: BTC/BNB/SOL 45, diğer 5) |
+| MIN_REL_FVG_THRESHOLD | 0.50 (V4) / 0.25 (V5) | gap/ATR minimum kalite eşiği |
 | CBDR_DEAD_THRESHOLD_PCT | 0.5 | CBDR dead zone |
 | ATR_TRAIL_MULT | 0.25 | Trailing ATR çarpanı |
 | MIN_RISK_DIST_ATR_MULT | 0.1 | Min risk mesafesi |

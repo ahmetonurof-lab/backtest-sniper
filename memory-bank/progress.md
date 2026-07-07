@@ -2,6 +2,7 @@
 
 ## ✅ Working
 - V4 live-identical engine (analyzer_v4.py) — CBDR→Sweep→RSM→FVG→Entry→Trail→Exit
+- V5 profil (fvg_profile_v5.py) — V4 motor + 16 bölümlü karakterizasyon + rapor
 - V4 12-katman profil (fvg_profile_v4.py) — C2, BOS/MSS, depth, vol rejimi, bootstrap CI
 - V4 bypass A/B test (fvg_profile_v4_bypass.py) — quality/validity/should_trade devre dışı
 - V3 engine (sweep_full_v3.py) + analyzer_v3
@@ -20,23 +21,25 @@
 - CBDR görselleştirme (matplotlib)
 
 ## 🔧 Pending / In Progress
-- Fixed versiyon backtest doğrulaması (n<100 normalizasyon sonrası)
-- Bypass vs fixed WR/PF/PnL karşılaştırması
-- Canlı backtest trailing performans karşılaştırması
+- V5 tüm coinlerin bitmesi + rapor incelemesi
+- BTC WR=%32.2 düşüklüğünün analizi (FVG_VALIDITY 55K red sebebi)
+- V5 vs V4 bypass WR karşılaştırması
 
 ## 🐛 Known Issues
+- BTC WR=%32.2 (V5) — düşük, FVG_VALIDITY 55K reddi araştırılmalı
+- fvg_profile_v5.py de V4 motor kopyasını içeriyor — DRY ihlali (manuel sync)
 - Cline / Goose MCACP ajanları çalışmıyor (söküldü)
 - ASIA_RANGE coin'lerde EL 02-08 overlap: APT, AVAX, LINK, BNB, NEAR
-- fvg_profile_v4_bypass.py `fvg_profile_v4.py`'nin kopyası — DRY ihlali (manuel sync gerekli)
 
 ## 📊 Backtest Results (13 coin, ~30 gün)
-| Metric | V4 Orijinal (broken) | V4 Bypass |
-|---|---|---|
-| BTC Trades | 419 | 2,678 |
-| BTC WR | 40.3% | 40.8% |
-| BTC PF | 3.39 | 3.51 |
-| BTC PnL | +12,895 | +75,639 |
-| BTC CBDR elenen | 3,214 (%81) | 11,357 |
+| Metric | V4 Orijinal (broken) | V4 Bypass | V5 (BTC preliminary) |
+|---|---|---|---|
+| BTC Trades | 419 | 2,678 | 698 |
+| BTC WR | 40.3% | 40.8% | 32.2% |
+| BTC PF | 3.39 | 3.51 | TBD |
+| BTC PnL | +12,895 | +75,639 | TBD |
+| BTC CBDR elenen | 3,214 (%81) | 11,357 | 906 gün |
+| BTC FVG | — | — | 20,179 |
 
 ## 📐 CBDR Risk Matrix Summary
 - **REAL_CBDR (4 coin):** BTC, ATOM, DOT, ETH

@@ -1,8 +1,10 @@
 """
-fvg_profile_v4.py — V4 engine ile kapsamli FVG profili.
-V4'ün canli-özdes filtrelerinden geçen FVG popülasyonu üzerinde
-12 analiz katmani: C2 anatomisi, BOS/MSS, derinlik/wick-body,
-gap/ATR quartile, volatilite rejimi, coin bazli istatistik.
+fvg_profile_v5.py — V5 engine: derinlik + weekend + MIN_REL eşik testi.
+V4 filtrelerine ek olarak:
+  1) MIN_REL_FVG_THRESHOLD 0.50 → 0.25 (gap/ATR eşiği)
+  2) Derinlik filtresi: WICK_ONLY >%100, BODY_CLOSE >%150
+  3) Haftasonu çarpani: ATOM/SUI/APT (+1.5x weekend)
+  4) Coin bazli FVG expiry (45b veya 5b)
 """
 # ruff: noqa: E402, E702
 import csv
@@ -15,6 +17,9 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
+import numpy as np
+import pandas as pd
+
 os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
@@ -22,6 +27,10 @@ if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
 import config as cfg
+# --- V5 overrides ---
+cfg.MIN_REL_FVG_THRESHOLD = 0.25  # gap/ATR eşiği 0.50→0.25
+# Coin bazli expiry, _collect_fvg_profile_impl icinde set edilecek
+# ---
 from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
 from models import Bar
@@ -47,7 +56,7 @@ DEPTH_BUCKETS = [(0, 25, "0-25%"), (25, 50, "25-50%"), (50, 75, "50-75%"),
                  (75, 100, "75-100%"), (100, 150, "100-150%"), (150, 9999, ">150%")]
 
 SYMBOLS_TO_TEST = [
-    "BTCUSDT", "ETHUSDT",
+    'BTCUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'XRPUSDT', 'ATOMUSDT', 'ADAUSDT', 'APTUSDT', 'DOTUSDT', 'NEARUSDT', 'ETHUSDT', 'SUIUSDT'
 ]
 
 # ─── Helpers ─────────────────────────────────────────────────
@@ -62,16 +71,28 @@ def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     return min(1.0, (centre + margin) / denominator)
 
 
-@functools.lru_cache(maxsize=32)
+_DATA_CACHE: dict[str, list] = {}
+
 def load_data(filepath):
-    bars = []
-    with open(filepath, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            ts = int(datetime.strptime(row["open_time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            bars.append(Bar(index=i, open=float(row["open"]), high=float(row["high"]),
-                            low=float(row["low"]), close=float(row["close"]),
-                            volume=float(row["volume"]), is_closed=True, timestamp=ts))
+    if filepath in _DATA_CACHE:
+        return _DATA_CACHE[filepath]
+    t0 = time.time()
+    df = pd.read_csv(filepath, usecols=["open_time", "open", "high", "low", "close", "volume"])
+    t1 = time.time()
+    ts_ms = pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S").values.astype("datetime64[ms]").astype("int64")
+    n = len(df)
+    bars = [None] * n
+    o = df["open"].to_numpy(dtype=float)
+    h = df["high"].to_numpy(dtype=float)
+    l = df["low"].to_numpy(dtype=float)
+    c = df["close"].to_numpy(dtype=float)
+    v = df["volume"].to_numpy(dtype=float)
+    for i in range(n):
+        bars[i] = Bar(index=i, open=o[i], high=h[i], low=l[i], close=c[i],
+                      volume=v[i], is_closed=True, timestamp=int(ts_ms[i]))
+    t2 = time.time()
+    print(f"      load_data: {n} bar {t1-t0:.1f}s (csv) + {t2-t1:.1f}s (bar) = {t2-t0:.1f}s")
+    _DATA_CACHE[filepath] = bars
     return bars
 
 
@@ -344,15 +365,20 @@ def find_all_swing_points(b15):
     return (hi_idx, hi_pr), (lo_idx, lo_pr)
 
 
-def _filter_swings(c3_idx, hi, lo):
+def _filter_swings(c3_idx, hi, lo, hi_idx=None, lo_idx=None):
+    if hi_idx is not None:
+        lo_i = max(0, c3_idx - 50)
+        sw_h = [(i, hi_idx[i]) for i in range(lo_i, c3_idx) if i in hi_idx]
+        sw_l = [(i, lo_idx[i]) for i in range(lo_i, c3_idx) if i in lo_idx]
+        return sw_h, sw_l
     sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_idx - 50 <= hi[0][i] < c3_idx]
     sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_idx - 50 <= lo[0][i] < c3_idx]
     return sw_h, sw_l
 
 
-def detect_bos_mss(fvg, b15, hi, lo):
+def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
     c3_idx = fvg["c3"].index
-    sw_h, sw_l = _filter_swings(c3_idx, hi, lo)
+    sw_h, sw_l = _filter_swings(c3_idx, hi, lo, hi_idx, lo_idx)
     trend = "ranging"
     if len(sw_h) >= 2 and len(sw_l) >= 2:
         if sw_h[-1][1] >= sw_h[-2][1] and sw_l[-1][1] >= sw_l[-2][1]:
@@ -450,8 +476,7 @@ def bootstrap_ci(vals, n_resamples=N_BOOTSTRAP, ci=95, seed=BOOTSTRAP_SEED):
 
 
 # ─── Volatilite Rejimi ───────────────────────────────────────
-def volatility_regime_analysis(fvgs, b15, window=50):
-    atr_vals = [b15[i].high - b15[i].low for i in range(len(b15))]
+def volatility_regime_analysis(fvgs, atr_vals, window=50):
     regime_results = defaultdict(lambda: {"count": 0, "mitigated": 0, "bars": [],
                                           "profits": [], "continuation_10": 0})
     for f in fvgs:
@@ -493,10 +518,14 @@ def collect_fvg_profile(symbol: str):
         import traceback
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
-        return None, None
+        return None, None, None
 
 
 def _collect_fvg_profile_impl(symbol: str):
+    # --- V5: coin bazli FVG expiry ---
+    _EXPIRY_MAP = {"BTCUSDT": 45, "BNBUSDT": 45, "SOLUSDT": 45}
+    cfg.GLOBAL_FVG_EXPIRY_BARS = _EXPIRY_MAP.get(symbol, 5)
+    # ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
         return None, None
@@ -538,6 +567,7 @@ def _collect_fvg_profile_impl(symbol: str):
 
     # Profiling: captured FVG population
     captured_fvgs = []
+    rejection_counts: dict = defaultdict(int)
 
     atr_val = 0.0
     prev_close = b15[0].open
@@ -696,24 +726,32 @@ def _collect_fvg_profile_impl(symbol: str):
                 tp = ep - rd * tpr
 
             # ── FVG quality filter ──
+            quality_mult = 1.0
             if tf is not None:
                 if not is_high_quality_fvg(tf.top - tf.bottom, atr):
+                    quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_QUALITY"
-                    rsm.reset()
-                    captured_fvgs.append(classic_fvg)
-                    continue
-                if not is_fvg_valid(tf.bar_index, cur.index):
+                elif not is_fvg_valid(tf.bar_index, cur.index):
+                    quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_VALIDITY"
-                    rsm.reset()
-                    captured_fvgs.append(classic_fvg)
-                    continue
+                else:
+                    classic_fvg["v4_rejected"] = None
+
+            # ── V5: Derinlik filtre ──
+            if quality_mult == 1.0 and classic_fvg.get("rr"):
+                dp = classic_fvg["rr"].get("max_depth_pct", 0)
+                dc = classic_fvg["rr"].get("max_depth_class", "WICK_ONLY")
+                if dc == "WICK_ONLY" and dp > 100.0:
+                    quality_mult = 0.0
+                    classic_fvg["v4_rejected"] = "DEPTH_WICK"
+                elif dc == "BODY_CLOSE" and dp > 150.0:
+                    quality_mult = 0.0
+                    classic_fvg["v4_rejected"] = "DEPTH_BODY"
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = "MIN_RISK_DIST"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
 
             # ── CBDR + should_trade ──
             cbdr_w = None
@@ -721,46 +759,55 @@ def _collect_fvg_profile_impl(symbol: str):
                 cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
             if cbdr_mult == 0.0:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = "CBDR_MULT_ZERO"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
+
+            # ── V5: Haftasonu çarpani (ATOM/SUI/APT) ──
+            if quality_mult > 0 and symbol in ("ATOMUSDT", "SUIUSDT", "APTUSDT"):
+                if edt.weekday() >= 5:  # Cumartesi=5, Pazar=6
+                    cbdr_mult *= 1.5
+
             allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
             if not allowed:
+                quality_mult = 0.0
                 classic_fvg["v4_rejected"] = f"SHOULD_TRADE_{reason}"
-                rsm.reset()
-                captured_fvgs.append(classic_fvg)
-                continue
 
             # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
             h = edt.hour
             el_mult = cfg.EARLY_LONDON_RISK_MULT if 2 <= h < 8 else 1.0
-            final_mult = el_mult * cbdr_mult
+            final_mult = el_mult * cbdr_mult * quality_mult
 
             qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
-            if qty <= 0:
-                classic_fvg["v4_rejected"] = "QTY_ZERO"
+            
+            # --- FIX: Only enter if quality/validity checks passed (qty > 0)
+            # Do NOT reset RSM if we just failed a quality filter, 
+            # allow RSM to continue hunting for the next FVG in this sweep.
+            if qty > 0:
+                # ── ENTERED ──
+                classic_fvg["v4_rejected"] = "ENTERED"
+                classic_fvg["v4_entry_price"] = ep
+                classic_fvg["v4_sl"] = sl
+                classic_fvg["v4_tp"] = tp
+                classic_fvg["v4_qty"] = qty
+                classic_fvg["v4_side"] = side
+                classic_fvg["v4_cbdr_mult"] = cbdr_mult
+                classic_fvg["v4_final_mult"] = final_mult
+                rejection_counts[classic_fvg["v4_rejected"]] += 1
+                captured_fvgs.append(classic_fvg)
+
+                entry_day = ss.cbdr_day
+                active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
+                               "qty": qty, "side": side, "trigger_fvg": tf,
+                               "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                               "day_key": entry_day})
                 rsm.reset()
+            else:
+                # Filtered setup: record as rejected, do NOT reset RSM.
+                if classic_fvg["v4_rejected"] is None:
+                    classic_fvg["v4_rejected"] = "QTY_ZERO"
+                rejection_counts[classic_fvg["v4_rejected"]] += 1
                 captured_fvgs.append(classic_fvg)
                 continue
-
-            # ── ENTERED ──
-            classic_fvg["v4_rejected"] = "ENTERED"
-            classic_fvg["v4_entry_price"] = ep
-            classic_fvg["v4_sl"] = sl
-            classic_fvg["v4_tp"] = tp
-            classic_fvg["v4_qty"] = qty
-            classic_fvg["v4_side"] = side
-            classic_fvg["v4_cbdr_mult"] = cbdr_mult
-            classic_fvg["v4_final_mult"] = final_mult
-            captured_fvgs.append(classic_fvg)
-
-            entry_day = ss.cbdr_day
-            active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
-                           "qty": qty, "side": side, "trigger_fvg": tf,
-                           "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                           "day_key": entry_day})
-            rsm.reset()
 
         # ── Trailing (unchanged) ──
         if active and cur.is_closed:
@@ -895,16 +942,21 @@ def _collect_fvg_profile_impl(symbol: str):
     print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
 
     # ── BOS/MSS for captured FVGs ──
+    print(f"    [{symbol}] BOS/MSS basliyor... ({len(captured_fvgs)} FVG)", flush=True)
+    hi_idx = {swing_hi[0][i]: swing_hi[1][i] for i in range(len(swing_hi[0]))}
+    lo_idx = {swing_lo[0][i]: swing_lo[1][i] for i in range(len(swing_lo[0]))}
     for f in captured_fvgs:
         if f.get("c3") is not None:
-            f["bos_mss"] = detect_bos_mss(f, b15, swing_hi, swing_lo)
+            f["bos_mss"] = detect_bos_mss(f, b15, swing_hi, swing_lo, hi_idx, lo_idx)
         else:
             f["bos_mss"] = {"pre_bos": False, "pre_mss": False, "post_bos": False,
                             "post_mss": False, "trend": "ranging", "group": "NONE"}
+    print(f"    [{symbol}] BOS/MSS tamam", flush=True)
 
     # ── Daily rows ──
     daily_rows = []
     all_keys = sorted(set(list(day_cbdr.keys()) + list(day_trades.keys())))
+    print(f"    [{symbol}] Daily rows basliyor... ({len(all_keys)} key)", flush=True)
     for dk in all_keys:
         if not dk:
             continue
@@ -920,28 +972,35 @@ def _collect_fvg_profile_impl(symbol: str):
             "day_key": dk, "cbdr_pct": w, "trades": n_trades,
             "wins": n_wins, "be": n_be, "losses": n_trades - n_wins - n_be, "pnl": total_pnl,
         })
+    print(f"    [{symbol}] Daily rows tamam ({len(daily_rows)} row)", flush=True)
 
     day_cbdr_cnt = len(day_cbdr)
     day_trades_cnt = len(day_trades)
     trade_cnt = len(trade_records)
     fvg_cnt = len(captured_fvgs)
+    atr_vals = [b.high - b.low for b in b15]
     print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
-          f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row")
+          f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row", flush=True)
+    if day_cbdr_cnt < 3 and fvg_cnt > 0:
+        rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
+        print(f"    [{symbol}] CBDR AZ {rej_str}", flush=True)
     if len(daily_rows) < 3:
         print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
               f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
 
-    return daily_rows, wins, losses, trade_records, captured_fvgs
+    return daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals
 
 
 # ─── Rapor Olusturma ─────────────────────────────────────────
-def build_report(all_coin_data, results_data):
-    lines = []
+def build_report(all_coin_data, results_data, fileobj=None):
+    _lines_for_size = []
 
     def L(s=""):
-        lines.append(s)
+        if fileobj is not None:
+            fileobj.write(s + "\n")
+        _lines_for_size.append(s)
 
-    L("# FVG Profile V4 — V4 Engine ile Kapsamli FVG Karakteristik Profili")
+    L("# FVG Profile V5 — V5 Engine ile Kapsamli FVG Karakteristik Profili")
     L("**Session:** MULTI_SESSION (her coin kendi session'inda — DEFAULT/REAL_CBDR/ASIA_RANGE)")
     L(f"**Engine:** V4 (live-identical) — Sweep → RSM → Quality → Entry → Trailing")
     L(f"**Coinler:** {', '.join(SYMBOLS_TO_TEST)}")
@@ -1039,8 +1098,8 @@ def build_report(all_coin_data, results_data):
 
     L("### 2b. Kumulatif Mitigasyon Egrisi & Diminishing Returns")
     L("")
-    L("| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | DR_nok |")
-    L("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L("| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | 150b | 200b | DR_nok |")
+    L("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
         cats = defaultdict(list)
@@ -1165,8 +1224,8 @@ def build_report(all_coin_data, results_data):
     L("|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
-        b15 = coin_data.get("b15")
-        if b15 is None:
+        atr_vals = coin_data.get("atr_vals")
+        if atr_vals is None:
             continue
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = [f for f in fvgs if f["category"] == cat]
@@ -1430,8 +1489,14 @@ def build_report(all_coin_data, results_data):
                 row.append("N/A")
             else:
                 n = len(x)
-                rx = [sorted(x).index(v) + 1 for v in x]
-                ry = [sorted(y).index(v) + 1 for v in y]
+                def rank(vals):
+                    sorted_idx = sorted(range(len(vals)), key=lambda i: vals[i])
+                    ranks = [0] * len(vals)
+                    for r, i in enumerate(sorted_idx):
+                        ranks[i] = r + 1
+                    return ranks
+                rx = rank(x)
+                ry = rank(y)
                 d2 = sum((rx[i] - ry[i]) ** 2 for i in range(n))
                 rho = 1 - 6 * d2 / (n * (n * n - 1)) if n > 1 else 0
                 row.append(f"{rho:>+.4f}")
@@ -1546,18 +1611,19 @@ def build_report(all_coin_data, results_data):
     L("")
     L("V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.")
     L("")
-    L("| Coin | Toplam FVG | ENTERED | FVG_QUALITY | FVG_VALIDITY | MIN_RISK | CBDR/SHOULD_TRADE | QTY_ZERO |")
-    L("|---|---|---|---|---|---|---|---|")
+    L("| Coin | Toplam FVG | ENTERED | FVG_QUALITY | FVG_VALIDITY | DEPTH | MIN_RISK | CBDR/SHOULD_TRADE | QTY_ZERO |")
+    L("|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
         total = len(fvgs)
         entered = sum(1 for f in fvgs if f.get("v4_rejected") == "ENTERED")
         fvg_q = sum(1 for f in fvgs if f.get("v4_rejected") == "FVG_QUALITY")
         fvg_v = sum(1 for f in fvgs if f.get("v4_rejected") == "FVG_VALIDITY")
+        depth_r = sum(1 for f in fvgs if f.get("v4_rejected") in ("DEPTH_WICK", "DEPTH_BODY"))
         min_r = sum(1 for f in fvgs if f.get("v4_rejected") == "MIN_RISK_DIST")
         cbdr_r = sum(1 for f in fvgs if f.get("v4_rejected", "").startswith("SHOULD_TRADE") or f.get("v4_rejected") == "CBDR_MULT_ZERO")
         qty_z = sum(1 for f in fvgs if f.get("v4_rejected") == "QTY_ZERO")
-        L(f"| {sym:<8s} | {total:>6d} | {entered:>6d} | {fvg_q:>6d} | {fvg_v:>6d} | {min_r:>6d} | {cbdr_r:>6d} | {qty_z:>6d} |")
+        L(f"| {sym:<8s} | {total:>6d} | {entered:>6d} | {fvg_q:>6d} | {fvg_v:>6d} | {depth_r:>5d} | {min_r:>6d} | {cbdr_r:>6d} | {qty_z:>6d} |")
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1745,7 +1811,7 @@ def build_report(all_coin_data, results_data):
           f"{best_m:>4d} | {worst_m:>4d} |")
     L("")
     L("---")
-    L("*Auto-generated by fvg_profile_v4.py*")
+    L("*Auto-generated by fvg_profile_v5.py*")
 
     return "\n".join(lines)
 
@@ -1754,7 +1820,7 @@ def build_report(all_coin_data, results_data):
 def compute_session_stats(trade_records, initial_balance):
     n = len(trade_records)
     if n == 0:
-        return {'total_trades': 0, 'win_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0}
+        return {'total_trades': 0, 'wins': 0, 'be': 0, 'losses': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0, 'total_pnl': 0}
     wins = sum(1 for r in trade_records if r["pnl"] > 0)
     be = sum(1 for r in trade_records if r["pnl"] == 0)
     losses = n - wins - be
@@ -1789,7 +1855,7 @@ def compute_session_stats(trade_records, initial_balance):
 def main():
     t0 = time.time()
     print("=" * 100)
-    print("  FVG PROFILE V4 — V4 Engine ile Kapsamli FVG Karakteristik Profili")
+    print("  FVG PROFILE V5 — V5 Engine (derinlik+weekend+eşik testi)")
     print("  Session: MULTI_SESSION (her coin kendi optimal session'inda)")
     print("  Engine: V4 (live-identical) — Sweep -> RSM -> Quality -> Entry -> Trailing")
     print(f"  Coinler: {', '.join(SYMBOLS_TO_TEST)}")
@@ -1813,14 +1879,14 @@ def main():
             if result is None or result[0] is None:
                 print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records, captured_fvgs = result
-            if len(daily_rows) < 3:
+            daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals = result
+            if len(daily_rows) < 1:
                 print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
                 continue
 
             stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
             results_data.append((sym, stats, None, daily_rows, captured_fvgs))
-            all_coin_data[sym] = {"fvgs": captured_fvgs, "b15": None, "total": len(captured_fvgs)}
+            all_coin_data[sym] = {"fvgs": captured_fvgs, "atr_vals": atr_vals, "total": len(captured_fvgs)}
 
             print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
                   f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
@@ -1847,27 +1913,15 @@ def main():
               f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {len(fvgs):>6d}")
     print(f"\n  Total time: {time.time()-t0:.0f}s")
 
-    # ── Load b15 for volatility analysis (re-load from cached data) ──
-    for sym in all_coin_data:
-        csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv")
-        if os.path.isfile(csv_path):
-            try:
-                b1 = load_data(csv_path)
-                b15 = resample_15m(b1)
-                all_coin_data[sym]["b15"] = b15
-            except Exception as e:
-                print(f"    [b15 reload] {sym}: atlandi — {e}")
-
-    # ── MD Report ──
+    # ── MD Report (stream to file, no b15 reload needed) ──
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
     os.makedirs(report_dir, exist_ok=True)
-    md_path = os.path.join(report_dir, "fvg_profile_v4.md")
+    md_path = os.path.join(report_dir, "fvg_profile_v5.md")
 
+    print(f"  [RAPOR] build_report basliyor...", flush=True)
     try:
-        report = build_report(all_coin_data, results_data)
         with open(md_path, "w", encoding="utf-8") as f:
-            f.write(report)
-            f.flush()
+            build_report(all_coin_data, results_data, f)
         if os.path.exists(md_path):
             sz = os.path.getsize(md_path)
             print(f"\n  Rapor: {md_path} ({sz:,} bytes)")
