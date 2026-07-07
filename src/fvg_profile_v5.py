@@ -399,11 +399,10 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
     post_closes = [b.close for b in b15[c3_idx + 1:post_end] if b.index > c3_idx] if post_end > c3_idx + 1 else []
     post_max_c = max(post_closes, default=0)
     post_min_c = min(post_closes, default=0)
-    wt = "downtrend" if trend == "uptrend" else ("uptrend" if trend == "downtrend" else "ranging")
-    post_bos = any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if wt == "uptrend" else (
-        any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if wt == "downtrend" else False)
-    post_mss = any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if wt == "uptrend" else (
-        any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if wt == "downtrend" else
+    post_bos = any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if trend == "uptrend" else (
+        any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if trend == "downtrend" else False)
+    post_mss = any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if trend == "uptrend" else (
+        any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if trend == "downtrend" else
         any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) or any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l))
     pre_bos, pre_mss = bool(pre_bos), bool(pre_mss)
     post_bos, post_mss = bool(post_bos), bool(post_mss)
@@ -503,8 +502,8 @@ def volatility_regime_analysis(fvgs, atr_vals, window=50):
                 r["bars"].append(f["outcome"]["bars_to_mitigate"])
             if f["outcome"].get("continuation_10"):
                 r["continuation_10"] += 1
-        if f["rr"].get("hit_target") or f["rr"].get("hit_stop") or f["rr"].get("no_outcome"):
-            r["profits"].append(f["rr"]["net_profit_R"])
+        if f.get("v4_real_result") is not None:
+            r["profits"].append(f.get("v4_real_pnl_R", 0.0))
     return dict(regime_results)
 
 
@@ -570,6 +569,7 @@ def _collect_fvg_profile_impl(symbol: str):
 
     # Profiling: captured FVG population
     captured_fvgs = []
+    fvg_by_uid = {}
     rejection_counts: dict = defaultdict(int)
 
     atr_val = 0.0
@@ -785,16 +785,19 @@ def _collect_fvg_profile_impl(symbol: str):
                 classic_fvg["v4_tp"] = tp
                 classic_fvg["v4_qty"] = qty
                 classic_fvg["v4_side"] = side
+                trade_uid = f"{symbol}_{sb}_{side}"
+                classic_fvg["trade_uid"] = trade_uid
                 classic_fvg["v4_cbdr_mult"] = cbdr_mult
                 classic_fvg["v4_final_mult"] = final_mult
                 rejection_counts[classic_fvg["v4_rejected"]] += 1
                 captured_fvgs.append(classic_fvg)
+                fvg_by_uid[trade_uid] = classic_fvg
 
                 entry_day = ss.cbdr_day
                 active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                                "qty": qty, "side": side, "trigger_fvg": tf,
                                "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                               "day_key": entry_day})
+                               "day_key": entry_day, "trade_uid": trade_uid})
                 rsm.reset()
             else:
                 # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
@@ -893,6 +896,16 @@ def _collect_fvg_profile_impl(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
+                # ── Gerçek sonucu FVG objesine geri yaz ──
+                uid = t.get("trade_uid")
+                if uid and uid in fvg_by_uid:
+                    f_ = fvg_by_uid[uid]
+                    f_["v4_real_result"] = t["result"]
+                    f_["v4_real_pnl_usd"] = t["pnl"]
+                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
+                    f_["v4_real_hit_target"] = (t["result"] == "TP")
+                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
@@ -924,6 +937,16 @@ def _collect_fvg_profile_impl(symbol: str):
                     wins.append(t)
                 else:
                     losses.append(t)
+                # ── Gerçek sonucu FVG objesine geri yaz ──
+                uid = t.get("trade_uid")
+                if uid and uid in fvg_by_uid:
+                    f_ = fvg_by_uid[uid]
+                    f_["v4_real_result"] = t["result"]
+                    f_["v4_real_pnl_usd"] = t["pnl"]
+                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
+                    f_["v4_real_hit_target"] = (t["result"] == "TP")
+                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
                 if _LOGGER is not None:
                     risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
                     fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
@@ -1051,12 +1074,12 @@ def build_report(all_coin_data, results_data, fileobj=None):
             p90 = percentile_sorted(mtimes, 90) if mtimes else 0
             cont10 = sum(1 for f in cf if f["outcome"].get("continuation_10")) / max(mit, 1) * 100
             cont40 = sum(1 for f in cf if f["outcome"].get("continuation_40")) / max(mit, 1) * 100
-            wins = sum(1 for f in cf if f["rr"].get("hit_target"))
-            losses_rr = sum(1 for f in cf if f["rr"].get("hit_stop"))
+            wins = sum(1 for f in cf if f.get("v4_real_hit_target", False))
+            losses_rr = sum(1 for f in cf if f.get("v4_real_hit_stop", False))
             rt = wins + losses_rr
             wr = wins / rt * 100 if rt > 0 else 0
-            profits = [f["rr"]["net_profit_R"] for f in cf
-                       if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profits = [f.get("v4_real_pnl_R", 0.0) for f in cf
+                       if "v4_real_result" in f]
             net_exp = sum(profits) / len(profits) if profits else 0
             warn = "⚠️" if n < 30 else ""
             L(f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {mit_pct:>5.1f} | {inv_pct:>5.1f} | "
@@ -1270,8 +1293,8 @@ def build_report(all_coin_data, results_data, fileobj=None):
             def _stats(grp):
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f["rr"]["net_profit_R"] for f in grp
-                         if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp
+                         if "v4_real_result" in f]
                 ne = sum(profs) / len(profs) if profs else 0
                 return n, mit, ne
 
@@ -1304,11 +1327,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
             mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
             mit_count = sum(1 for f in grp if f["outcome"]["mitigated"])
             cont10 = sum(1 for f in grp if f["outcome"].get("continuation_10")) / max(mit_count, 1) * 100
-            wins = sum(1 for f in grp if f["rr"].get("hit_target"))
-            losses_rr = sum(1 for f in grp if f["rr"].get("hit_stop"))
+            wins = sum(1 for f in grp if f.get("v4_real_hit_target", False))
+            losses_rr = sum(1 for f in grp if f.get("v4_real_hit_stop", False))
             rt = wins + losses_rr
             wr = wins / rt * 100 if rt > 0 else 0
-            profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
             warn = "⚠️" if n < 30 else ""
             L(f"| {cat:<13s} | {grp_name:<9s} | {n:>4d} | {mit:>5.1f} | {cont10:>5.1f} | "
@@ -1350,13 +1373,13 @@ def build_report(all_coin_data, results_data, fileobj=None):
             for f in coin_data["fvgs"]:
                 if f["category"] == cat:
                     groups[f.get("bos_mss", {}).get("group", "NONE")].append(f)
-        none_profs = [f["rr"]["net_profit_R"] for f in groups.get("NONE", [])
-                      if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+        none_profs = [f.get("v4_real_pnl_R", 0.0) for f in groups.get("NONE", [])
+                      if "v4_real_result" in f]
         none_ci = bootstrap_ci(none_profs) if len(none_profs) >= 3 else (None, None, None)
         for grp_name in ["BOS_ONLY", "MSS_ONLY", "BOTH"]:
             grp = groups.get(grp_name, [])
-            grp_profs = [f["rr"]["net_profit_R"] for f in grp
-                         if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            grp_profs = [f.get("v4_real_pnl_R", 0.0) for f in grp
+                         if "v4_real_result" in f]
             grp_ci = bootstrap_ci(grp_profs) if len(grp_profs) >= 3 else (None, None, None)
             if none_ci[0] is None or grp_ci[0] is None:
                 L(f"| {cat:<13s} | {grp_name:<9s} | YETERSIZ ORNEKLEM |")
@@ -1369,6 +1392,44 @@ def build_report(all_coin_data, results_data, fileobj=None):
             L(f"| {cat:<13s} | {grp_name:<9s} | NONE(n={len(none_profs)}): {none_ci[2]:>+.2f}R "
               f"[{none_ci[0]:>+.2f}, {none_ci[1]:>+.2f}] | {grp_name}(n={len(grp_profs)}): "
               f"{grp_ci[2]:>+.2f}R [{grp_ci[0]:>+.2f}, {grp_ci[1]:>+.2f}] | {verdict} |")
+    L("")
+
+    # ═══════════════════════════════════════════════════
+    # BOLUM 6d: BSL/SSL Sweep Kirilimi
+    # ═══════════════════════════════════════════════════
+    L("---")
+    L("")
+    L("## 6d. BSL/SSL Sweep Analizi (swept_high / swept_low × Kategori)")
+    L("")
+    L("| Kategori | Sweep Tipi | N | Mit% | RR_WR% | NetExp | n<30? |")
+    L("|---|---|---|---|---|---|---|")
+    for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
+        for sweep_label, sweep_key in [("SWEPT_HIGH (SSL)", "swept_high"),
+                                         ("SWEPT_LOW (BSL)", "swept_low"),
+                                         ("NO_SWEEP", None)]:
+            grp = []
+            for coin_data in all_coin_data.values():
+                for f in coin_data["fvgs"]:
+                    if f["category"] != cat:
+                        continue
+                    sw = f.get("sweep", {})
+                    if sweep_key is None:
+                        if not sw.get("swept_high") and not sw.get("swept_low"):
+                            grp.append(f)
+                    elif sw.get(sweep_key):
+                        grp.append(f)
+            n = len(grp)
+            if n == 0:
+                continue
+            mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / n * 100
+            wins = sum(1 for f in grp if f.get("v4_real_hit_target", False))
+            losses_rr = sum(1 for f in grp if f.get("v4_real_hit_stop", False))
+            rt = wins + losses_rr
+            wr = wins / rt * 100 if rt > 0 else 0
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
+            ne = sum(profs) / len(profs) if profs else 0
+            warn = "⚠️" if n < 30 else ""
+            L(f"| {cat:<13s} | {sweep_label:<16s} | {n:>4d} | {mit:>5.1f} | {wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |")
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1391,7 +1452,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = cats.get(cat, [])
             n = len(cf)
-            profs = [f["rr"]["net_profit_R"] for f in cf if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in cf if "v4_real_result" in f]
             ci = bootstrap_ci(profs) if len(profs) >= 3 else (None, None, None)
             if ci[0] is not None:
                 row.append(f"{ci[2]:>+.2f}R")
@@ -1425,7 +1486,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = cats.get(cat, [])
             n = len(cf)
-            profs = [f["rr"]["net_profit_R"] for f in cf if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in cf if "v4_real_result" in f]
             ci = bootstrap_ci(profs) if len(profs) >= 3 else (None, None, None)
             if ci[0] is None:
                 L(f"- **{cat}:** n={n}, yetersiz orneklem")
@@ -1523,7 +1584,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
             mit = sum(1 for f in grp if f.get("rr", {}).get("touched")) / n * 100
             touched = sum(1 for f in grp if f.get("rr", {}).get("touched"))
             cont = sum(1 for f in grp if f.get("rr", {}).get("continuation_10")) / max(touched, 1) * 100
-            profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
             L(f"| {cat:<13s} | Q{qi+1}({lo:.2f}-{hi:.2f}) | {n:>4d} | {mit:>5.1f} | {cont:>5.1f} | {ne:>+6.2f}R |")
     L("")
@@ -1558,7 +1619,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 continue
             cont10 = sum(1 for f in grp if f["rr"].get("continuation_10")) / n * 100
             cont40 = sum(1 for f in grp if f["rr"].get("continuation_40")) / n * 100
-            profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
             row.extend([f"{n}", f"{cont10:.1f}", f"{cont40:.1f}", f"{ne:+.2f}R"])
         L("| " + " | ".join(row) + " |")
@@ -1683,7 +1744,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
             def _fvg_stats(grp):
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
                 ne = sum(profs) / len(profs) if profs else 0
                 return n, mit, ne
             en, em, ee = _fvg_stats(el)
@@ -1721,7 +1782,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 grp = by_month[month]
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
                 ne = sum(profs) / len(profs) if profs else 0
                 L(f"| {sym:<8s} | {cat:<13s} | {month:>2d} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
     L("")
@@ -1748,7 +1809,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 grp = by_q[q]
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
                 ne = sum(profs) / len(profs) if profs else 0
                 L(f"| {sym:<8s} | {cat:<13s} | Q{q} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
     L("")
@@ -1776,7 +1837,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = cats.get(cat, [])
             n = len(cf)
-            profs = [f["rr"]["net_profit_R"] for f in cf if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in cf if "v4_real_result" in f]
             ci = bootstrap_ci(profs) if len(profs) >= 3 else (None, None, None)
             if ci[2] is not None and ci[2] > best_exp and n >= 30 and ci[0] > 0:
                 best_exp = ci[2]
@@ -1803,7 +1864,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
             by_month[f.get("month", 0)].append(f)
         month_means = {}
         for m, grp in by_month.items():
-            profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("net_profit_R") is not None]
+            profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             if len(profs) >= MIN_MONTH_FVGS:
                 month_means[m] = sum(profs) / len(profs)
         best_m = max(month_means, key=month_means.get) if month_means else 0

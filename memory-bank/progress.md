@@ -31,10 +31,15 @@
 - V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
 
 ## ✅ Fixed
-- **KRİTİK #1 (2026-07-08):** Derinlik filtresi entry-karar bloğundan kaldırıldı — look-ahead bias giderildi. Section 12 DEPTH sütunu tüm coin'lerde 0.
-- **KRİTİK #2 (2026-07-08):** Section 16 Öneri mantığı `ci[0] > 0` ile düzeltildi (Section 7 ile tutarlı). `_EXPIRY_MAP` default 45→5.
-- **ORTA (2026-07-08):** Coin-bazlı `expiry_bars` veri akışına eklendi — BTC/BNB/SOL=45b, diğerleri=5b.
-- **HAFİF (2026-07-08):** `v4_rejected` atamaları "ilk red kazanır" mantığına çevrildi.
+- **Phase 1 (2026-07-08):**
+  - **KRİTİK #1:** Derinlik filtresi entry-karar bloğundan kaldırıldı — look-ahead bias giderildi. Section 12 DEPTH sütunu tüm coin'lerde 0.
+  - **KRİTİK #2:** Section 16 Öneri mantığı `ci[0] > 0` ile düzeltildi (Section 7 ile tutarlı). `_EXPIRY_MAP` default 45→5.
+  - **ORTA:** Coin-bazlı `expiry_bars` veri akışına eklendi — BTC/BNB/SOL=45b, diğerleri=5b.
+  - **HAFİF:** `v4_rejected` atamaları "ilk red kazanır" mantığına çevrildi.
+- **Phase 2 (2026-07-08):**
+  - **Madde 1 (REAL TRADE):** `simulate_rr_new` → gerçek trade verisi. `trade_uid`/`fvg_by_uid` ile FVG→trade bağlantısı, trade çıkışında `v4_real_*` yazma, raporda `f["rr"]`→`f["v4_real_result"]` (~15 blok).
+  - **Madde 2 (BOS/MSS):** `detect_bos_mss`'de `wt`→`trend` düzeltmesi — post-window yanlış etiketleme hatası giderildi.
+  - **Madde 3 (Section 6d):** BSL/SSL sweep analizi rapora eklendi (önceden hesaplanıp yazılmayan veri).
 - Section 7 "Öneri" mantığı: `not (ci[1] < 0 or ci[0] > 0)` → `ci[0] > 0`
 - `cumulative_mit_curve`: payda `len(fvgs)` → `len(mit_times)`, DR threshold total*0.05
 - `RSM reset`: filtreden geçmeyen FVG'lerde reset eklenerek kopya FVG önlendi
@@ -45,7 +50,7 @@
 - `BestMonth/WorstMonth`: tüm FVG ortalaması + min 5 örneklem
 - `cbdr_width zero division`: guard eklendi
 
-## 📊 Backtest Results (13 coin) — 2026-07-08 (post-fix)
+## 📊 Backtest Results (13 coin) — 2026-07-08 (Phase 1+2, 593s, 12,337 trade)
 | Coin | Trades | WR% | PF | PnL | FVG |
 |---|---|---|---|---|---|
 | BTCUSDT | 2,304 | 37.2% | 2.23 | +31,749 | 5,599 |
