@@ -1,8 +1,8 @@
 # FVG Profile V4 — V4 Engine ile Kapsamli FVG Karakteristik Profili
 **Session:** MULTI_SESSION (her coin kendi session'inda — DEFAULT/REAL_CBDR/ASIA_RANGE)
 **Engine:** V4 (live-identical) — Sweep → RSM → Quality → Entry → Trailing
-**Coinler:** BTCUSDT, ETHUSDT
-**Tarih:** 2026-07-06 19:47
+**Coinler:** BTCUSDT, BNBUSDT, SOLUSDT, AVAXUSDT, LINKUSDT, XRPUSDT, ATOMUSDT, ADAUSDT, APTUSDT, DOTUSDT, NEARUSDT, ETHUSDT, SUIUSDT
+**Tarih:** 2026-07-07 01:16
 
 ---
 
@@ -10,8 +10,19 @@
 
 | Coin | Trades | WIN | BE | LOSS | WR% | BE+% | PF | MaxDD% | PnL |
 |--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
-| BTCUSDT  |    982 |  414 | 212 |  356 | 42.2% | 63.7% | 2.68 |  8.31% |   +18677 |
-| ETHUSDT  |   1689 |  626 | 435 |  628 | 37.1% | 62.8% | 2.15 | 13.84% |   +19395 |
+| BTCUSDT  |    419 |  169 |  83 |  167 | 40.3% | 60.1% | 3.39 |  6.04% |   +12895 |
+| BNBUSDT  |    555 |  301 |  87 |  167 | 54.2% | 69.9% | 6.41 |  5.07% |   +24078 |
+| SOLUSDT  |    765 |  318 | 174 |  273 | 41.6% | 64.3% | 2.38 |  5.14% |   +11274 |
+| AVAXUSDT |    983 |  460 | 171 |  352 | 46.8% | 64.2% | 3.03 |  5.69% |   +20474 |
+| LINKUSDT |    766 |  374 | 149 |  243 | 48.8% | 68.3% | 4.89 |  4.28% |   +27122 |
+| XRPUSDT  |    892 |  397 | 179 |  316 | 44.5% | 64.6% | 2.17 |  7.28% |   +11077 |
+| ATOMUSDT |    441 |  202 |  82 |  157 | 45.8% | 64.4% | 3.07 | 10.37% |   +12835 |
+| ADAUSDT  |    668 |  311 | 129 |  228 | 46.6% | 65.9% | 3.55 |  5.65% |   +19086 |
+| APTUSDT  |    960 |  451 | 177 |  332 | 47.0% | 65.4% | 2.80 |  5.91% |   +18743 |
+| DOTUSDT  |    708 |  292 | 157 |  259 | 41.2% | 63.4% | 3.06 |  4.12% |   +16115 |
+| NEARUSDT |    878 |  409 | 155 |  314 | 46.6% | 64.2% | 4.21 |  4.94% |   +29378 |
+| ETHUSDT  |    639 |  257 | 136 |  246 | 40.2% | 61.5% | 2.73 |  5.50% |   +12528 |
+| SUIUSDT  |    939 |  344 | 169 |  426 | 36.6% | 54.6% | 1.70 |  8.52% |    +8816 |
 
 ---
 
@@ -19,11 +30,41 @@
 
 | Coin | Kat | N | Mit% | Inv% | p50Bar | p90Bar | Cont@10% | Cont@40% | RR_WR% | NetExp | n<30? |
 |------|------|------|------|------|------|------|------|------|------|------|------|
-| BTCUSDT  | CONSOLIDATION | 1193 |   1.5 |  46.2 |   24 |   39 |   0.0 |   0.0 |   2.7 |  -1.11R |      |
-| BTCUSDT  | EXPANSION     |   31 |   0.0 |   0.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| BTCUSDT  | CONSOLIDATION | 2132 |   0.8 |  46.1 |   24 |   39 |   0.0 |   0.0 |   0.0 |  -1.14R |      |
+| BTCUSDT  | EXPANSION     |   32 |   0.0 |   0.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
 | BTCUSDT  | REJECTION     |    1 |   0.0 |   0.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
-| ETHUSDT  | CONSOLIDATION | 1017 |   4.3 |  54.0 |   45 |  109 |  68.2 |  15.9 |  36.5 |  -1.27R |      |
-| ETHUSDT  | EXPANSION     |   77 |   0.0 |  37.7 |    0 |    0 |   0.0 |   0.0 |   0.0 |  -1.27R |      |
+| BNBUSDT  | CONSOLIDATION | 4088 |   0.0 |  43.2 |    0 |    0 |   0.0 |   0.0 |   0.0 |  -1.76R |      |
+| BNBUSDT  | EXPANSION     |  156 |   0.0 |  37.2 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| SOLUSDT  | CONSOLIDATION | 4595 |   0.1 |  57.5 |   54 |   55 | 100.0 | 100.0 | 100.0 |  +1.80R |      |
+| SOLUSDT  | EXPANSION     |  243 |   0.0 |  69.5 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| AVAXUSDT | CONSOLIDATION | 4851 |   1.8 |  59.0 |  125 |  190 |  69.3 |   1.1 |  41.2 |  -0.29R |      |
+| AVAXUSDT | EXPANSION     |  773 |   0.0 |  75.5 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| LINKUSDT | CONSOLIDATION | 4531 |   6.2 |  47.3 |   57 |  103 |  72.0 |  74.8 |  40.9 |  -0.75R |      |
+| LINKUSDT | EXPANSION     |  142 |   0.0 |  46.5 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| LINKUSDT | REJECTION     |    1 |   0.0 | 100.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
+| XRPUSDT  | CONSOLIDATION | 4676 |   4.3 |  53.0 |   61 |  178 |  79.3 |  79.8 |  60.4 |  +0.04R |      |
+| XRPUSDT  | EXPANSION     |   13 |   0.0 |   7.7 |    0 |    0 |   0.0 |   0.0 |   0.0 |  -2.42R |   ⚠️ |
+| XRPUSDT  | REJECTION     |   38 |   0.0 |  21.1 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| ATOMUSDT | CONSOLIDATION | 3196 |   0.2 |  50.8 |   84 |   88 |   0.0 | 100.0 |  16.1 |  -0.87R |      |
+| ATOMUSDT | EXPANSION     |  343 |   0.0 |  59.2 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| ATOMUSDT | REJECTION     |   14 |   0.0 |  92.9 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
+| ADAUSDT  | CONSOLIDATION | 3323 |   1.2 |  58.1 |    2 |  118 |  56.4 |  33.3 |  37.7 |  -0.30R |      |
+| ADAUSDT  | EXPANSION     |  196 |   0.0 |  16.8 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| ADAUSDT  | REJECTION     |   61 |   0.0 | 100.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| APTUSDT  | CONSOLIDATION | 4720 |   2.8 |  50.0 |    2 |  125 |  67.2 |  53.7 |  31.4 |  -0.74R |      |
+| APTUSDT  | EXPANSION     |  357 |  12.9 |  50.7 |  176 |  194 |  78.3 |  13.0 |  50.5 |  +0.04R |      |
+| APTUSDT  | REJECTION     |   96 |   7.3 | 100.0 |    4 |    7 |   0.0 |   0.0 |  87.0 |  +1.06R |      |
+| DOTUSDT  | CONSOLIDATION | 3820 |   1.9 |  62.7 |    1 |  194 |  34.2 |  23.3 |  12.6 |  -1.49R |      |
+| DOTUSDT  | EXPANSION     |  574 |   0.0 |  70.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| DOTUSDT  | REJECTION     |    3 |   0.0 | 100.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
+| NEARUSDT | CONSOLIDATION | 4572 |   4.0 |  54.5 |   16 |  115 |  47.0 |  56.4 |  48.6 |  -0.44R |      |
+| NEARUSDT | EXPANSION     |  453 |   0.0 |  71.1 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| NEARUSDT | REJECTION     |   32 |   0.0 | 100.0 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| ETHUSDT  | CONSOLIDATION | 3664 |   1.5 |  51.8 |    2 |   79 |  36.4 |  50.9 |  40.3 |  -1.20R |      |
+| ETHUSDT  | EXPANSION     |  268 |   1.9 |  56.7 |    1 |    3 |   0.0 | 100.0 |  12.5 |  -0.89R |      |
+| SUIUSDT  | CONSOLIDATION | 5822 |   0.7 |  47.8 |    1 |   22 |  34.2 |   5.3 |  46.7 |  -0.62R |      |
+| SUIUSDT  | EXPANSION     |  463 |   0.0 |  43.2 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| SUIUSDT  | REJECTION     |   51 |   0.0 |  90.2 |    0 |    0 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
 
 ---
 
@@ -34,16 +75,57 @@
 | Coin | Kategori | N_mit | p25 | p50 | p75 | p90 | Ortalama |
 |------|------|------|------|------|------|------|------|
 | BTCUSDT  | CONSOLIDATION |    18 |   16 |   24 |   28 |   39 |   27.4 |
-| ETHUSDT  | CONSOLIDATION |    44 |   12 |   45 |   92 |  109 |   51.7 |
+| SOLUSDT  | CONSOLIDATION |     4 |   52 |   54 |   55 |   55 |   53.0 |
+| AVAXUSDT | CONSOLIDATION |    88 |  103 |  125 |  177 |  190 |  128.5 |
+| LINKUSDT | CONSOLIDATION |   282 |    9 |   57 |   88 |  103 |   52.1 |
+| XRPUSDT  | CONSOLIDATION |   203 |   16 |   61 |  100 |  178 |   68.1 |
+| ATOMUSDT | CONSOLIDATION |     6 |   82 |   84 |   85 |   88 |   83.8 |
+| ADAUSDT  | CONSOLIDATION |    39 |    0 |    2 |    6 |  118 |   19.7 |
+| APTUSDT  | CONSOLIDATION |   134 |    0 |    2 |   99 |  125 |   36.0 |
+| APTUSDT  | EXPANSION     |    46 |  164 |  176 |  187 |  194 |  175.5 |
+| APTUSDT  | REJECTION     |     7 |    2 |    4 |    6 |    7 |    4.0 |
+| DOTUSDT  | CONSOLIDATION |    73 |    0 |    1 |  185 |  194 |   50.9 |
+| NEARUSDT | CONSOLIDATION |   181 |    2 |   16 |  101 |  115 |   42.0 |
+| ETHUSDT  | CONSOLIDATION |    55 |    0 |    2 |   16 |   79 |   20.2 |
+| ETHUSDT  | EXPANSION     |     5 |    0 |    1 |    2 |    3 |    1.2 |
+| SUIUSDT  | CONSOLIDATION |    38 |    0 |    1 |    2 |   22 |    7.0 |
 
 ### 2b. Kumulatif Mitigasyon Egrisi & Diminishing Returns
 
-| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | DR_nok |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 1 | 2 | 2 | 2b |
+| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | 150b | 200b | DR_nok |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTCUSDT  | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 1 | 1 | 2b |
 | BTCUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
-| ETHUSDT  | CONSOLIDATION | 0 | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 3 | 4 | 4 | 4 | 2b |
-| ETHUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| BNBUSDT  | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| BNBUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| SOLUSDT  | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 100b |
+| SOLUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| AVAXUSDT | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 2 | 2b |
+| AVAXUSDT | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| LINKUSDT | CONSOLIDATION | 1 | 1 | 1 | 1 | 2 | 2 | 2 | 3 | 4 | 5 | 6 | 6 | 2b |
+| LINKUSDT | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| XRPUSDT  | CONSOLIDATION | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 2 | 3 | 3 | 4 | 4 | 2b |
+| XRPUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| XRPUSDT  | REJECTION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| ATOMUSDT | CONSOLIDATION | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 150b |
+| ATOMUSDT | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| ATOMUSDT | REJECTION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| ADAUSDT  | CONSOLIDATION | 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 2b |
+| ADAUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| ADAUSDT  | REJECTION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| APTUSDT  | CONSOLIDATION | 1 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 3 | 3 | 2b |
+| APTUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 13 | 200b |
+| APTUSDT  | REJECTION     | 0 | 1 | 2 | 4 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 20b |
+| DOTUSDT  | CONSOLIDATION | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 2 | 2b |
+| DOTUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| NEARUSDT | CONSOLIDATION | 1 | 1 | 1 | 1 | 2 | 2 | 2 | 3 | 3 | 3 | 4 | 4 | 2b |
+| NEARUSDT | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| NEARUSDT | REJECTION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| ETHUSDT  | CONSOLIDATION | 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 2 | 2b |
+| ETHUSDT  | EXPANSION     | 1 | 1 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2b |
+| SUIUSDT  | CONSOLIDATION | 0 | 0 | 0 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 2b |
+| SUIUSDT  | EXPANSION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
+| SUIUSDT  | REJECTION     | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 200b |
 
 ### 2c. Kosullu Iptal Esigi (Cancel Threshold)
 
@@ -53,15 +135,54 @@ P(mitigate | henuz mitigate olmadi VE N bar gecti)
 |---|---|---|---|---|---|---|---|---|---|
 | BTCUSDT  | CONSOLIDATION | 1% | 1% | 1% | 0% | 0% | 0% | 0% | 0% |
 | BTCUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
-| ETHUSDT  | CONSOLIDATION | 4% | 3% | 3% | 3% | 2% | 1% | 1% | 0% |
+| BNBUSDT  | CONSOLIDATION | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| BNBUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| SOLUSDT  | CONSOLIDATION | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| SOLUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| AVAXUSDT | CONSOLIDATION | 2% | 2% | 2% | 2% | 2% | 2% | 1% | 0% |
+| AVAXUSDT | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| LINKUSDT | CONSOLIDATION | 5% | 5% | 4% | 4% | 3% | 3% | 1% | 0% |
+| LINKUSDT | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| XRPUSDT  | CONSOLIDATION | 4% | 3% | 3% | 3% | 3% | 2% | 1% | 1% |
+| XRPUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| XRPUSDT  | REJECTION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ATOMUSDT | CONSOLIDATION | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ATOMUSDT | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ATOMUSDT | REJECTION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ADAUSDT  | CONSOLIDATION | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ADAUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ADAUSDT  | REJECTION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| APTUSDT  | CONSOLIDATION | 1% | 1% | 1% | 1% | 1% | 1% | 1% | 0% |
+| APTUSDT  | EXPANSION     | 13% | 13% | 13% | 13% | 13% | 13% | 13% | 13% |
+| APTUSDT  | REJECTION     | 3% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| DOTUSDT  | CONSOLIDATION | 1% | 1% | 1% | 1% | 1% | 1% | 1% | 1% |
+| DOTUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| NEARUSDT | CONSOLIDATION | 3% | 2% | 2% | 2% | 1% | 1% | 1% | 0% |
+| NEARUSDT | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| NEARUSDT | REJECTION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| ETHUSDT  | CONSOLIDATION | 1% | 1% | 0% | 0% | 0% | 0% | 0% | 0% |
 | ETHUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| SUIUSDT  | CONSOLIDATION | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| SUIUSDT  | EXPANSION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
+| SUIUSDT  | REJECTION     | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
 
 ### 2d. Onerilen Iptal Esigi (diminishing returns noktasi)
 
 | Coin | CONS | EXP | REJ |
 |---|---|---|---|
 | BTCUSDT  |   2b | 200b |  N/A |
-| ETHUSDT  |   2b | 200b |  N/A |
+| BNBUSDT  | 200b | 200b |  N/A |
+| SOLUSDT  | 100b | 200b |  N/A |
+| AVAXUSDT |   2b | 200b |  N/A |
+| LINKUSDT |   2b | 200b |  N/A |
+| XRPUSDT  |   2b | 200b | 200b |
+| ATOMUSDT | 150b | 200b | 200b |
+| ADAUSDT  |   2b | 200b | 200b |
+| APTUSDT  |   2b | 200b |  20b |
+| DOTUSDT  |   2b | 200b |  N/A |
+| NEARUSDT |   2b | 200b | 200b |
+| ETHUSDT  |   2b |   2b |  N/A |
+| SUIUSDT  |   2b | 200b | 200b |
 
 ---
 
@@ -71,16 +192,27 @@ P(mitigate | henuz mitigate olmadi VE N bar gecti)
 
 | Coin | Kons. medyan | Kons. p75 | Exp. medyan | Exp. p75 | Rej. medyan | Rej. p75 |
 |---|---|---|---|---|---|---|
-| BTCUSDT  | 0.16 | 0.42 | 0.62 | 0.66 | 0.48 | 0.48 |
-| ETHUSDT  | 0.17 | 0.40 | 0.38 | 0.51 | - | - |
+| BTCUSDT  | 0.19 | 0.38 | 0.60 | 0.63 | 0.48 | 0.48 |
+| BNBUSDT  | 0.13 | 0.25 | 0.22 | 0.29 | - | - |
+| SOLUSDT  | 0.19 | 0.45 | 0.13 | 0.15 | - | - |
+| AVAXUSDT | 0.45 | 1.16 | 0.82 | 1.05 | - | - |
+| LINKUSDT | 0.30 | 0.65 | 0.51 | 0.82 | 0.83 | 0.83 |
+| XRPUSDT  | 0.08 | 0.23 | 1.12 | 1.18 | 25.90 | 28.21 |
+| ATOMUSDT | 0.45 | 0.87 | 1.45 | 2.17 | 0.47 | 0.48 |
+| ADAUSDT  | 0.26 | 0.87 | 0.56 | 0.77 | 0.20 | 0.22 |
+| APTUSDT  | 0.39 | 1.18 | 0.56 | 2.83 | 0.28 | 1.14 |
+| DOTUSDT  | 0.38 | 1.04 | 0.56 | 1.32 | 0.04 | 0.04 |
+| NEARUSDT | 0.35 | 0.81 | 1.09 | 1.57 | 3.94 | 4.34 |
+| ETHUSDT  | 0.16 | 0.36 | 0.26 | 0.35 | - | - |
+| SUIUSDT  | 0.25 | 0.55 | 1.68 | 2.38 | 0.22 | 0.25 |
 
 ### 3b. gap/ATR × Kategori (2×3 tablosu — mitigasyon orani)
 
 | FVG Boyutu | CONS Mit% | EXP Mit% | REJ Mit% |
 |---|---|---|---|
-| Kucuk (<0.5xATR) | 2.1% (n=1738) | 0.0% (n=61) | 0.0% (n=1) |
-| Orta (0.5-1.5xATR) | 2.1% (n=332) | 0.0% (n=36) | 0.0% (n=0) |
-| Buyuk (>1.5xATR) | 12.9% (n=140) | 0.0% (n=11) | 0.0% (n=0) |
+| Kucuk (<0.5xATR) | 2.2% (n=37428) | 2.6% (n=1742) | 3.6% (n=197) |
+| Orta (0.5-1.5xATR) | 2.1% (n=11449) | 0.4% (n=1336) | 0.0% (n=38) |
+| Buyuk (>1.5xATR) | 1.2% (n=5113) | 0.0% (n=935) | 0.0% (n=62) |
 
 ---
 
@@ -90,17 +222,88 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Coin | Kategori | Rejim | N | Mit% | MedBar | Cont@10% | NetExp |
 |---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION |  LOW |  183 |   6.6 |   27 |   0.0 |  -0.10R |
-| BTCUSDT  | CONSOLIDATION |  MID |  168 |   3.6 |   15 |   0.0 |  -0.14R |
-| BTCUSDT  | CONSOLIDATION | HIGH |  842 |   0.0 |    0 |   0.0 |  +0.00R |
-| BTCUSDT  | EXPANSION     |  LOW |   25 |   0.0 |    0 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  LOW |  251 |   4.8 |   27 |   0.0 |  -0.09R |
+| BTCUSDT  | CONSOLIDATION |  MID |  268 |   2.2 |   15 |   0.0 |  -0.07R |
+| BTCUSDT  | CONSOLIDATION | HIGH | 1613 |   0.0 |    0 |   0.0 |  +0.00R |
+| BTCUSDT  | EXPANSION     |  LOW |   23 |   0.0 |    0 |   0.0 |  +0.00R |
+| BTCUSDT  | EXPANSION     |  MID |    5 |   0.0 |    0 |   0.0 |  +0.00R |
 | BTCUSDT  | EXPANSION     | HIGH |    4 |   0.0 |    0 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION |  LOW |  162 |   0.6 |    2 |   0.0 |  -0.02R |
-| ETHUSDT  | CONSOLIDATION |  MID |  226 |   3.1 |   19 |  71.4 |  -0.19R |
-| ETHUSDT  | CONSOLIDATION | HIGH |  629 |   5.7 |   61 |  69.4 |  -0.14R |
-| ETHUSDT  | EXPANSION     |  LOW |   20 |   0.0 |    0 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     |  MID |   23 |   0.0 |    0 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     | HIGH |   34 |   0.0 |    0 |   0.0 |  -0.07R |
+| BNBUSDT  | CONSOLIDATION |  LOW |  134 |   0.0 |    0 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  MID |  320 |   0.0 |    0 |   0.0 |  -0.09R |
+| BNBUSDT  | CONSOLIDATION | HIGH | 3634 |   0.0 |    0 |   0.0 |  -0.01R |
+| BNBUSDT  | EXPANSION     |  LOW |   31 |   0.0 |    0 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     |  MID |   68 |   0.0 |    0 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     | HIGH |   57 |   0.0 |    0 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  LOW | 1155 |   0.3 |   54 | 100.0 |  +0.01R |
+| SOLUSDT  | CONSOLIDATION |  MID |  888 |   0.0 |    0 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | HIGH | 2552 |   0.0 |    0 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     |  LOW |  135 |   0.0 |    0 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     |  MID |   63 |   0.0 |    0 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | HIGH |   45 |   0.0 |    0 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  LOW | 2965 |   0.3 |  194 |   0.0 |  -0.01R |
+| AVAXUSDT | CONSOLIDATION |  MID |  901 |   0.8 |  186 |  14.3 |  -0.04R |
+| AVAXUSDT | CONSOLIDATION | HIGH |  985 |   7.3 |  117 |  83.3 |  +0.03R |
+| AVAXUSDT | EXPANSION     |  LOW |  640 |   0.0 |    0 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  MID |   64 |   0.0 |    0 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | HIGH |   69 |   0.0 |    0 |   0.0 |  +0.00R |
+| LINKUSDT | CONSOLIDATION |  LOW | 1737 |   3.0 |    0 |  26.9 |  -0.06R |
+| LINKUSDT | CONSOLIDATION |  MID | 1215 |  11.9 |   42 |  99.3 |  -0.15R |
+| LINKUSDT | CONSOLIDATION | HIGH | 1579 |   5.4 |   94 |  53.5 |  -0.05R |
+| LINKUSDT | EXPANSION     |  LOW |  108 |   0.0 |    0 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  MID |   24 |   0.0 |    0 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | HIGH |   10 |   0.0 |    0 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION |  LOW |  592 |   0.0 |    0 |   0.0 |  +0.08R |
+| XRPUSDT  | CONSOLIDATION |  MID |  691 |   0.1 |    0 |   0.0 |  -0.03R |
+| XRPUSDT  | CONSOLIDATION | HIGH | 3393 |   6.0 |   61 |  79.7 |  -0.00R |
+| XRPUSDT  | EXPANSION     |  MID |   11 |   0.0 |    0 |   0.0 |  +0.00R |
+| XRPUSDT  | REJECTION     |  LOW |   24 |   0.0 |    0 |   0.0 |  +0.00R |
+| XRPUSDT  | REJECTION     |  MID |   14 |   0.0 |    0 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  LOW | 2172 |   0.0 |    0 |   0.0 |  -0.01R |
+| ATOMUSDT | CONSOLIDATION |  MID |  531 |   0.0 |    0 |   0.0 |  -0.01R |
+| ATOMUSDT | CONSOLIDATION | HIGH |  493 |   1.2 |   84 |   0.0 |  -0.04R |
+| ATOMUSDT | EXPANSION     |  LOW |  333 |   0.0 |    0 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | HIGH |   10 |   0.0 |    0 |   0.0 |  +0.00R |
+| ATOMUSDT | REJECTION     |  LOW |   14 |   0.0 |    0 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  LOW | 1506 |   0.4 |  119 |  16.7 |  -0.04R |
+| ADAUSDT  | CONSOLIDATION |  MID |  363 |   0.6 |  113 |   0.0 |  +0.03R |
+| ADAUSDT  | CONSOLIDATION | HIGH | 1454 |   2.1 |    1 |  67.7 |  -0.01R |
+| ADAUSDT  | EXPANSION     |  LOW |  148 |   0.0 |    0 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     |  MID |   44 |   0.0 |    0 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | HIGH |    4 |   0.0 |    0 |   0.0 |  +0.00R |
+| ADAUSDT  | REJECTION     |  LOW |   51 |   0.0 |    0 |   0.0 |  +0.00R |
+| ADAUSDT  | REJECTION     |  MID |   10 |   0.0 |    0 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION |  LOW | 3056 |   3.0 |    1 |  58.2 |  +0.01R |
+| APTUSDT  | CONSOLIDATION |  MID |  816 |   1.3 |  131 | 100.0 |  +0.01R |
+| APTUSDT  | CONSOLIDATION | HIGH |  848 |   3.8 |    2 |  81.2 |  -0.39R |
+| APTUSDT  | EXPANSION     |  LOW |  259 |  17.8 |  176 |  78.3 |  +0.20R |
+| APTUSDT  | EXPANSION     |  MID |   72 |   0.0 |    0 |   0.0 |  -0.66R |
+| APTUSDT  | EXPANSION     | HIGH |   26 |   0.0 |    0 |   0.0 |  +0.00R |
+| APTUSDT  | REJECTION     |  LOW |   96 |   7.3 |    4 |   0.0 |  +0.60R |
+| DOTUSDT  | CONSOLIDATION |  LOW | 2436 |   0.5 |    6 |  72.7 |  -0.05R |
+| DOTUSDT  | CONSOLIDATION |  MID |  638 |   5.5 |    0 |  34.3 |  -0.21R |
+| DOTUSDT  | CONSOLIDATION | HIGH |  746 |   3.6 |  185 |  18.5 |  -0.34R |
+| DOTUSDT  | EXPANSION     |  LOW |  556 |   0.0 |    0 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  MID |   18 |   0.0 |    0 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  LOW | 1829 |   0.0 |    0 |   0.0 |  -0.02R |
+| NEARUSDT | CONSOLIDATION |  MID |  814 |   0.0 |    0 |   0.0 |  -0.06R |
+| NEARUSDT | CONSOLIDATION | HIGH | 1929 |   9.4 |   16 |  47.0 |  -0.04R |
+| NEARUSDT | EXPANSION     |  LOW |  415 |   0.0 |    0 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  MID |   35 |   0.0 |    0 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | HIGH |    3 |   0.0 |    0 |   0.0 |  +0.00R |
+| NEARUSDT | REJECTION     |  LOW |   32 |   0.0 |    0 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  LOW |  404 |   3.2 |    0 |  15.4 |  -0.42R |
+| ETHUSDT  | CONSOLIDATION |  MID |  804 |   0.9 |    1 |  57.1 |  -0.24R |
+| ETHUSDT  | CONSOLIDATION | HIGH | 2456 |   1.4 |   12 |  40.0 |  -0.00R |
+| ETHUSDT  | EXPANSION     |  LOW |   26 |   0.0 |    0 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     |  MID |   89 |   0.0 |    0 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     | HIGH |  153 |   3.3 |    1 |   0.0 |  -0.09R |
+| SUIUSDT  | CONSOLIDATION |  LOW | 1903 |   0.5 |    0 |  22.2 |  +0.06R |
+| SUIUSDT  | CONSOLIDATION |  MID |  801 |   0.6 |   24 |   0.0 |  -0.08R |
+| SUIUSDT  | CONSOLIDATION | HIGH | 3118 |   0.8 |    1 |  45.8 |  -0.10R |
+| SUIUSDT  | EXPANSION     |  LOW |  407 |   0.0 |    0 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  MID |   56 |   0.0 |    0 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     |  LOW |   46 |   0.0 |    0 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     |  MID |    5 |   0.0 |    0 |   0.0 |  +0.00R |
 
 ---
 
@@ -108,11 +311,41 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Coin | Kategori | Haftaici N | Hftici Mit% | Hftici NetExp | Haftasonu N | Hftsonu Mit% | Hftsonu NetExp |
 |---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION |   888 |   2.0 |   -1.11R |   305 |   0.0 |   +0.00R |
-| BTCUSDT  | EXPANSION     |    27 |   0.0 |   +0.00R |     4 |   0.0 |   +0.00R |
+| BTCUSDT  | CONSOLIDATION |  1743 |   1.0 |   -1.14R |   389 |   0.0 |   +0.00R |
+| BTCUSDT  | EXPANSION     |    28 |   0.0 |   +0.00R |     4 |   0.0 |   +0.00R |
 | BTCUSDT  | REJECTION     |     1 |   0.0 |   +0.00R |     0 |   0.0 |   +0.00R |
-| ETHUSDT  | CONSOLIDATION |   729 |   5.5 |   -1.37R |   288 |   1.4 |   -0.69R |
-| ETHUSDT  | EXPANSION     |    52 |   0.0 |   -1.27R |    25 |   0.0 |   +0.00R |
+| BNBUSDT  | CONSOLIDATION |  3195 |   0.0 |   -1.76R |   893 |   0.0 |   -1.77R |
+| BNBUSDT  | EXPANSION     |   144 |   0.0 |   +0.00R |    12 |   0.0 |   +0.00R |
+| SOLUSDT  | CONSOLIDATION |  3009 |   0.1 |   +1.80R |  1586 |   0.0 |   +0.00R |
+| SOLUSDT  | EXPANSION     |   177 |   0.0 |   +0.00R |    66 |   0.0 |   +0.00R |
+| AVAXUSDT | CONSOLIDATION |  3648 |   1.8 |   +0.04R |  1203 |   1.9 |   -1.95R |
+| AVAXUSDT | EXPANSION     |   496 |   0.0 |   +0.00R |   277 |   0.0 |   +0.00R |
+| LINKUSDT | CONSOLIDATION |  3612 |   5.9 |   -0.37R |   919 |   7.4 |   -1.60R |
+| LINKUSDT | EXPANSION     |   113 |   0.0 |   +0.00R |    29 |   0.0 |   +0.00R |
+| LINKUSDT | REJECTION     |     0 |   0.0 |   +0.00R |     1 |   0.0 |   +0.00R |
+| XRPUSDT  | CONSOLIDATION |  3432 |   4.5 |   +0.19R |  1244 |   3.9 |   -0.21R |
+| XRPUSDT  | EXPANSION     |     1 |   0.0 |   -2.42R |    12 |   0.0 |   +0.00R |
+| XRPUSDT  | REJECTION     |    38 |   0.0 |   +0.00R |     0 |   0.0 |   +0.00R |
+| ATOMUSDT | CONSOLIDATION |  2069 |   0.0 |   -1.24R |  1127 |   0.5 |   +1.68R |
+| ATOMUSDT | EXPANSION     |   209 |   0.0 |   +0.00R |   134 |   0.0 |   +0.00R |
+| ATOMUSDT | REJECTION     |    14 |   0.0 |   +0.00R |     0 |   0.0 |   +0.00R |
+| ADAUSDT  | CONSOLIDATION |  2218 |   1.4 |   -0.27R |  1105 |   0.7 |   -1.02R |
+| ADAUSDT  | EXPANSION     |   127 |   0.0 |   +0.00R |    69 |   0.0 |   +0.00R |
+| ADAUSDT  | REJECTION     |    57 |   0.0 |   +0.00R |     4 |   0.0 |   +0.00R |
+| APTUSDT  | CONSOLIDATION |  3342 |   1.5 |   -1.11R |  1378 |   6.2 |   -0.15R |
+| APTUSDT  | EXPANSION     |   297 |   1.3 |   -1.07R |    60 |  70.0 |   +1.33R |
+| APTUSDT  | REJECTION     |    57 |  12.3 |   +1.06R |    39 |   0.0 |   +0.00R |
+| DOTUSDT  | CONSOLIDATION |  2472 |   3.0 |   -1.49R |  1348 |   0.0 |   +0.00R |
+| DOTUSDT  | EXPANSION     |   292 |   0.0 |   +0.00R |   282 |   0.0 |   +0.00R |
+| DOTUSDT  | REJECTION     |     3 |   0.0 |   +0.00R |     0 |   0.0 |   +0.00R |
+| NEARUSDT | CONSOLIDATION |  3234 |   5.6 |   -0.44R |  1338 |   0.1 |   -0.26R |
+| NEARUSDT | EXPANSION     |   351 |   0.0 |   +0.00R |   102 |   0.0 |   +0.00R |
+| NEARUSDT | REJECTION     |    32 |   0.0 |   +0.00R |     0 |   0.0 |   +0.00R |
+| ETHUSDT  | CONSOLIDATION |  2746 |   2.0 |   -1.42R |   918 |   0.1 |   +0.60R |
+| ETHUSDT  | EXPANSION     |   268 |   1.9 |   -0.89R |     0 |   0.0 |   +0.00R |
+| SUIUSDT  | CONSOLIDATION |  3979 |   0.7 |   -1.11R |  1843 |   0.5 |   +1.56R |
+| SUIUSDT  | EXPANSION     |   341 |   0.0 |   +0.00R |   122 |   0.0 |   +0.00R |
+| SUIUSDT  | REJECTION     |     5 |   0.0 |   +0.00R |    46 |   0.0 |   +0.00R |
 
 ---
 
@@ -120,23 +353,54 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Kategori | Yapi | N | Mit% | Cont@10% | RR_WR% | NetExp | n<30? |
 |---|---|---|---|---|---|---|---|
-| CONSOLIDATION | BOS_ONLY  |   54 |   0.0 |   0.0 | 100.0 |  -3.05R |      |
-| CONSOLIDATION | MSS_ONLY  |  972 |   4.2 |  31.7 |  21.4 |  -1.41R |      |
-| CONSOLIDATION | BOTH      | 1184 |   1.8 |  81.0 |  43.2 |  -0.68R |      |
-| EXPANSION     | BOS_ONLY  |   19 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
-| EXPANSION     | MSS_ONLY  |   19 |   0.0 |   0.0 |   0.0 |  -1.27R |   ⚠️ |
-| EXPANSION     | BOTH      |   70 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
-| REJECTION     | BOTH      |    1 |   0.0 |   0.0 |   0.0 |  +0.00R |   ⚠️ |
+| CONSOLIDATION | BOS_ONLY  | 2441 |   0.2 |  80.0 | 100.0 |  -2.55R |      |
+| CONSOLIDATION | MSS_ONLY  | 22159 |   1.8 |  61.5 |  25.0 |  -1.11R |      |
+| CONSOLIDATION | BOTH      | 29390 |   2.4 |  60.6 |  51.2 |  -0.21R |      |
+| EXPANSION     | BOS_ONLY  |  211 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| EXPANSION     | MSS_ONLY  | 1420 |   3.6 |  70.6 |  76.2 |  +0.70R |      |
+| EXPANSION     | BOTH      | 2382 |   0.0 |   0.0 |   0.0 |  -1.28R |      |
+| REJECTION     | MSS_ONLY  |  122 |   0.0 |   0.0 |   0.0 |  +0.00R |      |
+| REJECTION     | BOTH      |  175 |   4.0 |   0.0 |  87.0 |  +1.06R |      |
 
 ### 6b. Coin Bazli BOS/MSS Dagitimi
 
 | Coin | Kategori | N | NONE | BOS_ONLY | MSS_ONLY | BOTH | BOS+ MSS% |
 |---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION | 1193 |    0 |   34 |  451 |  708 | 100.0% |
-| BTCUSDT  | EXPANSION     |   31 |    0 |    0 |   14 |   17 | 100.0% |
+| BTCUSDT  | CONSOLIDATION | 2132 |    0 |   28 |  836 | 1268 | 100.0% |
+| BTCUSDT  | EXPANSION     |   32 |    0 |    0 |    8 |   24 | 100.0% |
 | BTCUSDT  | REJECTION     |    1 |    0 |    0 |    0 |    1 | 100.0% |
-| ETHUSDT  | CONSOLIDATION | 1017 |    0 |   20 |  521 |  476 | 100.0% |
-| ETHUSDT  | EXPANSION     |   77 |    0 |   19 |    5 |   53 | 100.0% |
+| BNBUSDT  | CONSOLIDATION | 4088 |    0 |  178 | 1629 | 2281 | 100.0% |
+| BNBUSDT  | EXPANSION     |  156 |    0 |    0 |   85 |   71 | 100.0% |
+| SOLUSDT  | CONSOLIDATION | 4595 |    0 |  246 | 2073 | 2276 | 100.0% |
+| SOLUSDT  | EXPANSION     |  243 |    0 |    0 |   74 |  169 | 100.0% |
+| AVAXUSDT | CONSOLIDATION | 4851 |    0 |  238 | 1946 | 2667 | 100.0% |
+| AVAXUSDT | EXPANSION     |  773 |    0 |    0 |  171 |  602 | 100.0% |
+| LINKUSDT | CONSOLIDATION | 4531 |    0 |  224 | 1441 | 2866 | 100.0% |
+| LINKUSDT | EXPANSION     |  142 |    0 |    0 |   94 |   48 | 100.0% |
+| LINKUSDT | REJECTION     |    1 |    0 |    0 |    0 |    1 | 100.0% |
+| XRPUSDT  | CONSOLIDATION | 4676 |    0 |  197 | 2035 | 2444 | 100.0% |
+| XRPUSDT  | EXPANSION     |   13 |    0 |   12 |    1 |    0 | 100.0% |
+| XRPUSDT  | REJECTION     |   38 |    0 |    0 |   38 |    0 | 100.0% |
+| ATOMUSDT | CONSOLIDATION | 3196 |    0 |  192 | 1058 | 1946 | 100.0% |
+| ATOMUSDT | EXPANSION     |  343 |    0 |   51 |  147 |  145 | 100.0% |
+| ATOMUSDT | REJECTION     |   14 |    0 |    0 |   14 |    0 | 100.0% |
+| ADAUSDT  | CONSOLIDATION | 3323 |    0 |  329 | 1250 | 1744 | 100.0% |
+| ADAUSDT  | EXPANSION     |  196 |    0 |    0 |  118 |   78 | 100.0% |
+| ADAUSDT  | REJECTION     |   61 |    0 |    0 |    0 |   61 | 100.0% |
+| APTUSDT  | CONSOLIDATION | 4720 |    0 |  175 | 1645 | 2900 | 100.0% |
+| APTUSDT  | EXPANSION     |  357 |    0 |    0 |  139 |  218 | 100.0% |
+| APTUSDT  | REJECTION     |   96 |    0 |    0 |   35 |   61 | 100.0% |
+| DOTUSDT  | CONSOLIDATION | 3820 |    0 |  227 | 1605 | 1988 | 100.0% |
+| DOTUSDT  | EXPANSION     |  574 |    0 |  113 |  296 |  165 | 100.0% |
+| DOTUSDT  | REJECTION     |    3 |    0 |    0 |    3 |    0 | 100.0% |
+| NEARUSDT | CONSOLIDATION | 4572 |    0 |  172 | 2028 | 2372 | 100.0% |
+| NEARUSDT | EXPANSION     |  453 |    0 |    0 |  121 |  332 | 100.0% |
+| NEARUSDT | REJECTION     |   32 |    0 |    0 |   32 |    0 | 100.0% |
+| ETHUSDT  | CONSOLIDATION | 3664 |    0 |  162 | 1534 | 1968 | 100.0% |
+| ETHUSDT  | EXPANSION     |  268 |    0 |   35 |   22 |  211 | 100.0% |
+| SUIUSDT  | CONSOLIDATION | 5822 |    0 |   73 | 3079 | 2670 | 100.0% |
+| SUIUSDT  | EXPANSION     |  463 |    0 |    0 |  144 |  319 | 100.0% |
+| SUIUSDT  | REJECTION     |   51 |    0 |    0 |    0 |   51 | 100.0% |
 
 ### 6c. Hipotez Testi: Teyitli (BOS/MSS) vs Teyitsiz (NONE)
 
@@ -156,8 +420,19 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Coin | CONS exp | CONS CI | EXP exp | EXP CI | REJ exp | REJ CI | Oneri |
 |---|---|---|---|---|---|---|---|
-| BTCUSDT  | -1.11R | [-1.21,-0.96] | N/A | N/A | N/A | N/A | BELIRSIZ |
-| ETHUSDT  | -1.27R | [-1.57,-0.97] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| BTCUSDT  | -1.14R | [-1.16,-1.11] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| BNBUSDT  | -1.76R | [-1.77,-1.75] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| SOLUSDT  | +1.80R | [+1.80,+1.80] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| AVAXUSDT | -0.29R | [-0.49,-0.05] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| LINKUSDT | -0.75R | [-0.94,-0.57] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| XRPUSDT  | +0.04R | [-0.11,+0.17] | N/A | N/A | N/A | N/A | CONSOLIDATION (+0.04R) |
+| ATOMUSDT | -0.87R | [-1.16,-0.56] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| ADAUSDT  | -0.30R | [-0.49,-0.08] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| APTUSDT  | -0.74R | [-0.88,-0.61] | +0.04R | [-0.25,+0.32] | +1.06R | [+0.79,+1.34] | EXPANSION (+0.04R) |
+| DOTUSDT  | -1.49R | [-1.65,-1.33] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| NEARUSDT | -0.44R | [-0.58,-0.28] | N/A | N/A | N/A | N/A | BELIRSIZ |
+| ETHUSDT  | -1.20R | [-1.40,-1.04] | -0.89R | [-1.27,-0.33] | N/A | N/A | BELIRSIZ |
+| SUIUSDT  | -0.62R | [-0.75,-0.48] | N/A | N/A | N/A | N/A | BELIRSIZ |
 
 ---
 
@@ -165,15 +440,81 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 ### BTCUSDT
 
-- **CONSOLIDATION:** n=1193, exp=-1.11R [-1.21, -0.96] — **negatif expectancy, kacinilmali**
-- **EXPANSION:** n=31, yetersiz orneklem
+- **CONSOLIDATION:** n=2132, exp=-1.14R [-1.16, -1.11] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=32, yetersiz orneklem
 - **REJECTION:** n=1, yetersiz orneklem
+
+### BNBUSDT
+
+- **CONSOLIDATION:** n=4088, exp=-1.76R [-1.77, -1.75] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=156, yetersiz orneklem
+- **REJECTION:** n=0, yetersiz orneklem
+
+### SOLUSDT
+
+- **CONSOLIDATION:** n=4595, exp=+1.80R [+1.80, +1.80] — **olumlu edge**
+- **EXPANSION:** n=243, yetersiz orneklem
+- **REJECTION:** n=0, yetersiz orneklem
+
+### AVAXUSDT
+
+- **CONSOLIDATION:** n=4851, exp=-0.29R [-0.49, -0.05] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=773, yetersiz orneklem
+- **REJECTION:** n=0, yetersiz orneklem
+
+### LINKUSDT
+
+- **CONSOLIDATION:** n=4531, exp=-0.75R [-0.94, -0.57] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=142, yetersiz orneklem
+- **REJECTION:** n=1, yetersiz orneklem
+
+### XRPUSDT
+
+- **CONSOLIDATION:** n=4676, exp=+0.04R [-0.11, +0.17] — sifiri kapsiyor, belirsiz
+- **EXPANSION:** n=13, yetersiz orneklem
+- **REJECTION:** n=38, yetersiz orneklem
+
+### ATOMUSDT
+
+- **CONSOLIDATION:** n=3196, exp=-0.87R [-1.16, -0.56] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=343, yetersiz orneklem
+- **REJECTION:** n=14, yetersiz orneklem
+
+### ADAUSDT
+
+- **CONSOLIDATION:** n=3323, exp=-0.30R [-0.49, -0.08] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=196, yetersiz orneklem
+- **REJECTION:** n=61, yetersiz orneklem
+
+### APTUSDT
+
+- **CONSOLIDATION:** n=4720, exp=-0.74R [-0.88, -0.61] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=357, exp=+0.04R [-0.25, +0.32] — sifiri kapsiyor, belirsiz
+- **REJECTION:** n=96, exp=+1.06R [+0.79, +1.34] — **olumlu edge**
+
+### DOTUSDT
+
+- **CONSOLIDATION:** n=3820, exp=-1.49R [-1.65, -1.33] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=574, yetersiz orneklem
+- **REJECTION:** n=3, yetersiz orneklem
+
+### NEARUSDT
+
+- **CONSOLIDATION:** n=4572, exp=-0.44R [-0.58, -0.28] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=453, yetersiz orneklem
+- **REJECTION:** n=32, yetersiz orneklem
 
 ### ETHUSDT
 
-- **CONSOLIDATION:** n=1017, exp=-1.27R [-1.57, -0.97] — **negatif expectancy, kacinilmali**
-- **EXPANSION:** n=77, yetersiz orneklem
+- **CONSOLIDATION:** n=3664, exp=-1.20R [-1.40, -1.04] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=268, exp=-0.89R [-1.27, -0.33] — **negatif expectancy, kacinilmali**
 - **REJECTION:** n=0, yetersiz orneklem
+
+### SUIUSDT
+
+- **CONSOLIDATION:** n=5822, exp=-0.62R [-0.75, -0.48] — **negatif expectancy, kacinilmali**
+- **EXPANSION:** n=463, yetersiz orneklem
+- **REJECTION:** n=51, yetersiz orneklem
 
 
 ---
@@ -184,34 +525,38 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Metrik | p25 | p50 | p75 | Ortalama |
 |---|---|---|---|---|
-| body_ratio           | +0.2810 | +0.4806 | +0.6716 | +0.4752 |
-| upper_wick_ratio     | +0.0898 | +0.2106 | +0.3727 | +0.2525 |
-| lower_wick_ratio     | +0.1044 | +0.2301 | +0.4144 | +0.2722 |
-| clv                  | -0.5090 | +0.0752 | +0.5794 | +0.0383 |
-| gap_atr_ratio        | +0.2454 | +0.4605 | +0.8135 | +0.6502 |
+| body_ratio           | +0.2640 | +0.4762 | +0.6739 | +0.4704 |
+| upper_wick_ratio     | +0.0821 | +0.1961 | +0.3721 | +0.2471 |
+| lower_wick_ratio     | +0.1064 | +0.2414 | +0.4286 | +0.2825 |
+| clv                  | -0.4888 | +0.0526 | +0.6059 | +0.0496 |
+| gap_atr_ratio        | +0.1861 | +0.3303 | +0.5769 | +0.5275 |
 
 ### 9b. Spearman Korelasyonu: C2 Metrikleri × Continuation
 
 | Metrik | Cont@10 rho | Cont@20 rho | Cont@40 rho |
 |---|---|---|---|
-| body_ratio           | -0.3379 | -0.3009 | -0.3314 |
-| upper_wick_ratio     | -0.3140 | -0.2507 | -0.2899 |
-| lower_wick_ratio     | -0.3608 | -0.3364 | -0.3101 |
-| clv                  | -0.3487 | -0.3246 | -0.3281 |
-| gap_atr_ratio        | -0.4982 | -0.4304 | -0.4251 |
+| body_ratio           | -0.0113 | -0.0172 | -0.0086 |
+| upper_wick_ratio     | +0.0019 | +0.0140 | +0.0127 |
+| lower_wick_ratio     | +0.0109 | +0.0050 | -0.0024 |
+| clv                  | +0.0132 | +0.0036 | +0.0076 |
+| gap_atr_ratio        | -0.1575 | -0.1298 | -0.1158 |
 
 ### 9c. Body_Ratio Quartile × Continuation (Kategori Bagimsiz)
 
 | Kategori | Body_Q | N | Mit% | Cont@10% | NetExp (rr_new) |
 |---|---|---|---|---|---|
-| CONSOLIDATION | Q1(0.18-0.53) |  553 |   6.7 |  45.9 |  -2.09R |
-| CONSOLIDATION | Q2(0.53-0.68) |  563 |   5.2 |   6.9 |  -2.26R |
-| CONSOLIDATION | Q3(0.68-0.81) |  554 |   9.9 |  40.0 |  -0.46R |
-| CONSOLIDATION | Q4(0.81-1.00) |  555 |   3.6 |  50.0 |  -0.27R |
-| EXPANSION     | Q1(0.26-0.55) |   30 |   0.0 |   0.0 |  +0.00R |
-| EXPANSION     | Q2(0.55-0.69) |   45 |   4.4 | 100.0 |  -1.27R |
-| EXPANSION     | Q3(0.69-0.70) |   34 |   0.0 |   0.0 |  +0.00R |
-| EXPANSION     | Q4(0.70-0.97) |   29 |   0.0 |   0.0 |  +0.00R |
+| CONSOLIDATION | Q1(0.07-0.55) | 13508 |   4.8 |  33.9 |  -0.80R |
+| CONSOLIDATION | Q2(0.55-0.70) | 13546 |   5.9 |  66.2 |  -1.16R |
+| CONSOLIDATION | Q3(0.70-0.81) | 13549 |   5.3 |  53.3 |  -0.70R |
+| CONSOLIDATION | Q4(0.81-1.00) | 13576 |   7.4 |  52.4 |  -0.22R |
+| EXPANSION     | Q1(0.11-0.45) | 1051 |   0.0 |   0.0 |  +0.00R |
+| EXPANSION     | Q2(0.45-0.60) | 1140 |   4.0 |   0.0 |  -1.31R |
+| EXPANSION     | Q3(0.60-0.77) | 1036 |   1.5 |  87.5 |  -0.89R |
+| EXPANSION     | Q4(0.77-1.00) | 1006 |   4.6 |  78.3 |  +1.33R |
+| REJECTION     | Q1(0.59-0.63) |   77 |   0.0 |   0.0 |  +0.00R |
+| REJECTION     | Q2(0.63-0.74) |  127 |   0.0 |   0.0 |  +0.00R |
+| REJECTION     | Q3(0.74-0.82) |  120 |  45.0 |  87.0 |  +1.06R |
+| REJECTION     | Q4(0.82-0.91) |  115 |  47.0 |  87.0 |  +1.06R |
 
 ---
 
@@ -219,12 +564,12 @@ Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore L
 
 | Derinlik | WICK_ONLY N | WICK_ONLY Cont@10% | WICK_ONLY Cont@40% | WICK_ONLY NetExp | BODY_CLOSE N | BODY_CLOSE Cont@10% | BODY_CLOSE Cont@40% | BODY_CLOSE NetExp |
 |---|---|---|---|---|---|---|---|---|
-| 0-25% | 507 | 71.6 | 59.0 | +1.26R | 27 | 33.3 | 44.4 | +1.36R |
-| 25-50% | 508 | 72.0 | 62.0 | +1.29R | 92 | 64.1 | 54.3 | +1.39R |
-| 50-75% | 402 | 67.9 | 61.2 | +1.21R | 150 | 70.0 | 46.7 | +1.48R |
-| 75-100% | 354 | 72.6 | 59.6 | +1.19R | 253 | 75.5 | 65.2 | +1.53R |
-| 100-150% | 1497 | 32.1 | 40.1 | -0.66R | 580 | 62.6 | 54.3 | +0.90R |
-| >150% | 4710 | 31.9 | 40.0 | -1.48R | 582 | 54.6 | 48.5 | +0.06R |
+| 0-25% | 12201 | 67.6 | 59.3 | +1.46R | 881 | 56.8 | 50.3 | +1.53R |
+| 25-50% | 8075 | 70.7 | 61.8 | +1.53R | 1641 | 64.0 | 49.6 | +1.68R |
+| 50-75% | 6209 | 67.6 | 59.3 | +1.43R | 2624 | 54.2 | 51.6 | +1.58R |
+| 75-100% | 4185 | 66.3 | 55.5 | +1.46R | 2756 | 68.4 | 58.6 | +1.67R |
+| 100-150% | 18549 | 38.0 | 39.1 | -0.22R | 8585 | 50.8 | 45.2 | +0.96R |
+| >150% | 108437 | 39.9 | 43.8 | -1.01R | 21717 | 50.2 | 48.4 | +0.13R |
 
 ---
 
@@ -235,9 +580,23 @@ Dusuk = hizli reaksiyon, yuksek = gecikmeli giris.
 
 | Coin | Kategori | N_touch | p25 | p50 | p75 | <=5b | <=10b | <=20b |
 |---|---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION |    37 |  17 |  27 |  55 |   2.7 |   5.4 |  29.7 |
-| ETHUSDT  | CONSOLIDATION |   104 |  11 |  46 |  98 |  15.4 |  24.0 |  38.5 |
-| ETHUSDT  | EXPANSION     |     2 |  10 |  12 |  12 |   0.0 |  50.0 | 100.0 |
+| BTCUSDT  | CONSOLIDATION |    37 |  20 |  28 |  48 |   2.7 |   2.7 |  27.0 |
+| BNBUSDT  | CONSOLIDATION |    39 | 103 | 113 | 123 |   2.6 |   2.6 |   2.6 |
+| SOLUSDT  | CONSOLIDATION |     4 |  52 |  54 |  55 |   0.0 |   0.0 |   0.0 |
+| AVAXUSDT | CONSOLIDATION |   148 |  61 |  96 | 132 |   6.1 |   8.1 |  14.9 |
+| LINKUSDT | CONSOLIDATION |   472 |  14 |  55 |  98 |  18.2 |  22.7 |  29.4 |
+| XRPUSDT  | CONSOLIDATION |   391 |  12 |  40 |  82 |  15.3 |  22.8 |  35.5 |
+| XRPUSDT  | EXPANSION     |     1 |   1 |   1 |   1 | 100.0 | 100.0 | 100.0 |
+| ATOMUSDT | CONSOLIDATION |    62 |  86 | 101 | 163 |   0.0 |   1.6 |   3.2 |
+| ADAUSDT  | CONSOLIDATION |   212 |  11 |  32 |  50 |  17.9 |  24.5 |  35.4 |
+| APTUSDT  | CONSOLIDATION |   393 |   3 |  74 | 113 |  28.5 |  33.6 |  39.7 |
+| APTUSDT  | EXPANSION     |    91 |  79 | 153 | 176 |   0.0 |   0.0 |   0.0 |
+| APTUSDT  | REJECTION     |    54 |  55 |  69 | 103 |  13.0 |  13.0 |  13.0 |
+| DOTUSDT  | CONSOLIDATION |   342 |   5 | 105 | 161 |  25.7 |  30.7 |  36.0 |
+| NEARUSDT | CONSOLIDATION |   368 |   4 |  15 |  38 |  29.1 |  40.2 |  59.5 |
+| ETHUSDT  | CONSOLIDATION |   303 |   8 |  53 | 127 |  21.5 |  28.4 |  38.3 |
+| ETHUSDT  | EXPANSION     |    16 |   2 |   5 |   9 |  56.2 |  87.5 | 100.0 |
+| SUIUSDT  | CONSOLIDATION |   405 |  16 |  46 | 118 |  15.8 |  21.2 |  28.9 |
 
 ---
 
@@ -247,16 +606,27 @@ V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.
 
 | Coin | Toplam FVG | ENTERED | FVG_QUALITY | FVG_VALIDITY | MIN_RISK | CBDR/SHOULD_TRADE | QTY_ZERO |
 |---|---|---|---|---|---|---|---|
-| BTCUSDT  |   6432 |    982 |   3096 |    998 |      8 |   1348 |      0 |
-| ETHUSDT  |   5576 |   1689 |   2765 |   1103 |     19 |      0 |      0 |
+| BTCUSDT  |  13349 |    419 |   6810 |   2593 |    313 |   3214 |      0 |
+| BNBUSDT  |  17969 |    555 |   9753 |   3268 |    393 |   4000 |      0 |
+| SOLUSDT  |  25251 |    765 |  17663 |   6145 |    678 |      0 |      0 |
+| AVAXUSDT |  26664 |    983 |  18332 |   6616 |    733 |      0 |      0 |
+| LINKUSDT |  22665 |    766 |  15483 |   4263 |    582 |   1571 |      0 |
+| XRPUSDT  |  27196 |    892 |  19673 |   5806 |    825 |      0 |      0 |
+| ATOMUSDT |  15448 |    441 |   9549 |   2037 |    361 |   3060 |      0 |
+| ADAUSDT  |  22911 |    668 |  14620 |   4797 |    639 |   2187 |      0 |
+| APTUSDT  |  25361 |    960 |  16109 |   6754 |    681 |    857 |      0 |
+| DOTUSDT  |  21164 |    708 |  14325 |   5504 |    627 |      0 |      0 |
+| NEARUSDT |  27234 |    878 |  20034 |   5559 |    763 |      0 |      0 |
+| ETHUSDT  |  20642 |    639 |  13428 |   5921 |    654 |      0 |      0 |
+| SUIUSDT  |  26068 |    939 |  18236 |   6151 |    742 |      0 |      0 |
 
 ---
 
 ## 13. Hipotez Testi: Derinlik × Continuation Iliskisi
 
-- **TUM FVG'ler** — Sig(<=50%, n=1137): 0.702 [0.681,0.726] | Derin(>50%, n=8525): 0.409 [0.398,0.422] | Sig > Derin (dusuk depth daha iyi)
-- **WICK_ONLY** — Sig(<=50%, n=1010): 0.716 [0.699,0.745] | Derin(>50%, n=6960): 0.361 [0.350,0.375] | Sig > Derin (dusuk depth daha iyi)
-- **BODY_CLOSE** — Sig(<=50%, n=118): 0.576 [0.483,0.644] | Derin(>50%, n=1565): 0.624 [0.601,0.649] | ANLAMLI FARK YOK
+- **TUM FVG'ler** — Sig(<=50%, n=23288): 0.681 [0.675,0.687] | Derin(>50%, n=172870): 0.437 [0.435,0.439] | Sig > Derin (dusuk depth daha iyi)
+- **WICK_ONLY** — Sig(<=50%, n=17571): 0.683 [0.675,0.689] | Derin(>50%, n=137304): 0.416 [0.413,0.418] | Sig > Derin (dusuk depth daha iyi)
+- **BODY_CLOSE** — Sig(<=50%, n=2508): 0.619 [0.600,0.638] | Derin(>50%, n=35566): 0.520 [0.515,0.524] | Sig > Derin (dusuk depth daha iyi)
 
 ---
 
@@ -264,11 +634,41 @@ V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.
 
 | Coin | Kategori | EL_N | EL_Mit% | EL_NetExp | Normal_N | Normal_Mit% | Normal_NetExp | Delta_Mit | Delta_Exp |
 |---|---|---|---|---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION |  238 |   0.0 |   -1.22R |  955 |   1.9 |   -1.10R |  -1.9 |   -0.12R |
-| BTCUSDT  | EXPANSION     |    0 |   0.0 |   +0.00R |   31 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| BTCUSDT  | CONSOLIDATION |  369 |   0.0 |   -1.22R | 1763 |   1.0 |   -1.13R |  -1.0 |   -0.08R |
+| BTCUSDT  | EXPANSION     |    0 |   0.0 |   +0.00R |   32 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
 | BTCUSDT  | REJECTION     |    0 |   0.0 |   +0.00R |    1 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
-| ETHUSDT  | CONSOLIDATION |  278 |   1.8 |   -1.35R |  739 |   5.3 |   -1.25R |  -3.5 |   -0.09R |
-| ETHUSDT  | EXPANSION     |   20 |   0.0 |   +0.00R |   57 |   0.0 |   -1.27R |  +0.0 |   +1.27R |
+| BNBUSDT  | CONSOLIDATION |   78 |   0.0 |   +0.00R | 4010 |   0.0 |   -1.76R |  +0.0 |   +1.76R |
+| BNBUSDT  | EXPANSION     |    7 |   0.0 |   +0.00R |  149 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| SOLUSDT  | CONSOLIDATION |  453 |   0.9 |   +1.80R | 4142 |   0.0 |   +0.00R |  +0.9 |   +1.80R |
+| SOLUSDT  | EXPANSION     |   44 |   0.0 |   +0.00R |  199 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| AVAXUSDT | CONSOLIDATION |  125 |   0.0 |   +0.00R | 4726 |   1.9 |   -0.29R |  -1.9 |   +0.29R |
+| AVAXUSDT | EXPANSION     |   31 |   0.0 |   +0.00R |  742 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| LINKUSDT | CONSOLIDATION |  105 |   5.7 |   -1.39R | 4426 |   6.2 |   -0.74R |  -0.5 |   -0.65R |
+| LINKUSDT | EXPANSION     |    3 |   0.0 |   +0.00R |  139 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| LINKUSDT | REJECTION     |    0 |   0.0 |   +0.00R |    1 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| XRPUSDT  | CONSOLIDATION |  566 |   0.9 |   -0.88R | 4110 |   4.8 |   +0.18R |  -3.9 |   -1.06R |
+| XRPUSDT  | EXPANSION     |    0 |   0.0 |   +0.00R |   13 |   0.0 |   -2.42R |  +0.0 |   +2.42R |
+| XRPUSDT  | REJECTION     |    0 |   0.0 |   +0.00R |   38 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| ATOMUSDT | CONSOLIDATION |  673 |   0.9 |   +0.54R | 2523 |   0.0 |   -1.28R |  +0.9 |   +1.81R |
+| ATOMUSDT | EXPANSION     |   89 |   0.0 |   +0.00R |  254 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| ATOMUSDT | REJECTION     |    6 |   0.0 |   +0.00R |    8 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| ADAUSDT  | CONSOLIDATION |  384 |   0.5 |   +0.00R | 2939 |   1.3 |   -0.38R |  -0.7 |   +0.38R |
+| ADAUSDT  | EXPANSION     |   33 |   0.0 |   +0.00R |  163 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| ADAUSDT  | REJECTION     |    1 |   0.0 |   +0.00R |   60 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| APTUSDT  | CONSOLIDATION |  136 |   1.5 |   +1.06R | 4584 |   2.9 |   -0.79R |  -1.4 |   +1.85R |
+| APTUSDT  | EXPANSION     |   23 |   0.0 |   +0.00R |  334 |  13.8 |   +0.04R | -13.8 |   -0.04R |
+| APTUSDT  | REJECTION     |    6 |   0.0 |   +1.45R |   90 |   7.8 |   +1.06R |  -7.8 |   +0.40R |
+| DOTUSDT  | CONSOLIDATION |  661 |   1.7 |   -2.14R | 3159 |   2.0 |   -1.40R |  -0.3 |   -0.74R |
+| DOTUSDT  | EXPANSION     |  122 |   0.0 |   +0.00R |  452 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| DOTUSDT  | REJECTION     |    0 |   0.0 |   +0.00R |    3 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| NEARUSDT | CONSOLIDATION |  158 |   0.0 |   -1.26R | 4414 |   4.1 |   -0.41R |  -4.1 |   -0.85R |
+| NEARUSDT | EXPANSION     |   14 |   0.0 |   +0.00R |  439 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| NEARUSDT | REJECTION     |    0 |   0.0 |   +0.00R |   32 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| ETHUSDT  | CONSOLIDATION |  665 |   1.1 |   -1.77R | 2999 |   1.6 |   -1.09R |  -0.5 |   -0.68R |
+| ETHUSDT  | EXPANSION     |   60 |   0.0 |   +0.00R |  208 |   2.4 |   -0.89R |  -2.4 |   +0.89R |
+| SUIUSDT  | CONSOLIDATION |  874 |   0.1 |   -0.44R | 4948 |   0.7 |   -0.66R |  -0.6 |   +0.22R |
+| SUIUSDT  | EXPANSION     |   79 |   0.0 |   +0.00R |  384 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
+| SUIUSDT  | REJECTION     |    0 |   0.0 |   +0.00R |   51 |   0.0 |   +0.00R |  +0.0 |   +0.00R |
 
 ---
 
@@ -278,57 +678,374 @@ V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.
 
 | Coin | Kategori | Ay | N | Mit% | NetExp |
 |---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION |  1 |  115 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  2 |  117 |  15.4 |  -1.07R |
-| BTCUSDT  | CONSOLIDATION |  3 |  106 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  4 |  180 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  5 |  154 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  6 |  147 |   0.0 |  -1.16R |
-| BTCUSDT  | CONSOLIDATION |  7 |  103 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  8 |   55 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION |  9 |   34 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION | 10 |   49 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION | 11 |   47 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION | 12 |   86 |   0.0 |  +0.00R |
-| BTCUSDT  | EXPANSION     |  5 |   18 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  1 |  242 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  2 |  244 |   7.4 |  -1.07R |
+| BTCUSDT  | CONSOLIDATION |  3 |  161 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  4 |  376 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  5 |  139 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  6 |  236 |   0.0 |  -1.22R |
+| BTCUSDT  | CONSOLIDATION |  7 |  203 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  8 |   77 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION |  9 |   68 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION | 10 |  120 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION | 11 |   93 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION | 12 |  173 |   0.0 |  +0.00R |
+| BTCUSDT  | EXPANSION     |  5 |   19 |   0.0 |  +0.00R |
 | BTCUSDT  | EXPANSION     |  6 |    9 |   0.0 |  +0.00R |
 | BTCUSDT  | EXPANSION     |  7 |    4 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION |  1 |   76 |   9.2 |  -0.56R |
-| ETHUSDT  | CONSOLIDATION |  2 |   98 |   0.0 |  -2.20R |
-| ETHUSDT  | CONSOLIDATION |  3 |   96 |   0.0 |  -5.11R |
-| ETHUSDT  | CONSOLIDATION |  4 |  118 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION |  5 |   82 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION |  6 |  115 |   1.7 |  -0.39R |
-| ETHUSDT  | CONSOLIDATION |  7 |   63 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION |  8 |   53 |  20.8 |  +1.11R |
-| ETHUSDT  | CONSOLIDATION |  9 |   75 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION | 10 |   40 |  22.5 |  +0.27R |
-| ETHUSDT  | CONSOLIDATION | 11 |   90 |  16.7 |  -1.94R |
-| ETHUSDT  | CONSOLIDATION | 12 |  111 |   0.0 |  -1.59R |
-| ETHUSDT  | EXPANSION     |  2 |   15 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     |  3 |    3 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     |  4 |   38 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     |  5 |   11 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     | 10 |    2 |   0.0 |  -1.27R |
-| ETHUSDT  | EXPANSION     | 12 |    8 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  1 |  415 |   0.0 |  -1.76R |
+| BNBUSDT  | CONSOLIDATION |  2 |  219 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  3 |  190 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  4 |  523 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  5 |  469 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  6 |  327 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  7 |  274 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  8 |  338 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION |  9 |  192 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION | 10 |  325 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION | 11 |  474 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION | 12 |  342 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     |  1 |   75 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     |  2 |   31 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     |  4 |    1 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     | 10 |   49 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  1 |  344 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  2 |  237 |   1.7 |  +1.80R |
+| SOLUSDT  | CONSOLIDATION |  3 |  869 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  4 |  585 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  5 |  555 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  6 |  633 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  7 |  317 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  8 |  223 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION |  9 |  206 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | 10 |  249 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | 11 |  151 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | 12 |  226 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     |  6 |  108 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     |  9 |   66 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | 10 |   68 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | 12 |    1 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  1 |  632 |  12.5 |  +0.25R |
+| AVAXUSDT | CONSOLIDATION |  2 |  265 |   1.5 |  +1.48R |
+| AVAXUSDT | CONSOLIDATION |  3 |  488 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  4 |  335 |   1.5 |  -1.00R |
+| AVAXUSDT | CONSOLIDATION |  5 |  657 |   0.0 |  -1.22R |
+| AVAXUSDT | CONSOLIDATION |  6 |  392 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  7 |  121 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  8 |  357 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION |  9 |  417 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION | 10 |  204 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION | 11 |  408 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION | 12 |  575 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  1 |   37 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  2 |    1 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  3 |  137 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  4 |  137 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  5 |  130 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  6 |  178 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  7 |    3 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  8 |   88 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     |  9 |    2 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | 10 |   54 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | 11 |    6 |   0.0 |  +0.00R |
+| LINKUSDT | CONSOLIDATION |  1 |  327 |   0.6 |  -3.28R |
+| LINKUSDT | CONSOLIDATION |  2 |  239 |   5.9 |  -1.87R |
+| LINKUSDT | CONSOLIDATION |  3 |  488 |  13.9 |  +0.08R |
+| LINKUSDT | CONSOLIDATION |  4 |  549 |   9.1 |  +1.19R |
+| LINKUSDT | CONSOLIDATION |  5 |  656 |  13.9 |  -1.78R |
+| LINKUSDT | CONSOLIDATION |  6 |  351 |   0.0 |  -0.30R |
+| LINKUSDT | CONSOLIDATION |  7 |  319 |   0.0 |  -1.49R |
+| LINKUSDT | CONSOLIDATION |  8 |  312 |   0.0 |  +0.00R |
+| LINKUSDT | CONSOLIDATION |  9 |   76 |   1.3 |  -1.15R |
+| LINKUSDT | CONSOLIDATION | 10 |  278 |   0.0 |  +0.00R |
+| LINKUSDT | CONSOLIDATION | 11 |  672 |   8.3 |  +1.81R |
+| LINKUSDT | CONSOLIDATION | 12 |  264 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  1 |   12 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  2 |   15 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  3 |   10 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  4 |   23 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  5 |   17 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  6 |   20 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  7 |    3 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     |  9 |    7 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | 11 |    9 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | 12 |   26 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION |  1 |  501 |  12.0 |  +1.38R |
+| XRPUSDT  | CONSOLIDATION |  2 |  418 |   0.0 |  +0.56R |
+| XRPUSDT  | CONSOLIDATION |  3 |  678 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION |  4 |  287 |  19.9 |  +0.81R |
+| XRPUSDT  | CONSOLIDATION |  5 |  580 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION |  6 |  386 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION |  7 |  337 |   0.0 |  +1.61R |
+| XRPUSDT  | CONSOLIDATION |  8 |  546 |  14.8 |  -0.53R |
+| XRPUSDT  | CONSOLIDATION |  9 |  144 |   3.5 |  -1.38R |
+| XRPUSDT  | CONSOLIDATION | 10 |  264 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION | 11 |  272 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION | 12 |  263 |   0.0 |  +0.00R |
+| XRPUSDT  | EXPANSION     |  5 |   12 |   0.0 |  +0.00R |
+| XRPUSDT  | EXPANSION     | 10 |    1 |   0.0 |  -2.42R |
+| XRPUSDT  | REJECTION     |  2 |   30 |   0.0 |  +0.00R |
+| XRPUSDT  | REJECTION     |  6 |    8 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  1 |  232 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  2 |  341 |   0.0 |  -1.01R |
+| ATOMUSDT | CONSOLIDATION |  3 |  216 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  4 |  431 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  5 |  438 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  6 |  225 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  7 |  231 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  8 |  198 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION |  9 |  159 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION | 10 |  201 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION | 11 |  391 |   1.5 |  +1.65R |
+| ATOMUSDT | CONSOLIDATION | 12 |  133 |   0.0 |  -1.40R |
+| ATOMUSDT | EXPANSION     |  1 |   31 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  2 |   62 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  3 |   17 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  4 |    5 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  5 |   39 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  6 |  134 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  7 |    3 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  8 |    5 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     |  9 |    3 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | 10 |   22 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | 11 |    3 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | 12 |   19 |   0.0 |  +0.00R |
+| ATOMUSDT | REJECTION     |  5 |   13 |   0.0 |  +0.00R |
+| ATOMUSDT | REJECTION     |  6 |    1 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  1 |  451 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  2 |  544 |   0.4 |  -1.18R |
+| ADAUSDT  | CONSOLIDATION |  3 |  177 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  4 |  233 |   2.6 |  +0.79R |
+| ADAUSDT  | CONSOLIDATION |  5 |  358 |   0.0 |  -1.17R |
+| ADAUSDT  | CONSOLIDATION |  6 |  322 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  7 |  186 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  8 |  204 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION |  9 |   80 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION | 10 |  209 |   1.4 |  -1.51R |
+| ADAUSDT  | CONSOLIDATION | 11 |  267 |  10.5 |  +1.09R |
+| ADAUSDT  | CONSOLIDATION | 12 |  292 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     |  1 |   51 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     |  4 |    3 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     |  6 |    3 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     |  8 |    4 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | 10 |  110 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | 11 |   25 |   0.0 |  +0.00R |
+| ADAUSDT  | REJECTION     |  1 |   61 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION |  1 |  337 |   1.2 |  -1.17R |
+| APTUSDT  | CONSOLIDATION |  2 |  313 |   0.0 |  -1.28R |
+| APTUSDT  | CONSOLIDATION |  3 |  371 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION |  4 |  695 |  13.1 |  -0.19R |
+| APTUSDT  | CONSOLIDATION |  5 |  645 |   0.5 |  +1.49R |
+| APTUSDT  | CONSOLIDATION |  6 |  602 |   5.8 |  -1.11R |
+| APTUSDT  | CONSOLIDATION |  7 |  338 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION |  8 |  442 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION |  9 |  234 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION | 10 |  158 |   0.6 |  -0.99R |
+| APTUSDT  | CONSOLIDATION | 11 |  358 |   0.0 |  -3.29R |
+| APTUSDT  | CONSOLIDATION | 12 |  227 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  1 |    1 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  2 |  173 |  26.6 |  +0.04R |
+| APTUSDT  | EXPANSION     |  4 |    3 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  5 |   49 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  6 |    7 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  7 |   15 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  8 |    7 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     |  9 |   25 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     | 10 |   76 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     | 11 |    1 |   0.0 |  +0.00R |
+| APTUSDT  | REJECTION     |  1 |   35 |   0.0 |  +0.00R |
+| APTUSDT  | REJECTION     |  5 |   54 |  13.0 |  +1.06R |
+| APTUSDT  | REJECTION     |  7 |    7 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION |  1 |  574 |   5.6 |  -1.86R |
+| DOTUSDT  | CONSOLIDATION |  2 |  320 |   4.4 |  -1.61R |
+| DOTUSDT  | CONSOLIDATION |  3 |  413 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION |  4 |  347 |   6.6 |  -1.09R |
+| DOTUSDT  | CONSOLIDATION |  5 |  373 |   1.1 |  -0.95R |
+| DOTUSDT  | CONSOLIDATION |  6 |  282 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION |  7 |  260 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION |  8 |  345 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION |  9 |  232 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION | 10 |  323 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION | 11 |  102 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION | 12 |  249 |   0.0 |  -1.74R |
+| DOTUSDT  | EXPANSION     |  2 |    6 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  3 |  119 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  4 |   27 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  5 |  108 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  6 |  169 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     |  9 |   63 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     | 11 |    6 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     | 12 |   76 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  1 |  316 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  2 |  524 |  16.6 |  +0.61R |
+| NEARUSDT | CONSOLIDATION |  3 |  602 |   7.6 |  -1.27R |
+| NEARUSDT | CONSOLIDATION |  4 |  578 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  5 |  445 |   5.8 |  +0.24R |
+| NEARUSDT | CONSOLIDATION |  6 |  307 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  7 |  251 |   3.2 |  +0.25R |
+| NEARUSDT | CONSOLIDATION |  8 |  332 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION |  9 |  420 |   3.3 |  -1.07R |
+| NEARUSDT | CONSOLIDATION | 10 |  133 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION | 11 |  319 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION | 12 |  345 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  2 |   98 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  3 |   69 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  4 |   82 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  5 |   58 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  6 |   82 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  8 |   55 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     |  9 |    2 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | 10 |    3 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | 11 |    4 |   0.0 |  +0.00R |
+| NEARUSDT | REJECTION     |  2 |   32 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  1 |  367 |   8.7 |  -0.99R |
+| ETHUSDT  | CONSOLIDATION |  2 |  287 |   0.0 |  -1.89R |
+| ETHUSDT  | CONSOLIDATION |  3 |  501 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  4 |  519 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  5 |  398 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  6 |  253 |   0.4 |  +1.17R |
+| ETHUSDT  | CONSOLIDATION |  7 |  289 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION |  8 |  152 |   0.7 |  +1.53R |
+| ETHUSDT  | CONSOLIDATION |  9 |  292 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION | 10 |   81 |   0.0 |  -1.27R |
+| ETHUSDT  | CONSOLIDATION | 11 |  295 |   1.4 |  -1.87R |
+| ETHUSDT  | CONSOLIDATION | 12 |  230 |   7.4 |  +0.16R |
+| ETHUSDT  | EXPANSION     |  2 |   42 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     |  3 |   33 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     |  4 |  109 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     | 10 |   16 |  31.2 |  -0.89R |
+| ETHUSDT  | EXPANSION     | 12 |   68 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  1 |  465 |   6.0 |  -1.74R |
+| SUIUSDT  | CONSOLIDATION |  2 |  531 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  3 |  291 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  4 |  404 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  5 |  907 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  6 |  428 |   0.0 |  +1.63R |
+| SUIUSDT  | CONSOLIDATION |  7 |  436 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  8 |  419 |   0.0 |  +0.00R |
+| SUIUSDT  | CONSOLIDATION |  9 |  254 |   1.6 |  -1.06R |
+| SUIUSDT  | CONSOLIDATION | 10 |  635 |   0.0 |  -1.45R |
+| SUIUSDT  | CONSOLIDATION | 11 |  615 |   1.0 |  -0.03R |
+| SUIUSDT  | CONSOLIDATION | 12 |  437 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  2 |    1 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  3 |   58 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  4 |  255 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  5 |   63 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  6 |   79 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     |  7 |    7 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     |  9 |    5 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     | 12 |   46 |   0.0 |  +0.00R |
 
 ### 15b. Coin × Uc Aylik (Quarterly)
 
 | Coin | Kategori | Q | N | Mit% | NetExp |
 |---|---|---|---|---|---|
-| BTCUSDT  | CONSOLIDATION | Q1 |  338 |   5.3 |  -1.07R |
-| BTCUSDT  | CONSOLIDATION | Q2 |  481 |   0.0 |  -1.16R |
-| BTCUSDT  | CONSOLIDATION | Q3 |  192 |   0.0 |  +0.00R |
-| BTCUSDT  | CONSOLIDATION | Q4 |  182 |   0.0 |  +0.00R |
-| BTCUSDT  | EXPANSION     | Q2 |   27 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION | Q1 |  647 |   2.8 |  -1.07R |
+| BTCUSDT  | CONSOLIDATION | Q2 |  751 |   0.0 |  -1.22R |
+| BTCUSDT  | CONSOLIDATION | Q3 |  348 |   0.0 |  +0.00R |
+| BTCUSDT  | CONSOLIDATION | Q4 |  386 |   0.0 |  +0.00R |
+| BTCUSDT  | EXPANSION     | Q2 |   28 |   0.0 |  +0.00R |
 | BTCUSDT  | EXPANSION     | Q3 |    4 |   0.0 |  +0.00R |
-| ETHUSDT  | CONSOLIDATION | Q1 |  270 |   2.6 |  -1.70R |
-| ETHUSDT  | CONSOLIDATION | Q2 |  315 |   0.6 |  -0.39R |
-| ETHUSDT  | CONSOLIDATION | Q3 |  191 |   5.8 |  +1.11R |
-| ETHUSDT  | CONSOLIDATION | Q4 |  241 |  10.0 |  -1.52R |
-| ETHUSDT  | EXPANSION     | Q1 |   18 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     | Q2 |   49 |   0.0 |  +0.00R |
-| ETHUSDT  | EXPANSION     | Q4 |   10 |   0.0 |  -1.27R |
+| BNBUSDT  | CONSOLIDATION | Q1 |  824 |   0.0 |  -1.76R |
+| BNBUSDT  | CONSOLIDATION | Q2 | 1319 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION | Q3 |  804 |   0.0 |  +0.00R |
+| BNBUSDT  | CONSOLIDATION | Q4 | 1141 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     | Q1 |  106 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     | Q2 |    1 |   0.0 |  +0.00R |
+| BNBUSDT  | EXPANSION     | Q4 |   49 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | Q1 | 1450 |   0.3 |  +1.80R |
+| SOLUSDT  | CONSOLIDATION | Q2 | 1773 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | Q3 |  746 |   0.0 |  +0.00R |
+| SOLUSDT  | CONSOLIDATION | Q4 |  626 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | Q2 |  108 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | Q3 |   66 |   0.0 |  +0.00R |
+| SOLUSDT  | EXPANSION     | Q4 |   69 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION | Q1 | 1385 |   6.0 |  +0.31R |
+| AVAXUSDT | CONSOLIDATION | Q2 | 1384 |   0.4 |  -1.06R |
+| AVAXUSDT | CONSOLIDATION | Q3 |  895 |   0.0 |  +0.00R |
+| AVAXUSDT | CONSOLIDATION | Q4 | 1187 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | Q1 |  175 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | Q2 |  445 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | Q3 |   93 |   0.0 |  +0.00R |
+| AVAXUSDT | EXPANSION     | Q4 |   60 |   0.0 |  +0.00R |
+| LINKUSDT | CONSOLIDATION | Q1 | 1054 |   8.0 |  -1.54R |
+| LINKUSDT | CONSOLIDATION | Q2 | 1556 |   9.1 |  -0.93R |
+| LINKUSDT | CONSOLIDATION | Q3 |  707 |   0.1 |  -1.46R |
+| LINKUSDT | CONSOLIDATION | Q4 | 1214 |   4.6 |  +1.81R |
+| LINKUSDT | EXPANSION     | Q1 |   37 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | Q2 |   60 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | Q3 |   10 |   0.0 |  +0.00R |
+| LINKUSDT | EXPANSION     | Q4 |   35 |   0.0 |  +0.00R |
+| XRPUSDT  | CONSOLIDATION | Q1 | 1597 |   3.8 |  +1.11R |
+| XRPUSDT  | CONSOLIDATION | Q2 | 1253 |   4.5 |  +0.81R |
+| XRPUSDT  | CONSOLIDATION | Q3 | 1027 |   8.4 |  -0.53R |
+| XRPUSDT  | CONSOLIDATION | Q4 |  799 |   0.0 |  +0.00R |
+| XRPUSDT  | EXPANSION     | Q2 |   12 |   0.0 |  +0.00R |
+| XRPUSDT  | EXPANSION     | Q4 |    1 |   0.0 |  -2.42R |
+| XRPUSDT  | REJECTION     | Q1 |   30 |   0.0 |  +0.00R |
+| XRPUSDT  | REJECTION     | Q2 |    8 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION | Q1 |  789 |   0.0 |  -1.01R |
+| ATOMUSDT | CONSOLIDATION | Q2 | 1094 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION | Q3 |  588 |   0.0 |  +0.00R |
+| ATOMUSDT | CONSOLIDATION | Q4 |  725 |   0.8 |  -0.64R |
+| ATOMUSDT | EXPANSION     | Q1 |  110 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | Q2 |  178 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | Q3 |   11 |   0.0 |  +0.00R |
+| ATOMUSDT | EXPANSION     | Q4 |   44 |   0.0 |  +0.00R |
+| ATOMUSDT | REJECTION     | Q2 |   14 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION | Q1 | 1172 |   0.2 |  -1.18R |
+| ADAUSDT  | CONSOLIDATION | Q2 |  913 |   0.7 |  -0.77R |
+| ADAUSDT  | CONSOLIDATION | Q3 |  470 |   0.0 |  +0.00R |
+| ADAUSDT  | CONSOLIDATION | Q4 |  768 |   4.0 |  -0.12R |
+| ADAUSDT  | EXPANSION     | Q1 |   51 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | Q2 |    6 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | Q3 |    4 |   0.0 |  +0.00R |
+| ADAUSDT  | EXPANSION     | Q4 |  135 |   0.0 |  +0.00R |
+| ADAUSDT  | REJECTION     | Q1 |   61 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION | Q1 | 1021 |   0.4 |  -1.19R |
+| APTUSDT  | CONSOLIDATION | Q2 | 1942 |   6.6 |  -0.18R |
+| APTUSDT  | CONSOLIDATION | Q3 | 1014 |   0.0 |  +0.00R |
+| APTUSDT  | CONSOLIDATION | Q4 |  743 |   0.1 |  -2.91R |
+| APTUSDT  | EXPANSION     | Q1 |  174 |  26.4 |  +0.04R |
+| APTUSDT  | EXPANSION     | Q2 |   59 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     | Q3 |   47 |   0.0 |  +0.00R |
+| APTUSDT  | EXPANSION     | Q4 |   77 |   0.0 |  +0.00R |
+| APTUSDT  | REJECTION     | Q1 |   35 |   0.0 |  +0.00R |
+| APTUSDT  | REJECTION     | Q2 |   54 |  13.0 |  +1.06R |
+| APTUSDT  | REJECTION     | Q3 |    7 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION | Q1 | 1307 |   3.5 |  -1.80R |
+| DOTUSDT  | CONSOLIDATION | Q2 | 1002 |   2.7 |  -1.03R |
+| DOTUSDT  | CONSOLIDATION | Q3 |  837 |   0.0 |  +0.00R |
+| DOTUSDT  | CONSOLIDATION | Q4 |  674 |   0.0 |  -1.74R |
+| DOTUSDT  | EXPANSION     | Q1 |  125 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     | Q2 |  304 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     | Q3 |   63 |   0.0 |  +0.00R |
+| DOTUSDT  | EXPANSION     | Q4 |   82 |   0.0 |  +0.00R |
+| NEARUSDT | CONSOLIDATION | Q1 | 1442 |   9.2 |  -0.54R |
+| NEARUSDT | CONSOLIDATION | Q2 | 1330 |   2.0 |  +0.24R |
+| NEARUSDT | CONSOLIDATION | Q3 | 1003 |   2.2 |  -0.82R |
+| NEARUSDT | CONSOLIDATION | Q4 |  797 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | Q1 |  167 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | Q2 |  222 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | Q3 |   57 |   0.0 |  +0.00R |
+| NEARUSDT | EXPANSION     | Q4 |    7 |   0.0 |  +0.00R |
+| NEARUSDT | REJECTION     | Q1 |   32 |   0.0 |  +0.00R |
+| ETHUSDT  | CONSOLIDATION | Q1 | 1155 |   2.8 |  -1.31R |
+| ETHUSDT  | CONSOLIDATION | Q2 | 1170 |   0.1 |  +1.17R |
+| ETHUSDT  | CONSOLIDATION | Q3 |  733 |   0.1 |  +1.53R |
+| ETHUSDT  | CONSOLIDATION | Q4 |  606 |   3.5 |  -1.05R |
+| ETHUSDT  | EXPANSION     | Q1 |   75 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     | Q2 |  109 |   0.0 |  +0.00R |
+| ETHUSDT  | EXPANSION     | Q4 |   84 |   6.0 |  -0.89R |
+| SUIUSDT  | CONSOLIDATION | Q1 | 1287 |   2.2 |  -1.74R |
+| SUIUSDT  | CONSOLIDATION | Q2 | 1739 |   0.0 |  +1.63R |
+| SUIUSDT  | CONSOLIDATION | Q3 | 1109 |   0.4 |  -1.06R |
+| SUIUSDT  | CONSOLIDATION | Q4 | 1687 |   0.4 |  -0.83R |
+| SUIUSDT  | EXPANSION     | Q1 |   59 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     | Q2 |  397 |   0.0 |  +0.00R |
+| SUIUSDT  | EXPANSION     | Q3 |    7 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     | Q3 |    5 |   0.0 |  +0.00R |
+| SUIUSDT  | REJECTION     | Q4 |   46 |   0.0 |  +0.00R |
 
 ---
 
@@ -338,8 +1055,19 @@ Per-coin: optimal iptal bar (DR noktasi), FVG expiry, seans, ve en iyi kategori.
 
 | Coin | Session | BestCat | Expiry (bar) | CONS_DR | EXP_DR | REJ_DR | BestMonth | WorstMonth |
 |---|---|---|---|---|---|---|---|---|
-| BTCUSDT  | 19:00-01:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |    3 |    9 |
-| ETHUSDT  | 19:00-01:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |    4 |   11 |
+| BTCUSDT  | 19:00-01:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |    3 |    6 |
+| BNBUSDT  | 01:00-05:00 | BELIRSIZ     |  45b |  200b |  200b |   N/A |   11 |    7 |
+| SOLUSDT  | 22:00-02:00 | BELIRSIZ     |  45b |  100b |  200b |   N/A |    3 |    9 |
+| AVAXUSDT | 01:00-05:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |    2 |    9 |
+| LINKUSDT | 01:00-05:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |    3 |    5 |
+| XRPUSDT  | 22:00-02:00 | CONSOLIDATION (+0.04R) |  45b |    2b |  200b |  200b |    7 |    1 |
+| ATOMUSDT | 19:00-01:00 | BELIRSIZ     |  45b |  150b |  200b |  200b |    8 |    9 |
+| ADAUSDT  | 22:00-02:00 | BELIRSIZ     |  45b |    2b |  200b |  200b |    2 |    5 |
+| APTUSDT  | 01:00-05:00 | EXPANSION (+0.04R) |  45b |    2b |  200b |   20b |   11 |    9 |
+| DOTUSDT  | 19:00-01:00 | BELIRSIZ     |  45b |    2b |  200b |   N/A |   11 |    9 |
+| NEARUSDT | 01:00-05:00 | BELIRSIZ     |  45b |    2b |  200b |  200b |   12 |    8 |
+| ETHUSDT  | 19:00-01:00 | BELIRSIZ     |  45b |    2b |    2b |   N/A |    4 |    8 |
+| SUIUSDT  | 22:00-02:00 | BELIRSIZ     |  45b |    2b |  200b |  200b |    2 |    4 |
 
 ---
 *Auto-generated by fvg_profile_v4.py*
