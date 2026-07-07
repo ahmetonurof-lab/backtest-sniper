@@ -31,19 +31,37 @@
 - V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
 
 ## ✅ Fixed
-- Section 7 "Öneri" mantığı: `not (ci[1] < 0 or ci[0] > 0)` ters çalışıyordu → `ci[0] > 0` ile düzeltildi
+- **KRİTİK #1 (2026-07-08):** Derinlik filtresi entry-karar bloğundan kaldırıldı — look-ahead bias giderildi. Section 12 DEPTH sütunu tüm coin'lerde 0.
+- **KRİTİK #2 (2026-07-08):** Section 16 Öneri mantığı `ci[0] > 0` ile düzeltildi (Section 7 ile tutarlı). `_EXPIRY_MAP` default 45→5.
+- **ORTA (2026-07-08):** Coin-bazlı `expiry_bars` veri akışına eklendi — BTC/BNB/SOL=45b, diğerleri=5b.
+- **HAFİF (2026-07-08):** `v4_rejected` atamaları "ilk red kazanır" mantığına çevrildi.
+- Section 7 "Öneri" mantığı: `not (ci[1] < 0 or ci[0] > 0)` → `ci[0] > 0`
+- `cumulative_mit_curve`: payda `len(fvgs)` → `len(mit_times)`, DR threshold total*0.05
+- `RSM reset`: filtreden geçmeyen FVG'lerde reset eklenerek kopya FVG önlendi
+- `FVG Expiry`: altcoinlerde 5b → 45b
+- `BOS/MSS totoloji`: pre_mss ranging'de son 10 bar sınırı konuldu
+- `MIN_REL_FVG_THRESHOLD`: 0.25 → 0.40
+- `Section 16 best_cat`: `ci[0] > 0` fix
+- `BestMonth/WorstMonth`: tüm FVG ortalaması + min 5 örneklem
+- `cbdr_width zero division`: guard eklendi
 
-## 📊 Backtest Results (13 coin, ~30 gün)
-| Metric | V4 Orijinal (broken) | V4 Bypass | V5 (13 coin) |
-|---|---|---|---|
-| BTC Trades | 419 | 2,678 | 698 |
-| BTC WR | 40.3% | 40.8% | 32.2% |
-| BTC PnL | +12,895 | +75,639 | +9,842 |
-| BTC FVG | — | — | 20,179 (FVG_VALIDITY red=9,048)
-| BNB WR | — | — | 46.6% |
-| SOL WR | — | — | 38.6% |
-| ETH WR | — | — | 40.8% |
-| Toplam Trade | — | — | 2,658 (13 coin) |
+## 📊 Backtest Results (13 coin) — 2026-07-08 (post-fix)
+| Coin | Trades | WR% | PF | PnL | FVG |
+|---|---|---|---|---|---|
+| BTCUSDT | 2,304 | 37.2% | 2.23 | +31,749 | 5,599 |
+| BNBUSDT | 1,824 | 48.1% | 4.15 | +49,112 | 7,846 |
+| SOLUSDT | 2,925 | 42.1% | 2.65 | +45,630 | 6,656 |
+| AVAXUSDT | 577 | 28.2% | 2.48 | +6,535 | 7,958 |
+| LINKUSDT | 530 | 25.7% | 2.37 | +5,537 | 8,018 |
+| XRPUSDT | 521 | 25.0% | 1.79 | +3,356 | 8,634 |
+| ATOMUSDT | 543 | 28.5% | 3.55 | +12,682 | 7,426 |
+| ADAUSDT | 542 | 24.5% | 2.74 | +8,166 | 8,791 |
+| APTUSDT | 593 | 28.3% | 2.23 | +7,184 | 8,587 |
+| DOTUSDT | 439 | 26.4% | 3.74 | +8,166 | 7,390 |
+| NEARUSDT | 587 | 26.6% | 2.24 | +5,318 | 9,181 |
+| ETHUSDT | 381 | 26.5% | 2.26 | +3,510 | 6,541 |
+| SUIUSDT | 571 | 21.4% | 1.68 | +4,087 | 8,230 |
+| **TOPLAM** | **12,337** | **—** | **—** | **+191,032** | **100,857** |
 
 ## 📐 CBDR Risk Matrix Summary
 - **REAL_CBDR (4 coin):** BTC, ATOM, DOT, ETH

@@ -29,7 +29,7 @@ if _SNIPER_SRC not in sys.path:
 
 import config as cfg
 # --- V5 overrides ---
-cfg.MIN_REL_FVG_THRESHOLD = 0.25  # gap/ATR eşiği 0.50→0.25
+cfg.MIN_REL_FVG_THRESHOLD = 0.40  # gap/ATR eşiği 0.50→0.40 (fee drag koruması)
 # Coin bazli expiry, _collect_fvg_profile_impl icinde set edilecek
 # ---
 from fvg import detect_fvgs
@@ -394,7 +394,7 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
         any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "downtrend" else False)
     pre_mss = any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "uptrend" else (
         any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) if trend == "downtrend" else
-        any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) or any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l))
+        any(c3_idx - 10 <= idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) or any(c3_idx - 10 <= idx < c3_idx and pre_min_c < pr for idx, pr in sw_l))
     post_end = min(c3_idx + 21, len(b15))
     post_closes = [b.close for b in b15[c3_idx + 1:post_end] if b.index > c3_idx] if post_end > c3_idx + 1 else []
     post_max_c = max(post_closes, default=0)
@@ -427,17 +427,18 @@ def percentile_sorted(vals, p):
 def cumulative_mit_curve(fvgs, max_b=200):
     mit_times = sorted([f["outcome"]["bars_to_mitigate"] for f in fvgs
                         if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
-    total = len(fvgs)
+    total = len(mit_times)
     if total == 0:
-        return [], 0
+        return [], 200
     curve = []
     dr = max_b
     prev_pct = 0
     for n in [1, 2, 3, 5, 10, 20, 30, 50, 75, 100, 150, 200]:
-        cnt = sum(1 for t in mit_times if t < n) if mit_times else 0
+        cnt = sum(1 for t in mit_times if t <= n) if mit_times else 0
         pct = cnt / total * 100
         curve.append((n, pct))
-        if n > 1 and prev_pct > 0 and (pct - prev_pct) < 1.0 and dr == max_b:
+        threshold = max(1.0, total * 0.05)
+        if n > 1 and prev_pct > 0 and (pct - prev_pct) < threshold and dr == max_b:
             dr = n
         prev_pct = pct
     return curve, dr if dr != max_b else 200
@@ -525,7 +526,8 @@ def collect_fvg_profile(symbol: str):
 def _collect_fvg_profile_impl(symbol: str):
     # --- V5: coin bazli FVG expiry ---
     _EXPIRY_MAP = {"BTCUSDT": 45, "BNBUSDT": 45, "SOLUSDT": 45}
-    cfg.GLOBAL_FVG_EXPIRY_BARS = _EXPIRY_MAP.get(symbol, 5)
+    expiry_used = _EXPIRY_MAP.get(symbol, 5)
+    cfg.GLOBAL_FVG_EXPIRY_BARS = expiry_used
     # ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
@@ -601,7 +603,7 @@ def _collect_fvg_profile_impl(symbol: str):
         ss.update(edt, cur.open, cur.high, cur.low, cur.close, atr)
         just_locked = ss.cbdr_locked and not locked_before
 
-        if just_locked and ss.cbdr_body_high > 0:
+        if just_locked and ss.cbdr_body_high > 0 and ss.cbdr_body_low > 0:
             w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
@@ -738,21 +740,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 else:
                     classic_fvg["v4_rejected"] = None
 
-            # ── V5: Derinlik filtre ──
-            if quality_mult == 1.0 and classic_fvg.get("rr"):
-                dp = classic_fvg["rr"].get("max_depth_pct", 0)
-                dc = classic_fvg["rr"].get("max_depth_class", "WICK_ONLY")
-                if dc == "WICK_ONLY" and dp > 100.0:
-                    quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "DEPTH_WICK"
-                elif dc == "BODY_CLOSE" and dp > 150.0:
-                    quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "DEPTH_BODY"
-
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
                 quality_mult = 0.0
-                classic_fvg["v4_rejected"] = "MIN_RISK_DIST"
+                if classic_fvg.get("v4_rejected") is None:
+                    classic_fvg["v4_rejected"] = "MIN_RISK_DIST"
 
             # ── CBDR + should_trade ──
             cbdr_w = None
@@ -761,7 +753,8 @@ def _collect_fvg_profile_impl(symbol: str):
             cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
             if cbdr_mult == 0.0:
                 quality_mult = 0.0
-                classic_fvg["v4_rejected"] = "CBDR_MULT_ZERO"
+                if classic_fvg.get("v4_rejected") is None:
+                    classic_fvg["v4_rejected"] = "CBDR_MULT_ZERO"
 
             # ── V5: Haftasonu çarpani (ATOM/SUI/APT) ──
             if quality_mult > 0 and symbol in ("ATOMUSDT", "SUIUSDT", "APTUSDT"):
@@ -771,7 +764,8 @@ def _collect_fvg_profile_impl(symbol: str):
             allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
             if not allowed:
                 quality_mult = 0.0
-                classic_fvg["v4_rejected"] = f"SHOULD_TRADE_{reason}"
+                if classic_fvg.get("v4_rejected") is None:
+                    classic_fvg["v4_rejected"] = f"SHOULD_TRADE_{reason}"
 
             # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
             h = edt.hour
@@ -803,11 +797,12 @@ def _collect_fvg_profile_impl(symbol: str):
                                "day_key": entry_day})
                 rsm.reset()
             else:
-                # Filtered setup: record as rejected, do NOT reset RSM.
+                # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
                 if classic_fvg["v4_rejected"] is None:
                     classic_fvg["v4_rejected"] = "QTY_ZERO"
                 rejection_counts[classic_fvg["v4_rejected"]] += 1
                 captured_fvgs.append(classic_fvg)
+                rsm.reset()
                 continue
 
         # ── Trailing (unchanged) ──
@@ -989,7 +984,7 @@ def _collect_fvg_profile_impl(symbol: str):
         print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
               f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
 
-    return daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals
+    return daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used
 
 
 # ─── Rapor Olusturma ─────────────────────────────────────────
@@ -1783,7 +1778,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
             n = len(cf)
             profs = [f["rr"]["net_profit_R"] for f in cf if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]
             ci = bootstrap_ci(profs) if len(profs) >= 3 else (None, None, None)
-            if ci[2] is not None and ci[2] > best_exp and n >= 30 and not (ci[1] < 0 or ci[0] > 0):
+            if ci[2] is not None and ci[2] > best_exp and n >= 30 and ci[0] > 0:
                 best_exp = ci[2]
                 best_cat = f"{cat} ({ci[2]:+.2f}R)"
 
@@ -1801,14 +1796,21 @@ def build_report(all_coin_data, results_data, fileobj=None):
         sh = get_session_hours(sym)
         session_label = f"{sh['start']:02d}:00-{sh['end']:02d}:00"
 
-        # Best/worst month
+        # Best/worst month — use all FVGs, min 5 sample threshold
+        MIN_MONTH_FVGS = 5
         by_month = defaultdict(list)
         for f in fvgs:
             by_month[f.get("month", 0)].append(f)
-        best_m = max(by_month, key=lambda m: sum(f["rr"]["net_profit_R"] for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")) / max(len([f for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]), 1)) if by_month else 0
-        worst_m = min(by_month, key=lambda m: sum(f["rr"]["net_profit_R"] for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")) / max(len([f for f in by_month[m] if f["rr"].get("hit_target") or f["rr"].get("hit_stop")]), 1)) if by_month else 0
+        month_means = {}
+        for m, grp in by_month.items():
+            profs = [f["rr"]["net_profit_R"] for f in grp if f["rr"].get("net_profit_R") is not None]
+            if len(profs) >= MIN_MONTH_FVGS:
+                month_means[m] = sum(profs) / len(profs)
+        best_m = max(month_means, key=month_means.get) if month_means else 0
+        worst_m = min(month_means, key=month_means.get) if month_means else 0
 
-        L(f"| {sym:<8s} | {session_label:<10s} | {best_cat:<12s} | {cfg.GLOBAL_FVG_EXPIRY_BARS:>3d}b | "
+        expiry_bars = coin_data.get("expiry_bars", cfg.GLOBAL_FVG_EXPIRY_BARS)
+        L(f"| {sym:<8s} | {session_label:<10s} | {best_cat:<12s} | {expiry_bars:>3d}b | "
           f"{drs.get('CONSOLIDATION','N/A'):>5s} | {drs.get('EXPANSION','N/A'):>5s} | {drs.get('REJECTION','N/A'):>5s} | "
           f"{best_m:>4d} | {worst_m:>4d} |")
     L("")
@@ -1898,14 +1900,14 @@ def main():
             if result is None or result[0] is None:
                 print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals = result
+            daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used = result
             if len(daily_rows) < 1:
                 print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
                 continue
 
             stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
             results_data.append((sym, stats, None, daily_rows, captured_fvgs))
-            all_coin_data[sym] = {"fvgs": captured_fvgs, "atr_vals": atr_vals, "total": len(captured_fvgs)}
+            all_coin_data[sym] = {"fvgs": captured_fvgs, "atr_vals": atr_vals, "total": len(captured_fvgs), "expiry_bars": expiry_used}
 
             print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
                   f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
