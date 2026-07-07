@@ -1,29 +1,24 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-07: V5 profiling script (`fvg_profile_v5.py`) yazıldı ve koşuluyor. V4'ün üstüne MIN_REL=0.25, depth filter, weekend mult, coin bazlı expiry, RSM reset iyileştirmesi eklendi. CBDR timestamp bug'ı `datetime64[ms]` cast ile düzeltildi.
+2026-07-07 14:09: V5 profil raporu (`fvg_profile_v5.md`) 13 coin × 16 bölüm tamamlandı — 64KB, 1064 satır.
 
 ## Recently Completed
-- `fvg_profile_v5.py` oluşturuldu — V4 motor mantığı + 16 bölümlü profil raporu
-- MIN_REL_FVG_THRESHOLD 0.50 → 0.25 indirildi (daha fazla FVG)
-- Depth filtresi eklendi: WICK >%100, BODY >%150 RED
-- Weekend mult: ATOM/SUI/APT için CBDR ×1.5 (Cmt-Paz)
-- Coin bazlı FVG expiry: BTC/BNB/SOL 45b, diğerleri 5b
-- RSM reset iyileştirmesi: kalite filtresinden geçmeyen FVG'lerde RSM resetlenmez
-- Timestamp bug düzeltildi: `datetime64[ns] // 10**6` → `datetime64[ms]`
-- V4 eski raporları temizlendi
+- `fvg_profile_v5.py` — V4 motor + 16 bölümlü profil raporu (script hazır)
+- 2 bug fix: `volatility_regime_analysis(cf, b15)` → `(cf, atr_vals)`; `return "\n".join(lines)` → `_lines_for_size`
+- Pickle emergency dump mekanizması (`_v5_dump.pkl`, 222MB) + `--report-only` flag
+- Full sim 315s'te 13 coin koştu, rapor başarıyla yazıldı
 
 ## Active Decisions
-- V5 = V4 motoru + karakterizasyon katmanı (import yok, kendi içinde kopya)
-- CBDR debug çıktısı kaldırıldı (günler doğru akıyor)
-- BTC WR=%32.2 — düşük, araştırılacak
+- V5 üç parametreyi aynı anda açar (_EXPIRY_MAP, depth filter, weekend mult) — izole test yok
+- NameError (`lines` → `_lines_for_size`) build_report'u yarım bırakıyordu, düzeltildi
 
 ## Next Actions
-1. V5 raporu (`fvg_profile_v5.md`) incele — tüm coinler bitsin
-2. BTC WR=%32.2 sebebini analiz et (FVG_VALIDITY 55K red?)
+1. V5 parametrelerini tek tek izole test et (CBDR/MULT taramaları gibi)
+2. BTC WR=%32.2 analizi — Section 12'de FVG_VALIDITY red=9048 en büyük eleyen
 3. Gerekirse V5 ayarlarını tweak et
 
 ## Open Questions
 - WR=%32.2 kabul edilebilir mi, yoksa bir bug mı?
-- CBDR 906 gün doğru tespit ediliyor mu?
-- RSM reset iyileştirmesi WR'ı yukarı mı çekecek?
+- V5'in üç parametresinden hangisi işe yarıyor?
+- N_BOOTSTRAP=100, Section 13-16 bootstrap yavaş mı?

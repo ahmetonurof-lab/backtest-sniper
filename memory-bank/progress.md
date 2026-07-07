@@ -21,25 +21,27 @@
 - CBDR görselleştirme (matplotlib)
 
 ## 🔧 Pending / In Progress
-- V5 tüm coinlerin bitmesi + rapor incelemesi
-- BTC WR=%32.2 düşüklüğünün analizi (FVG_VALIDITY 55K red sebebi)
+- V5 parametre izole testi (_EXPIRY_MAP / depth filter / weekend mult tek tek)
+- BTC WR=%32.2 analizi (Section 12: FVG_VALIDITY red=9048)
 - V5 vs V4 bypass WR karşılaştırması
 
 ## 🐛 Known Issues
-- BTC WR=%32.2 (V5) — düşük, FVG_VALIDITY 55K reddi araştırılmalı
-- fvg_profile_v5.py de V4 motor kopyasını içeriyor — DRY ihlali (manuel sync)
+- BTC WR=%32.2 (V5) — düşük, Section 12'de FVG_VALIDITY red=9048 en büyük eleyen
+- fvg_profile_v5.py'de V4 motor kopyası — DRY ihlali (manuel sync)
 - Cline / Goose MCACP ajanları çalışmıyor (söküldü)
-- ASIA_RANGE coin'lerde EL 02-08 overlap: APT, AVAX, LINK, BNB, NEAR
+- V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
 
 ## 📊 Backtest Results (13 coin, ~30 gün)
-| Metric | V4 Orijinal (broken) | V4 Bypass | V5 (BTC preliminary) |
+| Metric | V4 Orijinal (broken) | V4 Bypass | V5 (13 coin) |
 |---|---|---|---|
 | BTC Trades | 419 | 2,678 | 698 |
 | BTC WR | 40.3% | 40.8% | 32.2% |
-| BTC PF | 3.39 | 3.51 | TBD |
-| BTC PnL | +12,895 | +75,639 | TBD |
-| BTC CBDR elenen | 3,214 (%81) | 11,357 | 906 gün |
-| BTC FVG | — | — | 20,179 |
+| BTC PnL | +12,895 | +75,639 | +9,842 |
+| BTC FVG | — | — | 20,179 (FVG_VALIDITY red=9,048)
+| BNB WR | — | — | 46.6% |
+| SOL WR | — | — | 38.6% |
+| ETH WR | — | — | 40.8% |
+| Toplam Trade | — | — | 2,658 (13 coin) |
 
 ## 📐 CBDR Risk Matrix Summary
 - **REAL_CBDR (4 coin):** BTC, ATOM, DOT, ETH
