@@ -22,3 +22,4 @@
 - WR=%32.2 kabul edilebilir mi, yoksa bir bug mı?
 - V5'in üç parametresinden hangisi işe yarıyor?
 - N_BOOTSTRAP=100, Section 13-16 bootstrap yavaş mı?
+
