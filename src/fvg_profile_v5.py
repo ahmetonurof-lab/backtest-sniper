@@ -1404,7 +1404,7 @@ def build_report(all_coin_data, results_data, fileobj=None):
             else:
                 row.append("N/A")
                 row.append("N/A")
-            if ci[2] is not None and ci[2] > best_exp and n >= 30 and not (ci[1] < 0 or ci[0] > 0):
+            if ci[2] is not None and ci[2] > best_exp and n >= 30 and ci[0] > 0:
                 best_exp = ci[2]
                 best = f"{cat} ({ci[2]:+.2f}R)"
         if best is None:

@@ -26,10 +26,12 @@
 - V5 vs V4 bypass WR karşılaştırması
 
 ## 🐛 Known Issues
-- BTC WR=%32.2 (V5) — düşük, Section 12'de FVG_VALIDITY red=9048 en büyük eleyen
 - fvg_profile_v5.py'de V4 motor kopyası — DRY ihlali (manuel sync)
 - Cline / Goose MCACP ajanları çalışmıyor (söküldü)
 - V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
+
+## ✅ Fixed
+- Section 7 "Öneri" mantığı: `not (ci[1] < 0 or ci[0] > 0)` ters çalışıyordu → `ci[0] > 0` ile düzeltildi
 
 ## 📊 Backtest Results (13 coin, ~30 gün)
 | Metric | V4 Orijinal (broken) | V4 Bypass | V5 (13 coin) |
