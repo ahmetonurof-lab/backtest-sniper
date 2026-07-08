@@ -1,41 +1,38 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-08: V5 Phase 1 (4 bug fix) + Phase 2 (3 yeni fix) uygulandı.
+2026-07-08: V5 Phase 3 (15 Kod/Mantık Hatası ve Bug Düzeltmesi) başarıyla uygulandı.
 
-**Phase 1 — 4 Doğrulanmış Bug Fix:**
-1. **KRİTİK #1** — Derinlik look-ahead bias kaldırıldı (entry kararına karışmıyor)
-2. **KRİTİK #2** — Section 16 Öneri mantığı `ci[0] > 0` ile düzeltildi (Section 7 ile tutarlı)
-3. **ORTA** — Coin-bazlı `expiry_bars` veri akışına eklendi, Section 16'da coin'e göre doğru expiry gösteriliyor
-4. **HAFİF** — `v4_rejected` atamaları "ilk red kazanır" mantığına çevrildi
-
-**Phase 2 — 3 Yeni Fix:**
-1. **Madde 1** — `simulate_rr_new` → gerçek trade sonuçları: `trade_uid` ile FVG→trade bağlantısı, `fvg_by_uid` dict, trade çıkışında `v4_real_result/v4_real_pnl_usd/v4_real_pnl_R/v4_real_hit_target/v4_real_hit_stop` yazma, raporda `f["rr"]` yerine `v4_real_*` kullanımı (~15 kod bloğu)
-2. **Madde 2** — `detect_bos_mss`'de post-window yanlış etiketlenme hatası: `wt` (inverted trend) yerine `trend` kullanıldı
-3. **Madde 3** — Section 6d: BSL/SSL sweep analizi eklendi (önceden hesaplanan `swept_high`/`swept_low` verisi rapora yazılmıyordu)
+**Phase 3 — 15 Kod/Mantık Hatası ve Bug Fix Serisi:**
+1. **KRİTİK #1** — Erken return tuple boyutu (`_collect_fvg_profile_impl` ve wrapper'da) 2 yerine 7 None yapılarak unpack/crash hatası (BUG 1) giderildi.
+2. **KRİTİK #2** — `in_session` filtre mantığı ters çalışıyordu, session içinde trade edilecek şekilde düzeltildi (BUG 2).
+3. **ORTA** — `fvg_close_confirmed` bearish kapanış koşulu gap altı kapanışları da kapsayacak şekilde genişletildi (BUG 3).
+4. **ORTA** — `track_fvg_outcome` adverse/favorable excursion MAE ve MFE olarak ayrıldı, geriye dönük uyumluluk korundu (BUG 4).
+5. **HAFİF** — `track_fvg_outcome` continuation penceresinin her bar'da tekrar hesaplanması engellendi, mitigation anında tek sefer hesaplandı (BUG 5).
+6. **ORTA** — `simulate_rr_new` entry fiyatı gerçek trade modeline uygun hale getirildi (bullish=gap_bottom, bearish=gap_top) (BUG 6).
+7. **HAFİF** — `_filter_swings` dict iterasyonu `.items()` ile O(N) yükü ve bar index karmaşası giderilerek optimize edildi (BUG 7).
+8. **ORTA** — `detect_bos_mss` BOS/MSS tanımı, swing point sonrasındaki barların kapanışıyla kırılması formunda gerçeğe uygun hale getirildi (BUG 8).
+9. **HAFİF** — `cumulative_mit_curve` DR threshold'unun sayı/yüzde birim uyumsuzluğu giderildi, sabit `%5` threshold kullanıldı (BUG 9).
+10. **ORTA** — `detect_fvg_3candle` bar_index c2 yerine c3.index yapıldı (zamanlama kayması düzeltildi) (BUG 10).
+11. **HAFİF** — `classify_c3` REJECTION tespiti çelişkili body_range_ratio koşullarından arındırılıp wick-dominant yapıldı (BUG 11).
+12. **HAFİF** — `wilson_upper` 0 trade durumunda 1.0 yerine 0.0 döndürecek şekilde güncellendi (BUG 12).
+13. **ORTA** — `resample_15m` timestamp slot yuvarlama/hizalama (00-15-30-45) mantığıyla yeniden yazılarak veri başlangıcındaki kaymaların session saatlerini bozması engellendi (BUG 13).
+14. **HAFİF** — ATR warm-up başlangıcında `None` verilmesi yerine ilk TR değeriyle seed edilerek stabilite sağlandı (BUG 14).
+15. **HAFİF** — `main()`'de tuple unpacking hata yönetimi tuple check'i ile sağlamlaştırıldı (BUG 15).
 
 ## Recently Completed
-- **Phase 1 — V5 Bugfix serisi (4 madde):**
-  1. **KRİTİK #1** — Derinlik filtresi (DEPTH_WICK/DEPTH_BODY) entry-karar bloğundan tamamen kaldırıldı. Artık look-ahead bias yok. Derinlik verisi sadece post-hoc profiling'de (Section 10, 13) kullanılıyor.
-  2. **KRİTİK #2** — Section 16'daki `not (ci[1] < 0 or ci[0] > 0)` → `ci[0] > 0` (Section 7'deki düzeltmenin aynısı). `_EXPIRY_MAP` varsayılanı 45→5.
-  3. **ORTA** — `expiry_used` değişkeni `_collect_fvg_profile_impl`'den dönen 7. değer olarak eklendi, `main()`'de `all_coin_data[sym]["expiry_bars"]` olarak saklanıyor, Section 16'da `cfg.GLOBAL_FVG_EXPIRY_BARS` yerine coin-bazlı değer okunuyor.
-  4. **HAFİF** — MIN_RISK_DIST, CBDR_MULT_ZERO, SHOULD_TRADE_* atamaları `if classic_fvg.get("v4_rejected") is None:` koşuluna alındı.
-- **Simülasyon (Phase 1):** `_v5_dump.pkl` silindi, 13 coin baştan koşuldu (1293sn), rapor yenilendi.
-- **Phase 2 — 3 Yeni Fix:**
-  1. **Madde 1 (REAL TRADE BAĞLANTISI):** `captured_fvgs` sözlüğüne `fvg_by_uid = {}` eklendi. Entry'de `trade_uid = f"{symbol}_{sb}_{side}"` ile FVG→trade bağlantısı kuruldu. Trade çıkışında `v4_real_result/v4_real_pnl_usd/v4_real_pnl_R/v4_real_hit_target/v4_real_hit_stop` alanları `fvg_by_uid[trade_uid]` üzerinden güncellendi. Raporun ~15 farklı bloğunda (Section 1,5,6,6c,7,8,9c,10,14,15a,15b,16, volatility_regime_analysis) `f["rr"]` yerine `f["v4_real_result"]` kullanıldı.
-  2. **Madde 2 (BOS/MSS FIX):** `detect_bos_mss` fonksiyonunda post-window etiketlemesi `wt` (inverted trend) yerine `trend` kullanılarak düzeltildi — expansion FVG'ler MSS_ONLY yerine doğru etiketleniyor.
-  3. **Madde 3 (Section 6d SWEEP):** `_collect_fvg_profile_impl`'de hesaplanan `swept_high`/`swept_low` verisi artık `build_report`'ta Section 6d olarak raporlanıyor (SWEPT_HIGH/SWEPT_LOW/NO_SWEEP × kategori analizi).
-- **Simülasyon (Phase 2):** `_v5_dump.pkl` silindi, 13 coin baştan koşuldu (593sn), rapor yenilendi.
+- **Phase 3 — 15 Kod/Mantık Hatası ve Bug Fix Serisi** (2026-07-08)
+- **Phase 1 & Phase 2 Düzeltmeleri** (Look-ahead bias kaldırılması, expiry_bars veri akışı, Real Trade Bağlantısı, Sweep analizi).
 
 ## Active Decisions
-- Derinlik verisi Section 10 ve 13'te post-hoc analiz olarak kalmaya devam ediyor
-- `cfg.GLOBAL_FVG_EXPIRY_BARS` hâlâ global config'te set ediliyor (trade kararları için), sadece rapor okuması coin-bazlı hale getirildi
+- Derinlik verisi Section 10 ve 13'te post-hoc analiz olarak kalmaya devam ediyor.
+- `cfg.GLOBAL_FVG_EXPIRY_BARS` global config'te trade kararları için set ediliyor, rapor okuması ise artık coin-bazlı.
 
 ## Next Actions
-1. V5 parametre izole testi
-2. Yeni Section 0 WR/PF/PnL rakamlarının öncekiyle karşılaştırması (derinlik filtresi kalkınca trade sayısı arttı mı?)
+1. Tüm 15 bug düzeltmesinden sonra A/B testi veya backtest'i yeniden koşturup sonuçları doğrulamak.
+2. V5 parametre izole testi.
 
 ## Open Questions
-- Derinlik filtresi kalkınca Section 0 rakamları değişti — bu beklenen ve doğru davranış
-- V5'in üç parametresinden hangisi işe yarıyor?
+- Yeni düzeltmelerden sonra Section 0 WR/PF/PnL rakamlarındaki değişimler nasıl etkilendi?
+
 

@@ -31,15 +31,32 @@
 - V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
 
 ## ✅ Fixed
+- **Phase 3 (2026-07-08):**
+  - **15 Kod/Mantık Hatası ve Bug Düzeltmesi:**
+    1. Erken return tuple boyutu `None` dönüşleri standartlaştırıldı (crash engellendi).
+    2. `in_session` mantığındaki ters filtreleme hatası giderildi (artık session içinde trade yapılıyor).
+    3. `fvg_close_confirmed` bearish gap altı kapanış mitigasyonu eklendi.
+    4. Adverse ve Favorable excursion MAE/MFE olarak ayrıldı.
+    5. Döngüsel/gereksiz continuation hesaplaması mitigation anında tek sefer yapılmak üzere optimize edildi.
+    6. Entry fiyatı gerçek backtest modeline göre düzeltildi (bullish=gap_bottom, bearish=gap_top).
+    7. `_filter_swings` dict iterasyon performansı iyileştirildi, bar_index hatası çözüldü.
+    8. `detect_bos_mss` BOS/MSS algoritmik mantığı gerçeğe uygun şekilde kapanış kırılımıyla revize edildi.
+    9. `cumulative_mit_curve` DR threshold birim (sayı/yüzde) uyumsuzluğu sabit `%5` olarak düzeltildi.
+    10. `detect_fvg_3candle` bar_index c2→c3.index yapılarak zaman kayması giderildi.
+    11. `classify_c3` REJECTION tespiti wick-dominant olarak güncellendi.
+    12. `wilson_upper` 0 trade default'u 1.0→0.0 yapıldı.
+    13. `resample_15m` timestamp slot yuvarlama eklenerek saatlik kaymaların session'ları bozması engellendi.
+    14. ATR warm-up başlangıcı ilk TR ile seed edilerek stabilize edildi.
+    15. Unpacking hata yönetimi eklendi.
+- **Phase 2 (2026-07-08):**
+  - **Madde 1 (REAL TRADE):** `simulate_rr_new` → gerçek trade verisi. `trade_uid`/`fvg_by_uid` ile FVG→trade bağlantısı, trade çıkışında `v4_real_*` yazma, raporda `f["rr"]`→`f["v4_real_result"]` (~15 blok).
+  - **Madde 2 (BOS/MSS):** `detect_bos_mss`'de `wt`→`trend` düzeltmesi — post-window yanlış etiketleme hatası giderildi.
+  - **Madde 3 (Section 6d):** BSL/SSL sweep analizi rapora eklendi (önceden hesaplanıp yazılmayan veri).
 - **Phase 1 (2026-07-08):**
   - **KRİTİK #1:** Derinlik filtresi entry-karar bloğundan kaldırıldı — look-ahead bias giderildi. Section 12 DEPTH sütunu tüm coin'lerde 0.
   - **KRİTİK #2:** Section 16 Öneri mantığı `ci[0] > 0` ile düzeltildi (Section 7 ile tutarlı). `_EXPIRY_MAP` default 45→5.
   - **ORTA:** Coin-bazlı `expiry_bars` veri akışına eklendi — BTC/BNB/SOL=45b, diğerleri=5b.
   - **HAFİF:** `v4_rejected` atamaları "ilk red kazanır" mantığına çevrildi.
-- **Phase 2 (2026-07-08):**
-  - **Madde 1 (REAL TRADE):** `simulate_rr_new` → gerçek trade verisi. `trade_uid`/`fvg_by_uid` ile FVG→trade bağlantısı, trade çıkışında `v4_real_*` yazma, raporda `f["rr"]`→`f["v4_real_result"]` (~15 blok).
-  - **Madde 2 (BOS/MSS):** `detect_bos_mss`'de `wt`→`trend` düzeltmesi — post-window yanlış etiketleme hatası giderildi.
-  - **Madde 3 (Section 6d):** BSL/SSL sweep analizi rapora eklendi (önceden hesaplanıp yazılmayan veri).
 - Section 7 "Öneri" mantığı: `not (ci[1] < 0 or ci[0] > 0)` → `ci[0] > 0`
 - `cumulative_mit_curve`: payda `len(fvgs)` → `len(mit_times)`, DR threshold total*0.05
 - `RSM reset`: filtreden geçmeyen FVG'lerde reset eklenerek kopya FVG önlendi
@@ -49,6 +66,7 @@
 - `Section 16 best_cat`: `ci[0] > 0` fix
 - `BestMonth/WorstMonth`: tüm FVG ortalaması + min 5 örneklem
 - `cbdr_width zero division`: guard eklendi
+
 
 ## 📊 Backtest Results (13 coin) — 2026-07-08 (Phase 1+2, 593s, 12,337 trade)
 | Coin | Trades | WR% | PF | PnL | FVG |

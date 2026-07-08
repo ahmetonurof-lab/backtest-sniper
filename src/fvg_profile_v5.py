@@ -63,7 +63,7 @@ SYMBOLS_TO_TEST = [
 # ─── Helpers ─────────────────────────────────────────────────
 def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     if trades == 0:
-        return 1.0
+        return 0.0  # BUG 12 FIX: 0 işlem = bilgi yok; 1.0 yanıltıcı (%100 WR gibi görünür)
     z2 = z * z
     p_hat = wins / trades
     denominator = 1 + z2 / trades
@@ -98,16 +98,26 @@ def load_data(filepath):
 
 
 def resample_15m(bars_1m):
+    # BUG 13 FIX: Timestamp bazlı hizalama — veri 00:07'den başlıyorsa naif range()
+    # yaklaşımı 00:07, 00:22, ... üretir; doğrusu 00:00, 00:15, 00:30 slot'larıdır
+    _15M_MS = 15 * 60 * 1000  # 15 dakika milisaniye cinsinden
+    buckets: dict = {}
+    for b in bars_1m:
+        slot = (b.timestamp // _15M_MS) * _15M_MS  # timestamp'i 15m sınırına yuvarla
+        if slot not in buckets:
+            buckets[slot] = []
+        buckets[slot].append(b)
     m15 = []
-    for i in range(0, len(bars_1m), 15):
-        c = bars_1m[i:i + 15]
+    for slot in sorted(buckets):
+        c = buckets[slot]
         if len(c) < 15:
-            break
+            continue  # Eksik veri → bu 15m bar'ı atla
         m15.append(Bar(index=len(m15), open=c[0].open,
                        high=max(b.high for b in c), low=min(b.low for b in c),
                        close=c[-1].close, volume=sum(b.volume for b in c),
-                       is_closed=True, timestamp=c[0].timestamp))
+                       is_closed=True, timestamp=slot))
     return m15
+
 
 
 def fvg_close_confirmed(fvg, all_bars):
@@ -123,8 +133,8 @@ def fvg_close_confirmed(fvg, all_bars):
         else:
             if b.close > fvg.top:
                 return False
-            if fvg.bottom <= b.close <= fvg.top:
-                return True
+            # close <= fvg.top: gap içi veya gap altı kapanma = mitigated
+            return True
     return False
 
 
@@ -134,13 +144,14 @@ def detect_fvg_3candle(c1, c2, c3, atr):
         gap = c3.low - c1.high
         return {"direction": "bullish", "top": c3.low, "bottom": c1.high,
                 "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c2.index, "atr": atr}
+                "bar_index": c3.index, "atr": atr}  # BUG 10 FIX: c2→c3 (FVG c3 kapanınca tamamlanır)
     if c1.low > c3.high:
         gap = c1.low - c3.high
         return {"direction": "bearish", "top": c1.low, "bottom": c3.high,
                 "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c2.index, "atr": atr}
+                "bar_index": c3.index, "atr": atr}  # BUG 10 FIX: c2→c3
     return None
+
 
 
 def classify_c3(fvg):
@@ -152,22 +163,27 @@ def classify_c3(fvg):
     total_range_c3 = c3.high - c3.low
     body_range_ratio = body_c3 / total_range_c3 if total_range_c3 > 0 else 0
     if direction == "bullish":
-        rejection_body = c3.open - c3.low if c3.close < c3.open else c3.close - c3.low
+        # Bullish REJECTION: c3 bearish kapanıyor, alt wick büyük (destek gördü, reddetti)
+        lower_wick = min(c3.open, c3.close) - c3.low
         expansion_body = max(c3.close - c3.open, c3.high - c3.open)
         broke_c2_high = c3.high > c2.high
-        if c3.close < c3.open and rejection_body >= atr and body_range_ratio >= 0.70:
+        # BUG 11 FIX: REJECTION = alt wick >= ATR*0.5 ve gövde oranı düşük (wick dominant)
+        if c3.close < c3.open and lower_wick >= atr * 0.5 and body_range_ratio < 0.60:
             return "REJECTION"
         if expansion_body >= atr * 1.5 and body_range_ratio >= 0.70 and broke_c2_high:
             return "EXPANSION"
     else:
-        rejection_body = c3.high - c3.close if c3.close > c3.open else c3.high - c3.open
+        # Bearish REJECTION: c3 bullish kapanıyor, üst wick büyük (direnç gördü, reddetti)
+        upper_wick = c3.high - max(c3.open, c3.close)
         expansion_body = max(c3.open - c3.close, c3.open - c3.low)
         broke_c2_low = c3.low < c2.low
-        if c3.close > c3.open and rejection_body >= atr and body_range_ratio >= 0.70:
+        # BUG 11 FIX: REJECTION = üst wick >= ATR*0.5 ve gövde oranı düşük (wick dominant)
+        if c3.close > c3.open and upper_wick >= atr * 0.5 and body_range_ratio < 0.60:
             return "REJECTION"
         if expansion_body >= atr * 1.5 and body_range_ratio >= 0.70 and broke_c2_low:
             return "EXPANSION"
     return "CONSOLIDATION"
+
 
 
 def calc_c2_anatomy(c2):
@@ -248,13 +264,26 @@ def track_fvg_outcome(fvg, bars_after):
                 result["invalidate_bar"] = offset
                 if not mitigated:
                     break
+        # BUG 4 FIX: MAE (adverse) ve MFE (favorable) excursion ayrı takip edilir
         if direction == "bullish":
-            exc = max(0, b.high - fvg_top, fvg_bottom - b.low)
+            mae = max(0, fvg_bottom - b.low)   # fiyat gap altına gitti mi?
+            mfe = max(0, b.high - fvg_top)     # fiyat gap üstüne geçti mi?
         else:
-            exc = max(0, fvg_top - b.low, b.high - fvg_bottom)
+            mae = max(0, b.high - fvg_top)     # fiyat gap üstüne çıktı mı?
+            mfe = max(0, fvg_bottom - b.low)   # fiyat gap altına geçti mi?
+        if mae > result.get("max_mae", 0.0):
+            result["max_mae"] = mae
+        if mfe > result.get("max_mfe", 0.0):
+            result["max_mfe"] = mfe
+        # Geriye dönük uyumluluk için max_excursion = max(mae, mfe)
+        exc = max(mae, mfe)
         if exc > result["max_excursion"]:
             result["max_excursion"] = exc
-            result["max_excursion_dir"] = "beyond" if (direction == "bullish" and b.high > fvg_top) or (direction == "bearish" and b.low < fvg_bottom) else "reverse"
+            result["max_excursion_dir"] = "beyond" if (
+                (direction == "bullish" and b.high > fvg_top) or
+                (direction == "bearish" and b.low < fvg_bottom)
+            ) else "reverse"
+        # BUG 5 FIX: Continuation'ı mitigasyon anında tek seferinde hesapla
         if not mitigated and touched_fvg:
             cond = (direction == "bullish" and fvg_bottom <= b.close <= fvg_top) or (direction == "bearish" and fvg_bottom <= b.close <= fvg_top)
             wick = (direction == "bullish" and b.close >= fvg_bottom and b.low <= fvg_top) or (direction == "bearish" and b.close <= fvg_top and b.high >= fvg_bottom)
@@ -264,12 +293,15 @@ def track_fvg_outcome(fvg, bars_after):
                 result["mitigate_bar"] = offset
                 result["mitigate_price"] = b.close
                 result["bars_to_mitigate"] = offset
-        if mitigated and result["continuation_10"] is None:
-            for win_offset, win_key in [(10, "continuation_10"), (20, "continuation_20"), (40, "continuation_40")]:
-                fo = offset + win_offset
-                if fo < len(bars_after):
-                    fb = bars_after[fo]
-                    result[win_key] = fb.close > fvg_top if direction == "bullish" else fb.close < fvg_bottom
+                # Continuation'ı mitigation anında tek seferinde hesapla
+                for win_offset, win_key in [(10, "continuation_10"), (20, "continuation_20"), (40, "continuation_40")]:
+                    fo = offset + win_offset
+                    if fo < len(bars_after):
+                        fb = bars_after[fo]
+                        result[win_key] = fb.close > fvg_top if direction == "bullish" else fb.close < fvg_bottom
+                    else:
+                        result[win_key] = False
+
         if result["invalidated"] and mitigated:
             break
     for key in ["continuation_10", "continuation_20", "continuation_40"]:
@@ -284,11 +316,15 @@ def simulate_rr_new(fvg, bars_after):
     gap_top, gap_bottom = fvg["top"], fvg["bottom"]
     gap_width = max(fvg["size"], 0.000001)
     if direction == "bullish":
-        entry_price = gap_top
-        target_price = entry_price + gap_width * 2.0
-    else:
+        # Bullish FVG fill: fiyat gap'e geri döner, gap_bottom'dan girilir
         entry_price = gap_bottom
-        target_price = entry_price - gap_width * 2.0
+        stop_price = gap_bottom - gap_width  # 1R risk = gap_width kadar aşağı
+        target_price = gap_top + gap_width * 2.0  # 2R hedef
+    else:
+        # Bearish FVG fill: fiyat gap'e geri döner, gap_top'tan girilir
+        entry_price = gap_top
+        stop_price = gap_top + gap_width   # 1R risk = gap_width kadar yukarı
+        target_price = gap_bottom - gap_width * 2.0  # 2R hedef
     risk_pct = gap_width / max(entry_price, 0.000001)
     fee_leg_R = FEE_TAKER / max(risk_pct, 0.000001)
 
@@ -369,12 +405,14 @@ def find_all_swing_points(b15):
 def _filter_swings(c3_idx, hi, lo, hi_idx=None, lo_idx=None):
     if hi_idx is not None:
         lo_i = max(0, c3_idx - 50)
-        sw_h = [(i, hi_idx[i]) for i in range(lo_i, c3_idx) if i in hi_idx]
-        sw_l = [(i, lo_idx[i]) for i in range(lo_i, c3_idx) if i in lo_idx]
+        # BUG 7 FIX: range() yerine dict.items() ile filtrele — bar index ≠ liste pozisyonu
+        sw_h = [(idx, pr) for idx, pr in hi_idx.items() if lo_i <= idx < c3_idx]
+        sw_l = [(idx, pr) for idx, pr in lo_idx.items() if lo_i <= idx < c3_idx]
         return sw_h, sw_l
     sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_idx - 50 <= hi[0][i] < c3_idx]
     sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_idx - 50 <= lo[0][i] < c3_idx]
     return sw_h, sw_l
+
 
 
 def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
@@ -387,23 +425,44 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
         elif sw_h[-1][1] < sw_h[-2][1] and sw_l[-1][1] < sw_l[-2][1]:
             trend = "downtrend"
     pre_start = max(0, c3_idx - 20)
-    pre_closes = [b.close for b in b15[pre_start:c3_idx] if b.index < c3_idx] if c3_idx > pre_start else []
-    pre_max_c = max(pre_closes, default=0)
-    pre_min_c = min(pre_closes, default=0)
-    pre_bos = any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) if trend == "uptrend" else (
-        any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "downtrend" else False)
-    pre_mss = any(idx < c3_idx and pre_min_c < pr for idx, pr in sw_l) if trend == "uptrend" else (
-        any(idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) if trend == "downtrend" else
-        any(c3_idx - 10 <= idx < c3_idx and pre_max_c > pr for idx, pr in sw_h) or any(c3_idx - 10 <= idx < c3_idx and pre_min_c < pr for idx, pr in sw_l))
+    # BUG 8 FIX: BOS = swing point'inden SONRA gelen bir bar'ın o seviyeyi KAPANIŞLA kırması
+    # Önceki hali: pre_max_c ile swing'i karşılaştırmak swing'in kendisini test ediyordu (her zaman True)
+    def _has_bos(swings, bars_slice, break_above=True):
+        """Swing'den sonra gelen herhangi bir bar swing seviyesini kapanışla kırdı mı?"""
+        for sw_idx, sw_pr in swings:
+            # bars_slice içinde sw_idx'ten sonraki barları bul
+            for b in bars_slice:
+                if b.index <= sw_idx:
+                    continue
+                if break_above and b.close > sw_pr:
+                    return True
+                if not break_above and b.close < sw_pr:
+                    return True
+        return False
+
+    pre_bars = [b for b in b15[pre_start:c3_idx + 1] if b.index <= c3_idx]
     post_end = min(c3_idx + 21, len(b15))
-    post_closes = [b.close for b in b15[c3_idx + 1:post_end] if b.index > c3_idx] if post_end > c3_idx + 1 else []
-    post_max_c = max(post_closes, default=0)
-    post_min_c = min(post_closes, default=0)
-    post_bos = any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if trend == "uptrend" else (
-        any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if trend == "downtrend" else False)
-    post_mss = any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l) if trend == "uptrend" else (
-        any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) if trend == "downtrend" else
-        any(idx < c3_idx and post_max_c > pr for idx, pr in sw_h) or any(idx < c3_idx and post_min_c < pr for idx, pr in sw_l))
+    post_bars = [b for b in b15[c3_idx:post_end] if b.index >= c3_idx]
+
+    if trend == "uptrend":
+        pre_bos = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı)
+        pre_mss = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı = MSS)
+        post_bos = _has_bos(sw_h, post_bars, break_above=True)
+        post_mss = _has_bos(sw_l, post_bars, break_above=False)
+    elif trend == "downtrend":
+        pre_bos = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı)
+        pre_mss = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı = MSS)
+        post_bos = _has_bos(sw_l, post_bars, break_above=False)
+        post_mss = _has_bos(sw_h, post_bars, break_above=True)
+    else:  # ranging
+        # Ranging'de son 10 bar içindeki kırılımları kontrol et
+        recent_sw_h = [(idx, pr) for idx, pr in sw_h if c3_idx - 10 <= idx < c3_idx]
+        recent_sw_l = [(idx, pr) for idx, pr in sw_l if c3_idx - 10 <= idx < c3_idx]
+        pre_bos = False
+        pre_mss = _has_bos(recent_sw_h, pre_bars, break_above=True) or _has_bos(recent_sw_l, pre_bars, break_above=False)
+        post_bos = False
+        post_mss = _has_bos(recent_sw_h, post_bars, break_above=True) or _has_bos(recent_sw_l, post_bars, break_above=False)
+
     pre_bos, pre_mss = bool(pre_bos), bool(pre_mss)
     post_bos, post_mss = bool(post_bos), bool(post_mss)
     group = "NONE"
@@ -413,6 +472,7 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
         group = "BOS_ONLY" if (post_bos and not post_mss) else ("MSS_ONLY" if (post_mss and not post_bos) else "BOTH")
     return {"pre_bos": pre_bos, "pre_mss": pre_mss, "post_bos": post_bos, "post_mss": post_mss,
             "trend": trend, "group": group}
+
 
 
 # ─── Istatistik ──────────────────────────────────────────────
@@ -432,15 +492,18 @@ def cumulative_mit_curve(fvgs, max_b=200):
     curve = []
     dr = max_b
     prev_pct = 0
+    # BUG 9 FIX: threshold sabit yüzde puan olmalı (pct - prev_pct ile aynı birim)
+    # total * 0.05 = ham sayı, pct - prev_pct = yüzde → birim uyumsuzluğu
+    DR_THRESHOLD_PCT = 5.0  # art arda iki nokta arasında %5'ten az artış = azalan getiri
     for n in [1, 2, 3, 5, 10, 20, 30, 50, 75, 100, 150, 200]:
         cnt = sum(1 for t in mit_times if t <= n) if mit_times else 0
         pct = cnt / total * 100
         curve.append((n, pct))
-        threshold = max(1.0, total * 0.05)
-        if n > 1 and prev_pct > 0 and (pct - prev_pct) < threshold and dr == max_b:
+        if n > 1 and prev_pct > 0 and (pct - prev_pct) < DR_THRESHOLD_PCT and dr == max_b:
             dr = n
         prev_pct = pct
     return curve, dr if dr != max_b else 200
+
 
 
 def conditional_cancel(fvgs, max_b=200):
@@ -519,7 +582,7 @@ def collect_fvg_profile(symbol: str):
         import traceback
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
-        return None, None, None
+        return None, None, None, None, None, None, None
 
 
 def _collect_fvg_profile_impl(symbol: str):
@@ -530,7 +593,7 @@ def _collect_fvg_profile_impl(symbol: str):
     # ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
-        return None, None
+        return None, None, None, None, None, None, None
 
     ic = cfg.INITIAL_BALANCE
     rpt = cfg.RISK_PER_TRADE
@@ -547,7 +610,7 @@ def _collect_fvg_profile_impl(symbol: str):
     b15 = resample_15m(b1)
     if not b15:
         print(f"    [{symbol}] resample_15m bos dondu")
-        return None, None
+        return None, None, None, None, None, None, None
 
     print(f"    [{symbol}] {len(b1)} bar 1m -> {len(b15)} bar 15m")
     # Per-coin session from config (CBDR_RISK_MATRIX)
@@ -576,7 +639,10 @@ def _collect_fvg_profile_impl(symbol: str):
     prev_close = b15[0].open
     for bar in b15[1:500]:
         tr = calculate_true_range(bar, prev_close)
-        atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
+        if atr_val == 0.0:
+            atr_val = tr  # BUG 14 FIX: İlk değer için update_atr(None) kullanma, TR ile seed et
+        else:
+            atr_val = update_atr(atr_val, tr)
         prev_close = bar.close
 
     # Pre-compute swing points for BOS/MSS
@@ -624,7 +690,8 @@ def _collect_fvg_profile_impl(symbol: str):
                 rsm.reset()
                 continue
             h = edt.hour
-            if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
+            in_session = (h >= sh or h < eh) if spans_midnight else (sh <= h < eh)
+            if not in_session:
                 rsm.reset()
                 continue
 
@@ -1958,8 +2025,10 @@ def main():
             sh_info = get_session_hours(sym)
             print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
             result = collect_fvg_profile(sym)
-            if result is None or result[0] is None:
-                print(f"    [{sym}] VERI DOSYASI YOK", flush=True)
+            # BUG 15 FIX: result her zaman 7-tuple döndürmeli (BUG 1 ile sağlandı)
+            # Tuple check'i ile sağlamlaştırıldı.
+            if result is None or (isinstance(result, tuple) and result[0] is None):
+                print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
                 continue
             daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used = result
             if len(daily_rows) < 1:
