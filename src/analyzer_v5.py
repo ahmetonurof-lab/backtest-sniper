@@ -88,20 +88,28 @@ def resample_15m(bars_1m):
     return m15
 
 
-# ─── FVG alive check (sweep-based) ──────────────────────
-def is_fvg_alive(fvg_top, fvg_bottom, b15, fvg_b15_idx, cur_b15_idx):
+# ─── FVG status (3-state) ───────────────────────────────
+def get_fvg_status(top, bottom, direction, b):
     """
-    Eski Kural: '45 bar geçti, ölmüştür.' (Yanlış)
-    Yeni Kural: 'Fiyat bu FVG'ye girip emirleri süpürmüş mü?
-                 Evet → ölmüştür. Hayır → hala canlı.'
+    Returns: 'INVALIDATED', 'ACTIVE_ENTRY_ZONE', or 'ALIVE'
+    
+    INVALIDATED:  Fiyat gap'i kırdı (bullish → low < bottom, bearish → high > top).
+                  Bu FVG ölmüştür, pool'dan sil.
+    ACTIVE_ENTRY_ZONE: Fiyat FVG gap'inin içine girdi (wick touch). Entry sinyali.
+    ALIVE:        Henüz bir şey olmadı, bekle.
     """
-    for i in range(fvg_b15_idx + 1, cur_b15_idx + 1):
-        if i >= len(b15):
-            break
-        b = b15[i]
-        if b.low <= fvg_top and b.high >= fvg_bottom:
-            return False
-    return True
+    if direction == "bullish":
+        if b.low < bottom:
+            return "INVALIDATED"
+        if b.low <= top:
+            return "ACTIVE_ENTRY_ZONE"
+        return "ALIVE"
+    # bearish
+    if b.high > top:
+        return "INVALIDATED"
+    if b.high >= bottom:
+        return "ACTIVE_ENTRY_ZONE"
+    return "ALIVE"
 
 
 # ─── FVG close-confirmed helper (trailing için) ─────────
@@ -309,11 +317,13 @@ def _collect_fvg_profile_impl(symbol: str):
                 if not is_high_quality_fvg(tf.top - tf.bottom, atr):
                     quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_QUALITY"
-                elif not is_fvg_alive(tf.top, tf.bottom, b15, tf.bar_index // 15, sb):
-                    quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "FVG_SWEPT"
                 else:
-                    classic_fvg["v4_rejected"] = None
+                    fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
+                    if fvg_status == "INVALIDATED":
+                        quality_mult = 0.0
+                        classic_fvg["v4_rejected"] = "FVG_SWEPT"
+                    else:
+                        classic_fvg["v4_rejected"] = None
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
@@ -564,9 +574,8 @@ def _collect_fvg_profile_impl(symbol: str):
     atr_vals = [b.high - b.low for b in b15]
     print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
           f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row", flush=True)
-    if day_cbdr_cnt < 3 and fvg_cnt > 0:
-        rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
-        print(f"    [{symbol}] CBDR AZ {rej_str}", flush=True)
+    rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
+    print(f"    [{symbol}] Red: {rej_str}", flush=True)
     if len(daily_rows) < 3:
         print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
               f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
