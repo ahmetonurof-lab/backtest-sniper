@@ -21,12 +21,16 @@
 - CBDR görselleştirme (matplotlib)
 
 ## 🔧 Pending / In Progress
-- V5 parametre izole testi (_EXPIRY_MAP / depth filter / weekend mult tek tek)
-- BTC WR=%32.2 analizi (Section 12: FVG_VALIDITY red=9048)
+- V5 parametre izole testi (depth filter / weekend mult tek tek)
+- BTC WR=%32.2 analizi (Section 12: FVG_SWEPT red sayısı)
 - V5 vs V4 bypass WR karşılaştırması
 
+## ✅ Done (2026-07-09)
+- **Rename:** `backtest_engine.py` → `analyzer_v5.py`, imports updated, `py_compile` OK.
+- **FVG expiry fix:** 45‑bar time‑based `is_fvg_valid` → sweep‑based `is_fvg_alive` (wick high/low gap check). `cfg.GLOBAL_FVG_EXPIRY_BARS` removed.
+
 ## ✅ Fixed
-- `backtest_engine.py` & `fvg_profile_v5.py`: missing session hours filter (spans_midnight/sh/eh check) added — previously trading 24/7 instead of session-only
+- **Session hours filter (BUG 2):** `backtest_engine.py` & `fvg_profile_v5.py`'de `in_session` mantığı ters çalışıyordu. Eski kod `if not in_session: rsm.reset()` ile session DIŞINDA trade iptal ediyordu — yani midnight‑spanning session (22‑2) için saat 2‑21 arası tüm trade'ler iptal oluyor, bir önceki sezonu iptal ediyordu. Düzeltme: `if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh): rsm.reset()` → artık session İÇİNDE (blackout window) trade iptal ediliyor, diğer saatlerde trade serbest.
 - Shadow test (analyzer_v4 vs backtest_engine): 29/29 trades birebir eşleşti (13W/11BE/5L, +316 PnL)
 
 ## ✅ Cleanup (2026-07-08)
@@ -34,6 +38,7 @@
 - Removed profiling-only functions: `percentile_sorted`, `cumulative_mit_curve`, `conditional_cancel`, `bootstrap_ci`, `volatility_regime_analysis`
 - Removed report functions: `build_report`, `_build_and_save_report`
 - Re-added essential constants + `detect_fvg_3candle`/`fvg_close_confirmed` (used by engine)
+- **Phase 4 (2026-07-08):** Tüm profiling/BOS‑MSS fonksiyonları söküldü (`detect_fvg_3candle` → `detect_bos_mss` dahil 10 fonksiyon). `classic_fvg` minimal dict, dönüş 4‑tuple, constants temizlendi. Commit `f9a30b0`.
 
 ## 🐛 Known Issues
 - fvg_profile_v5.py'de V4 motor kopyası — DRY ihlali (manuel sync)

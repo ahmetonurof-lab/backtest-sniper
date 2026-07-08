@@ -27,7 +27,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid, get_session_hours
+from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, get_session_hours
 from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -88,6 +88,22 @@ def resample_15m(bars_1m):
     return m15
 
 
+# ─── FVG alive check (sweep-based) ──────────────────────
+def is_fvg_alive(fvg_top, fvg_bottom, b15, fvg_b15_idx, cur_b15_idx):
+    """
+    Eski Kural: '45 bar geçti, ölmüştür.' (Yanlış)
+    Yeni Kural: 'Fiyat bu FVG'ye girip emirleri süpürmüş mü?
+                 Evet → ölmüştür. Hayır → hala canlı.'
+    """
+    for i in range(fvg_b15_idx + 1, cur_b15_idx + 1):
+        if i >= len(b15):
+            break
+        b = b15[i]
+        if b.low <= fvg_top and b.high >= fvg_bottom:
+            return False
+    return True
+
+
 # ─── FVG close-confirmed helper (trailing için) ─────────
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
@@ -121,10 +137,7 @@ def collect_fvg_profile(symbol: str):
 
 
 def _collect_fvg_profile_impl(symbol: str):
-    # --- V5: coin bazli FVG expiry ---
-    _EXPIRY_MAP = {"BTCUSDT": 45, "BNBUSDT": 45, "SOLUSDT": 45}
-    cfg.GLOBAL_FVG_EXPIRY_BARS = _EXPIRY_MAP.get(symbol, 5)
-    # ---
+    # --- (coin bazli FVG expiry kalkti — yerini is_fvg_alive aldi) ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
         return None, None, None, None
@@ -296,9 +309,9 @@ def _collect_fvg_profile_impl(symbol: str):
                 if not is_high_quality_fvg(tf.top - tf.bottom, atr):
                     quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_QUALITY"
-                elif not is_fvg_valid(tf.bar_index, cur.index):
+                elif not is_fvg_alive(tf.top, tf.bottom, b15, tf.bar_index // 15, sb):
                     quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "FVG_VALIDITY"
+                    classic_fvg["v4_rejected"] = "FVG_SWEPT"
                 else:
                     classic_fvg["v4_rejected"] = None
 
