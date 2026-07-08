@@ -27,7 +27,9 @@
 
 ## ✅ Done (2026-07-09)
 - **Rename:** `backtest_engine.py` → `analyzer_v5.py`, imports updated, `py_compile` OK.
-- **FVG expiry fix:** 45‑bar time‑based `is_fvg_valid` → sweep‑based `is_fvg_alive` (wick high/low gap check). `cfg.GLOBAL_FVG_EXPIRY_BARS` removed.
+- **FVG expiry fix:** 45‑bar time‑based `is_fvg_valid` → `get_fvg_status` (3‑state: INVALIDATED/ACTIVE_ENTRY_ZONE/ALIVE, wick‑based).
+- **Rejection breakdown report:** `analyzer_v5.py` sonuç + red dağılımını `reports/analyzer_v5_summary.md`'ye yazar.
+- **Eşik motoru V5:** `analyze_cbdr_thresholds.py` artık `is_high_quality_fvg`, `get_fvg_status`, `get_cbdr_multiplier`, `should_trade`, Early London 1.5x, weekend bonus filtrelerini kullanır. Rejection tracking eklendi.
 
 ## ✅ Fixed
 - **Session hours filter (BUG 2):** `backtest_engine.py` & `fvg_profile_v5.py`'de `in_session` mantığı ters çalışıyordu. Eski kod `if not in_session: rsm.reset()` ile session DIŞINDA trade iptal ediyordu — yani midnight‑spanning session (22‑2) için saat 2‑21 arası tüm trade'ler iptal oluyor, bir önceki sezonu iptal ediyordu. Düzeltme: `if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh): rsm.reset()` → artık session İÇİNDE (blackout window) trade iptal ediliyor, diğer saatlerde trade serbest.
