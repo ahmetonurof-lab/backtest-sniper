@@ -141,14 +141,14 @@ def collect_fvg_profile(symbol: str):
         import traceback
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
-        return None, None, None, None
+        return None, None, None, None, None
 
 
 def _collect_fvg_profile_impl(symbol: str):
     # --- (coin bazli FVG expiry kalkti — yerini is_fvg_alive aldi) ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
-        return None, None, None, None
+        return None, None, None, None, None
 
     ic = cfg.INITIAL_BALANCE
     rpt = cfg.RISK_PER_TRADE
@@ -165,7 +165,7 @@ def _collect_fvg_profile_impl(symbol: str):
     b15 = resample_15m(b1)
     if not b15:
         print(f"    [{symbol}] resample_15m bos dondu")
-        return None, None, None, None
+        return None, None, None, None, None
 
     print(f"    [{symbol}] {len(b1)} bar 1m -> {len(b15)} bar 15m")
     # Per-coin session from config (CBDR_RISK_MATRIX)
@@ -580,7 +580,7 @@ def _collect_fvg_profile_impl(symbol: str):
         print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
               f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
 
-    return daily_rows, wins, losses, trade_records
+    return daily_rows, wins, losses, trade_records, rejection_counts
 
 
 # ─── Istatistik Hesaplama ────────────────────────────────────
@@ -645,13 +645,13 @@ def main():
             if result is None or (isinstance(result, tuple) and result[0] is None):
                 print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records = result
+            daily_rows, wins, losses, trade_records, rejection_counts = result
             if len(daily_rows) < 1:
                 print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
                 continue
 
             stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
-            results_data.append((sym, stats, None, daily_rows, []))
+            results_data.append((sym, stats, None, daily_rows, [], rejection_counts))
 
             print(f"    [{sym}] {stats['total_trades']} islem | "
                   f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
@@ -671,12 +671,41 @@ def main():
     print(f"\n{'='*100}")
     print(f"  SUMMARY")
     print(f"{'='*100}")
-    print(f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'FVG':>6}")
-    print(f"  {'-'*70}")
-    for sym, stats, _, _, fvgs in results_data:
-        print(f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
-              f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {len(fvgs):>6d}")
-    print(f"\n  Total time: {time.time()-t0:.0f}s")
+    all_reasons = ["FVG_QUALITY", "FVG_SWEPT", "MIN_RISK_DIST", "CBDR_MULT_ZERO", "SHOULD_TRADE_", "QTY_ZERO"]
+    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'ENTERED':>7}"
+    for r in all_reasons:
+        hdr += f" {r[:10]:>10}"
+    print(hdr)
+    print(f"  {'-'*sum(len(hdr.split()) * 3)}")
+    for sym, stats, _, _, fvgs, rej in results_data:
+        entered = rej.get("ENTERED", 0)
+        row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
+        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
+        for r in all_reasons:
+            row += f" {rej.get(r, 0):>10}"
+        print(row)
+
+    total_trades = sum(s['total_trades'] for _, s, _, _, _, _ in results_data)
+    total_pnl = sum(s['total_pnl'] for _, s, _, _, _, _ in results_data)
+    print(f"\n  TOPLAM: {total_trades} trade, PnL={total_pnl:+.0f} | Sure: {time.time()-t0:.0f}s")
+
+    # ── Report file ──
+    rpt_path = os.path.join(os.path.dirname(__file__), "..", "reports", "analyzer_v5_summary.md")
+    with open(rpt_path, "w") as f:
+        f.write(f"# analyzer_v5 Summary\n\n")
+        f.write(f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'PnL':>10} |")
+        for r in all_reasons:
+            f.write(f" {r:<10} |")
+        f.write(f"\n|{':---'*9}|{':---'*len(all_reasons)}|\n")
+        for sym, stats, _, _, _, rej in results_data:
+            entered = rej.get("ENTERED", 0)
+            f.write(f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
+                    f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['total_pnl']:>+9.0f} |")
+            for r in all_reasons:
+                f.write(f" {rej.get(r, 0):>10} |")
+            f.write("\n")
+        f.write(f"\n**TOPLAM:** {total_trades} trade, PnL={total_pnl:+.0f}\n")
+    print(f"  Rapor: {rpt_path}")
 
 
 if __name__ == "__main__":
