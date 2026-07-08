@@ -36,10 +36,6 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 SESSION_NAME = "MULTI_SESSION"
 SESSION_HOURS = {'start': 22, 'end': 2}
 
-LOOKBACK_BARS = 200
-SWEEP_LOOKBACK = 20
-FEE_TAKER = 0.0004
-CONT_WINDOWS = [10, 20, 40]
 SYMBOLS_TO_TEST = [
     'BTCUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'XRPUSDT',
     'ATOMUSDT', 'ADAUSDT', 'APTUSDT', 'DOTUSDT', 'NEARUSDT', 'ETHUSDT', 'SUIUSDT'
@@ -92,7 +88,6 @@ def resample_15m(bars_1m):
     return m15
 
 
-
 # ─── FVG close-confirmed helper (trailing için) ─────────
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
@@ -111,366 +106,6 @@ def fvg_close_confirmed(fvg, all_bars):
     return False
 
 
-def detect_fvg_3candle(c1, c2, c3, atr):
-    if c3.low > c1.high:
-        gap = c3.low - c1.high
-        return {"direction": "bullish", "top": c3.low, "bottom": c1.high,
-                "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c3.index, "atr": atr}
-    if c1.low > c3.high:
-        gap = c1.low - c3.high
-        return {"direction": "bearish", "top": c1.low, "bottom": c3.high,
-                "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c3.index, "atr": atr}
-    return None
-
-
-# ─── V4 Engine ─────────────────────────────────────────────
-
-
-
-def classify_c3(fvg):
-    c3 = fvg["c3"]
-    c2 = fvg["c2"]
-    atr = fvg["atr"]
-    direction = fvg["direction"]
-    body_c3 = abs(c3.close - c3.open)
-    total_range_c3 = c3.high - c3.low
-    body_range_ratio = body_c3 / total_range_c3 if total_range_c3 > 0 else 0
-    if direction == "bullish":
-        # Bullish REJECTION: c3 bearish kapanıyor, alt wick büyük (destek gördü, reddetti)
-        lower_wick = min(c3.open, c3.close) - c3.low
-        expansion_body = max(c3.close - c3.open, c3.high - c3.open)
-        broke_c2_high = c3.high > c2.high
-        # BUG 11 FIX: REJECTION = alt wick >= ATR*0.5 ve gövde oranı düşük (wick dominant)
-        if c3.close < c3.open and lower_wick >= atr * 0.5 and body_range_ratio < 0.60:
-            return "REJECTION"
-        if expansion_body >= atr * 1.5 and body_range_ratio >= 0.70 and broke_c2_high:
-            return "EXPANSION"
-    else:
-        # Bearish REJECTION: c3 bullish kapanıyor, üst wick büyük (direnç gördü, reddetti)
-        upper_wick = c3.high - max(c3.open, c3.close)
-        expansion_body = max(c3.open - c3.close, c3.open - c3.low)
-        broke_c2_low = c3.low < c2.low
-        # BUG 11 FIX: REJECTION = üst wick >= ATR*0.5 ve gövde oranı düşük (wick dominant)
-        if c3.close > c3.open and upper_wick >= atr * 0.5 and body_range_ratio < 0.60:
-            return "REJECTION"
-        if expansion_body >= atr * 1.5 and body_range_ratio >= 0.70 and broke_c2_low:
-            return "EXPANSION"
-    return "CONSOLIDATION"
-
-
-
-def calc_c2_anatomy(c2):
-    body = abs(c2.close - c2.open)
-    rng = c2.high - c2.low
-    if rng == 0:
-        return {"body_ratio": 0.0, "upper_wick_ratio": 0.0, "lower_wick_ratio": 0.0, "clv": 0.0}
-    return {
-        "body_ratio": round(body / rng, 4),
-        "upper_wick_ratio": round((c2.high - max(c2.open, c2.close)) / rng, 4),
-        "lower_wick_ratio": round((min(c2.open, c2.close) - c2.low) / rng, 4),
-        "clv": round(((c2.close - c2.low) - (c2.high - c2.close)) / rng, 4),
-    }
-
-
-def detect_sweep(b15, c3_pos, lookback=20):
-    lo = max(0, c3_pos - lookback - 30)
-    pre_bars = b15[lo:c3_pos]
-    if len(pre_bars) < 6:
-        return {"swept_high": False, "swept_low": False}
-    swings_h, swings_l = [], []
-    for i in range(2, len(pre_bars) - 2):
-        h, l = pre_bars[i].high, pre_bars[i].low
-        if h > pre_bars[i - 2].high and h > pre_bars[i - 1].high and h > pre_bars[i + 1].high and h > pre_bars[i + 2].high:
-            swings_h.append((lo + i, h))
-        if l < pre_bars[i - 2].low and l < pre_bars[i - 1].low and l < pre_bars[i + 1].low and l < pre_bars[i + 2].low:
-            swings_l.append((lo + i, l))
-    swept_h, swept_l = False, False
-    recent = b15[max(0, c3_pos - lookback):c3_pos]
-    for idx, pr in swings_h:
-        for b in recent:
-            if b.index > idx and b.high > pr and b.close < pr:
-                swept_h = True; break
-        if swept_h:
-            break
-    for idx, pr in swings_l:
-        for b in recent:
-            if b.index > idx and b.low < pr and b.close > pr:
-                swept_l = True; break
-        if swept_l:
-            break
-    return {"swept_high": swept_h, "swept_low": swept_l}
-
-
-# ─── FVG Outcome / RR ───────────────────────────────────────
-def track_fvg_outcome(fvg, bars_after):
-    direction = fvg["direction"]
-    fvg_top, fvg_bottom = fvg["top"], fvg["bottom"]
-    fvg_index = fvg["bar_index"]
-    atr = fvg["atr"]
-    result = {"mitigated": False, "mitigate_bar": None, "mitigate_price": None,
-              "bars_to_mitigate": None, "continuation_10": None, "continuation_20": None,
-              "continuation_40": None, "continuation": None, "invalidated": False,
-              "invalidate_bar": None, "max_excursion": 0.0, "max_excursion_dir": None,
-              "bars_tracked": 0, "close_price_at_end": None}
-    invalidate_dist = atr
-    mitigated = False
-    for offset, b in enumerate(bars_after):
-        if b.index <= fvg_index:
-            continue
-        if offset >= LOOKBACK_BARS:
-            break
-        result["bars_tracked"] = offset + 1
-        touched_fvg = False
-        if direction == "bullish":
-            if b.low <= fvg_top and b.high >= fvg_bottom:
-                touched_fvg = True
-            if b.close < fvg_bottom - invalidate_dist:
-                result["invalidated"] = True
-                result["invalidate_bar"] = offset
-                if not mitigated:
-                    break
-        else:
-            if b.high >= fvg_bottom and b.low <= fvg_top:
-                touched_fvg = True
-            if b.close > fvg_top + invalidate_dist:
-                result["invalidated"] = True
-                result["invalidate_bar"] = offset
-                if not mitigated:
-                    break
-        # BUG 4 FIX: MAE (adverse) ve MFE (favorable) excursion ayrı takip edilir
-        if direction == "bullish":
-            mae = max(0, fvg_bottom - b.low)   # fiyat gap altına gitti mi?
-            mfe = max(0, b.high - fvg_top)     # fiyat gap üstüne geçti mi?
-        else:
-            mae = max(0, b.high - fvg_top)     # fiyat gap üstüne çıktı mı?
-            mfe = max(0, fvg_bottom - b.low)   # fiyat gap altına geçti mi?
-        if mae > result.get("max_mae", 0.0):
-            result["max_mae"] = mae
-        if mfe > result.get("max_mfe", 0.0):
-            result["max_mfe"] = mfe
-        # Geriye dönük uyumluluk için max_excursion = max(mae, mfe)
-        exc = max(mae, mfe)
-        if exc > result["max_excursion"]:
-            result["max_excursion"] = exc
-            result["max_excursion_dir"] = "beyond" if (
-                (direction == "bullish" and b.high > fvg_top) or
-                (direction == "bearish" and b.low < fvg_bottom)
-            ) else "reverse"
-        # BUG 5 FIX: Continuation'ı mitigasyon anında tek seferinde hesapla
-        if not mitigated and touched_fvg:
-            cond = (direction == "bullish" and fvg_bottom <= b.close <= fvg_top) or (direction == "bearish" and fvg_bottom <= b.close <= fvg_top)
-            wick = (direction == "bullish" and b.close >= fvg_bottom and b.low <= fvg_top) or (direction == "bearish" and b.close <= fvg_top and b.high >= fvg_bottom)
-            if cond or wick:
-                mitigated = True
-                result["mitigated"] = True
-                result["mitigate_bar"] = offset
-                result["mitigate_price"] = b.close
-                result["bars_to_mitigate"] = offset
-                # Continuation'ı mitigation anında tek seferinde hesapla
-                for win_offset, win_key in [(10, "continuation_10"), (20, "continuation_20"), (40, "continuation_40")]:
-                    fo = offset + win_offset
-                    if fo < len(bars_after):
-                        fb = bars_after[fo]
-                        result[win_key] = fb.close > fvg_top if direction == "bullish" else fb.close < fvg_bottom
-                    else:
-                        result[win_key] = False
-
-        if result["invalidated"] and mitigated:
-            break
-    for key in ["continuation_10", "continuation_20", "continuation_40"]:
-        if mitigated and result[key] is None:
-            result[key] = False
-    result["continuation"] = result["continuation_10"]
-    return result
-
-
-def simulate_rr_new(fvg, bars_after):
-    direction = fvg["direction"]
-    gap_top, gap_bottom = fvg["top"], fvg["bottom"]
-    gap_width = max(fvg["size"], 0.000001)
-    if direction == "bullish":
-        # Bullish FVG fill: fiyat gap'e geri döner, gap_bottom'dan girilir
-        entry_price = gap_bottom
-        stop_price = gap_bottom - gap_width  # 1R risk = gap_width kadar aşağı
-        target_price = gap_top + gap_width * 2.0  # 2R hedef
-    else:
-        # Bearish FVG fill: fiyat gap'e geri döner, gap_top'tan girilir
-        entry_price = gap_top
-        stop_price = gap_top + gap_width   # 1R risk = gap_width kadar yukarı
-        target_price = gap_bottom - gap_width * 2.0  # 2R hedef
-    risk_pct = gap_width / max(entry_price, 0.000001)
-    fee_leg_R = FEE_TAKER / max(risk_pct, 0.000001)
-
-    r = {"touched": False, "entry_bar": None, "entry_price": entry_price,
-         "hit_target": False, "hit_stop": False, "no_outcome": True,
-         "net_profit_R": 0.0, "risk": gap_width,
-         "max_depth_pct": 0.0, "max_depth_class": None,
-         "first_touch_depth": None, "first_touch_class": None,
-         "touches": [], "invalidation_bar": None, "outcome_bar": None,
-         "continuation_10": False, "continuation_20": False, "continuation_40": False}
-    entered = False
-    for offset, b in enumerate(bars_after):
-        if offset >= LOOKBACK_BARS:
-            break
-        touches = b.high >= gap_bottom and b.low <= gap_top
-        if not entered:
-            if touches:
-                entered = True
-                r["touched"] = True
-                r["entry_bar"] = offset
-            else:
-                continue
-        tinfo = None
-        if touches:
-            depth = max(0, (gap_top - b.low) / gap_width * 100) if direction == "bullish" else max(0, (b.high - gap_bottom) / gap_width * 100)
-            ci = gap_bottom <= b.close <= gap_top
-            tinfo = {"bar": offset, "depth_pct": round(depth, 1), "wick_only": not ci, "close_in_fvg": ci}
-            r["touches"].append(tinfo)
-            if depth > r["max_depth_pct"]:
-                r["max_depth_pct"] = depth
-                r["max_depth_class"] = "WICK_ONLY" if not ci else "BODY_CLOSE"
-            if r["first_touch_depth"] is None:
-                r["first_touch_depth"] = round(depth, 1)
-                r["first_touch_class"] = "WICK_ONLY" if not ci else "BODY_CLOSE"
-        inval = (direction == "bullish" and b.close < gap_bottom) or (direction == "bearish" and b.close > gap_top)
-        if inval:
-            r["hit_stop"] = True; r["no_outcome"] = False
-            r["invalidation_bar"] = offset; r["outcome_bar"] = offset
-            r["net_profit_R"] = -1.0 - 2.0 * fee_leg_R
-            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
-            return r
-        hit_t = (direction == "bullish" and b.high >= target_price) or (direction == "bearish" and b.low <= target_price)
-        if hit_t:
-            r["hit_target"] = True; r["no_outcome"] = False
-            r["outcome_bar"] = offset
-            r["net_profit_R"] = 2.0 - 2.0 * fee_leg_R
-            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
-            return r
-    if entered:
-        r["no_outcome"] = True
-        r["net_profit_R"] = -2.0 * fee_leg_R
-        _check_continuation(r, bars_after, len(bars_after) - 1, direction, entry_price, gap_width)
-    return r
-
-
-def _check_continuation(r, bars_after, from_idx, direction, entry_price, gap_width):
-    for win in CONT_WINDOWS:
-        key = f"continuation_{win}"
-        fo = from_idx + win
-        if fo < len(bars_after):
-            fb = bars_after[fo]
-            r[key] = (direction == "bullish" and fb.high >= entry_price + gap_width) or \
-                     (direction == "bearish" and fb.low <= entry_price - gap_width)
-
-
-# ─── BOS/MSS ─────────────────────────────────────────────────
-def find_all_swing_points(b15):
-    hi_idx, hi_pr, lo_idx, lo_pr = [], [], [], []
-    for i in range(2, len(b15) - 2):
-        h, l = b15[i].high, b15[i].low
-        if h > b15[i - 2].high and h > b15[i - 1].high and h > b15[i + 1].high and h > b15[i + 2].high:
-            hi_idx.append(b15[i].index); hi_pr.append(h)
-        if l < b15[i - 2].low and l < b15[i - 1].low and l < b15[i + 1].low and l < b15[i + 2].low:
-            lo_idx.append(b15[i].index); lo_pr.append(l)
-    return (hi_idx, hi_pr), (lo_idx, lo_pr)
-
-
-def _filter_swings(c3_idx, hi, lo, hi_idx=None, lo_idx=None):
-    if hi_idx is not None:
-        lo_i = max(0, c3_idx - 50)
-        # BUG 7 FIX: range() yerine dict.items() ile filtrele — bar index ≠ liste pozisyonu
-        sw_h = [(idx, pr) for idx, pr in hi_idx.items() if lo_i <= idx < c3_idx]
-        sw_l = [(idx, pr) for idx, pr in lo_idx.items() if lo_i <= idx < c3_idx]
-        return sw_h, sw_l
-    sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_idx - 50 <= hi[0][i] < c3_idx]
-    sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_idx - 50 <= lo[0][i] < c3_idx]
-    return sw_h, sw_l
-
-
-
-def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
-    c3_idx = fvg["c3"].index
-    sw_h, sw_l = _filter_swings(c3_idx, hi, lo, hi_idx, lo_idx)
-    trend = "ranging"
-    if len(sw_h) >= 2 and len(sw_l) >= 2:
-        if sw_h[-1][1] >= sw_h[-2][1] and sw_l[-1][1] >= sw_l[-2][1]:
-            trend = "uptrend"
-        elif sw_h[-1][1] < sw_h[-2][1] and sw_l[-1][1] < sw_l[-2][1]:
-            trend = "downtrend"
-    pre_start = max(0, c3_idx - 20)
-    # BUG 8 FIX: BOS = swing point'inden SONRA gelen bir bar'ın o seviyeyi KAPANIŞLA kırması
-    # FIX: Daha önceden kırılmış eski swing'lerin yeni bir kırılım (BOS) gibi sayılmasını önlemek için already_broken kontrolü eklendi.
-    def _has_bos(swings, bars_slice, break_above=True):
-        if not bars_slice:
-            return False
-        slice_start_idx = bars_slice[0].index
-        
-        # Sadece son 3 yakın swing noktasına bak (eski swing'leri boşuna tarama)
-        for sw_idx, sw_pr in reversed(swings[-3:]):
-            if sw_idx >= bars_slice[-1].index:
-                continue
-                
-            already_broken = False
-            # Swing oluştuktan sonra, incelediğimiz aralığa (bars_slice) kadar zaten kırılmış mı?
-            for i in range(sw_idx + 1, slice_start_idx):
-                if i >= len(b15): break
-                if break_above and b15[i].close > sw_pr:
-                    already_broken = True
-                    break
-                if not break_above and b15[i].close < sw_pr:
-                    already_broken = True
-                    break
-                    
-            if already_broken:
-                continue # Bu swing önceden kırılmış, yeni bir yapı kırılımı sayılmaz
-                
-            # Seçili aralıkta (bars_slice) İLK DEFA kırılıyor mu?
-            for b in bars_slice:
-                if b.index <= sw_idx:
-                    continue
-                if break_above and b.close > sw_pr:
-                    return True
-                if not break_above and b.close < sw_pr:
-                    return True
-        return False
-
-    pre_bars = [b for b in b15[pre_start:c3_idx + 1] if b.index <= c3_idx]
-    post_end = min(c3_idx + 21, len(b15))
-    post_bars = [b for b in b15[c3_idx:post_end] if b.index >= c3_idx]
-
-    if trend == "uptrend":
-        pre_bos = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı)
-        pre_mss = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı = MSS)
-        post_bos = _has_bos(sw_h, post_bars, break_above=True)
-        post_mss = _has_bos(sw_l, post_bars, break_above=False)
-    elif trend == "downtrend":
-        pre_bos = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı)
-        pre_mss = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı = MSS)
-        post_bos = _has_bos(sw_l, post_bars, break_above=False)
-        post_mss = _has_bos(sw_h, post_bars, break_above=True)
-    else:  # ranging
-        # Ranging'de son 10 bar içindeki kırılımları kontrol et
-        recent_sw_h = [(idx, pr) for idx, pr in sw_h if c3_idx - 10 <= idx < c3_idx]
-        recent_sw_l = [(idx, pr) for idx, pr in sw_l if c3_idx - 10 <= idx < c3_idx]
-        pre_bos = False
-        pre_mss = _has_bos(recent_sw_h, pre_bars, break_above=True) or _has_bos(recent_sw_l, pre_bars, break_above=False)
-        post_bos = False
-        post_mss = _has_bos(recent_sw_h, post_bars, break_above=True) or _has_bos(recent_sw_l, post_bars, break_above=False)
-
-    pre_bos, pre_mss = bool(pre_bos), bool(pre_mss)
-    post_bos, post_mss = bool(post_bos), bool(post_mss)
-    group = "NONE"
-    if pre_bos or pre_mss:
-        group = "BOS_ONLY" if (pre_bos and not pre_mss) else ("MSS_ONLY" if (pre_mss and not pre_bos) else "BOTH")
-    elif post_bos or post_mss:
-        group = "BOS_ONLY" if (post_bos and not post_mss) else ("MSS_ONLY" if (post_mss and not post_bos) else "BOTH")
-    return {"pre_bos": pre_bos, "pre_mss": pre_mss, "post_bos": post_bos, "post_mss": post_mss,
-            "trend": trend, "group": group}
-
-
-
 _LOGGER = None
 
 
@@ -482,18 +117,17 @@ def collect_fvg_profile(symbol: str):
         import traceback
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
-        return None, None, None, None, None, None, None
+        return None, None, None, None
 
 
 def _collect_fvg_profile_impl(symbol: str):
     # --- V5: coin bazli FVG expiry ---
     _EXPIRY_MAP = {"BTCUSDT": 45, "BNBUSDT": 45, "SOLUSDT": 45}
-    expiry_used = _EXPIRY_MAP.get(symbol, 5)
-    cfg.GLOBAL_FVG_EXPIRY_BARS = expiry_used
+    cfg.GLOBAL_FVG_EXPIRY_BARS = _EXPIRY_MAP.get(symbol, 5)
     # ---
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
     if not os.path.isfile(csv_path):
-        return None, None, None, None, None, None, None
+        return None, None, None, None
 
     ic = cfg.INITIAL_BALANCE
     rpt = cfg.RISK_PER_TRADE
@@ -510,7 +144,7 @@ def _collect_fvg_profile_impl(symbol: str):
     b15 = resample_15m(b1)
     if not b15:
         print(f"    [{symbol}] resample_15m bos dondu")
-        return None, None, None, None, None, None, None
+        return None, None, None, None
 
     print(f"    [{symbol}] {len(b1)} bar 1m -> {len(b15)} bar 15m")
     # Per-coin session from config (CBDR_RISK_MATRIX)
@@ -545,8 +179,6 @@ def _collect_fvg_profile_impl(symbol: str):
             atr_val = update_atr(atr_val, tr)
         prev_close = bar.close
 
-    # Pre-compute swing points for BOS/MSS
-    swing_hi, swing_lo = find_all_swing_points(b15)
 
     total_bars = len(b15)
     for sb in range(500, total_bars):
@@ -596,60 +228,16 @@ def _collect_fvg_profile_impl(symbol: str):
             
             h = edt.hour
 
-            # ── Capture FVG for profiling ──
-            # Reconstruct 3-candle FVG from V4's trigger_fvg.real_index
             v4_fvg = rsm.trigger_fvg
-            if v4_fvg is not None:
-                ri = v4_fvg.bar_index // 15  # convert abs b1 index to b15 position
-                c2_bar = b15[ri] if 0 <= ri < len(b15) else None
-                c1_bar = b15[ri - 1] if ri - 1 >= 0 else None
-                c3_bar = b15[ri + 1] if ri + 1 < len(b15) else None
-            else:
-                c1_bar = c2_bar = c3_bar = None
-
-            if c1_bar and c2_bar and c3_bar:
-                classic_fvg = detect_fvg_3candle(c1_bar, c2_bar, c3_bar, atr)
-            else:
-                classic_fvg = None
-
-            if classic_fvg is not None:
-                classic_fvg["category"] = classify_c3(classic_fvg)
-                classic_fvg["atr_used"] = atr
-                classic_fvg["tr_of_c3"] = tr
-                classic_fvg["atr_after_c3"] = atr_val
-                classic_fvg["fvg_hour"] = h
-                classic_fvg["month"] = edt.month
-                classic_fvg["timestamp"] = c3_bar.timestamp
-                classic_fvg["day_of_week"] = edt.weekday()
-                classic_fvg["c3_pos"] = sb
-                classic_fvg["c2_anatomy"] = calc_c2_anatomy(c2_bar)
-                classic_fvg["sweep"] = detect_sweep(b15, sb, SWEEP_LOOKBACK)
-                bars_after = b15[sb + 1:min(sb + LOOKBACK_BARS, total_bars)]
-                classic_fvg["outcome"] = track_fvg_outcome(classic_fvg, bars_after)
-                classic_fvg["rr"] = simulate_rr_new(classic_fvg, bars_after)
-                classic_fvg["v4_rejected"] = None  # marked later
-            else:
-                classic_fvg = {
-                    "direction": v4_fvg.direction if v4_fvg else "bullish",
-                    "top": v4_fvg.top if v4_fvg else 0,
-                    "bottom": v4_fvg.bottom if v4_fvg else 0,
-                    "size": (v4_fvg.top - v4_fvg.bottom) if v4_fvg else 0,
-                    "bar_index": sb,
-                    "atr": atr,
-                    "category": "UNKNOWN",
-                    "c1": c1_bar, "c2": c2_bar, "c3": c3_bar,
-                    "c3_pos": sb,
-                    "fvg_hour": h,
-                    "month": edt.month,
-                    "day_of_week": edt.weekday(),
-                    "c2_anatomy": calc_c2_anatomy(c2_bar) if c2_bar else {},
-                    "sweep": detect_sweep(b15, sb, SWEEP_LOOKBACK),
-                    "v4_rejected": None,
-                }
-                bars_after = b15[sb + 1:min(sb + LOOKBACK_BARS, total_bars)]
-                classic_fvg["outcome"] = track_fvg_outcome(classic_fvg, bars_after)
-                classic_fvg["rr"] = simulate_rr_new(classic_fvg, bars_after)
-
+            classic_fvg = {
+                "direction": v4_fvg.direction if v4_fvg else "bullish",
+                "top": v4_fvg.top if v4_fvg else 0,
+                "bottom": v4_fvg.bottom if v4_fvg else 0,
+                "size": (v4_fvg.top - v4_fvg.bottom) if v4_fvg else 0,
+                "bar_index": sb,
+                "atr": atr,
+                "v4_rejected": None,
+            }
             classic_fvg["v4_fvg_top"] = v4_fvg.top if v4_fvg else None
             classic_fvg["v4_fvg_bottom"] = v4_fvg.bottom if v4_fvg else None
 
@@ -934,17 +522,6 @@ def _collect_fvg_profile_impl(symbol: str):
 
     print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
 
-    # ── BOS/MSS for captured FVGs ──
-    print(f"    [{symbol}] BOS/MSS basliyor... ({len(captured_fvgs)} FVG)", flush=True)
-    hi_idx = {swing_hi[0][i]: swing_hi[1][i] for i in range(len(swing_hi[0]))}
-    lo_idx = {swing_lo[0][i]: swing_lo[1][i] for i in range(len(swing_lo[0]))}
-    for f in captured_fvgs:
-        if f.get("c3") is not None:
-            f["bos_mss"] = detect_bos_mss(f, b15, swing_hi, swing_lo, hi_idx, lo_idx)
-        else:
-            f["bos_mss"] = {"pre_bos": False, "pre_mss": False, "post_bos": False,
-                            "post_mss": False, "trend": "ranging", "group": "NONE"}
-    print(f"    [{symbol}] BOS/MSS tamam", flush=True)
 
     # ── Daily rows ──
     daily_rows = []
@@ -981,7 +558,7 @@ def _collect_fvg_profile_impl(symbol: str):
         print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
               f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
 
-    return daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used
+    return daily_rows, wins, losses, trade_records
 
 
 # ─── Istatistik Hesaplama ────────────────────────────────────
@@ -1046,15 +623,15 @@ def main():
             if result is None or (isinstance(result, tuple) and result[0] is None):
                 print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used = result
+            daily_rows, wins, losses, trade_records = result
             if len(daily_rows) < 1:
                 print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
                 continue
 
             stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
-            results_data.append((sym, stats, None, daily_rows, captured_fvgs))
+            results_data.append((sym, stats, None, daily_rows, []))
 
-            print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
+            print(f"    [{sym}] {stats['total_trades']} islem | "
                   f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
                   f"WR={stats['win_pct']:.1f}%")
         except Exception as e:
