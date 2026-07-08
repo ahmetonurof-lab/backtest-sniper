@@ -26,6 +26,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
+from session_router import is_high_quality_fvg, get_cbdr_multiplier, should_trade
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -98,6 +99,21 @@ def fvg_close_confirmed(fvg, all_bars):
     return False
 
 
+# ─── FVG status (3-state, analyzer_v5 ile ayni) ──────────
+def get_fvg_status(top, bottom, direction, b):
+    if direction == "bullish":
+        if b.low < bottom:
+            return "INVALIDATED"
+        if b.low <= top:
+            return "ACTIVE_ENTRY_ZONE"
+        return "ALIVE"
+    if b.high > top:
+        return "INVALIDATED"
+    if b.high >= bottom:
+        return "ACTIVE_ENTRY_ZONE"
+    return "ALIVE"
+
+
 def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hours: dict = None):
     """
     Run CBDR backtest for a specific session config.
@@ -146,6 +162,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
     wins = []
     losses = []
     trade_records = []  # overlap filtrelemesi icin her trade'in unique ID + pnl kaydi
+    rejection_counts: dict = defaultdict(int)
 
     atr_val: float = 0.0
     prev_close: float = b15[0].open
@@ -243,16 +260,55 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                     rd = abs(sl - ep)
                 tp = ep - rd * tpr
 
-            if rd < atr * 0.1:
-                rsm.reset()
-                continue
-            qty = (ic * rpt) / rd if rd > 0 else 0
+            # ── FVG quality filter (analyzer_v5 ile ayni) ──
+            quality_mult = 1.0
+            if tf is not None:
+                if not is_high_quality_fvg(tf.top - tf.bottom, atr):
+                    quality_mult = 0.0
+                    rejection_counts["FVG_QUALITY"] += 1
+                else:
+                    fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
+                    if fvg_status == "INVALIDATED":
+                        quality_mult = 0.0
+                        rejection_counts["FVG_SWEPT"] += 1
+
+            # ── Min risk dist ──
+            if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
+                quality_mult = 0.0
+                rejection_counts["MIN_RISK_DIST"] += 1
+
+            # ── CBDR + should_trade ──
+            cbdr_w = None
+            if ss.cbdr_body_low > 0 and not math.isinf(ss.cbdr_body_low):
+                cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
+            cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+            if cbdr_mult == 0.0:
+                quality_mult = 0.0
+                rejection_counts["CBDR_MULT_ZERO"] += 1
+
+            # ── Weekend bonus (ATOM/SUI/APT) ──
+            if quality_mult > 0 and symbol in ("ATOMUSDT", "SUIUSDT", "APTUSDT"):
+                if edt.weekday() >= 5:
+                    cbdr_mult *= 1.5
+
+            allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
+            if not allowed:
+                quality_mult = 0.0
+                rejection_counts[f"SHOULD_TRADE_{reason}"] += 1
+
+            # ── Risk carpani: EL (1.5x) + CBDR Matrix ──
+            el_mult = cfg.EARLY_LONDON_RISK_MULT if 2 <= edt.hour < 8 else 1.0
+            final_mult = el_mult * cbdr_mult * quality_mult
+
+            qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
             if qty <= 0:
+                rejection_counts["QTY_ZERO"] += 1
                 rsm.reset()
                 continue
 
             entry_day = ss.cbdr_day
             trade_id = f"{session_name}_{entry_day}_{sb}"  # unique trade ID (session + gun + bar index)
+            rejection_counts["ENTERED"] += 1
             active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                            "qty": qty, "side": side, "trigger_fvg": tf,
                            "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
@@ -390,7 +446,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
             "wins": n_wins,
             "pnl": total_pnl,
         })
-    return daily_rows, wins, losses, trade_records
+    return daily_rows, wins, losses, trade_records, rejection_counts
 
 
 def analyze_thresholds(daily_rows, symbol: str, min_bucket_trades: int = 100):
@@ -506,17 +562,19 @@ def run_session_analysis(sym: str):
             if result is None:
                 print(f"    [{sname}] VERI DOSYASI YOK", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records = result
+            daily_rows, wins, losses, trade_records, rejection_counts = result
             if len(daily_rows) < 3:
                 print(f"    [{sname}] YETERSIZ VERI", flush=True)
                 continue
             session_raw_data[sname] = {
                 'daily_rows': daily_rows, 'wins': wins, 'losses': losses,
-                'trade_records': trade_records,
+                'trade_records': trade_records, 'rejection_counts': rejection_counts,
             }
             for tr in trade_records:
                 all_trade_records.append((tr['trade_id'], sname, tr['pnl'], tr['result']))
+            rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
             print(f"    [{sname}] {len(daily_rows)} gun, {len(trade_records)} islem OK", flush=True)
+            print(f"    [{sname}] Red: {rej_str}", flush=True)
         except Exception as e:
             print(f"    [{sname}] HATA: {e} — atlaniyor, diger session'lara devam", flush=True)
             continue
@@ -645,7 +703,7 @@ def main():
     lines.append("# ICT CBDR Threshold Analysis — Multi-Session Comparison")
     lines.append("")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append("**Strategy:** V3 — Sweep → FVG → Entry → Trailing → Exit")
+    lines.append("**Strategy:** V5 — Sweep → RSM → Quality (FVG size + sweep) → CBDR Mult → EL → Entry")
     lines.append(f"**Session Configs:** {', '.join(SESSION_CONFIGS.keys())}")
     lines.append("**Overlap Filter:** Active — same (day, bar_index) counted only in first session")
     lines.append("")
