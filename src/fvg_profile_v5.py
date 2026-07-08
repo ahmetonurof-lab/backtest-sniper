@@ -426,11 +426,32 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
             trend = "downtrend"
     pre_start = max(0, c3_idx - 20)
     # BUG 8 FIX: BOS = swing point'inden SONRA gelen bir bar'ın o seviyeyi KAPANIŞLA kırması
-    # Önceki hali: pre_max_c ile swing'i karşılaştırmak swing'in kendisini test ediyordu (her zaman True)
+    # FIX: Daha önceden kırılmış eski swing'lerin yeni bir kırılım (BOS) gibi sayılmasını önlemek için already_broken kontrolü eklendi.
     def _has_bos(swings, bars_slice, break_above=True):
-        """Swing'den sonra gelen herhangi bir bar swing seviyesini kapanışla kırdı mı?"""
-        for sw_idx, sw_pr in swings:
-            # bars_slice içinde sw_idx'ten sonraki barları bul
+        if not bars_slice:
+            return False
+        slice_start_idx = bars_slice[0].index
+        
+        # Sadece son 3 yakın swing noktasına bak (eski swing'leri boşuna tarama)
+        for sw_idx, sw_pr in reversed(swings[-3:]):
+            if sw_idx >= bars_slice[-1].index:
+                continue
+                
+            already_broken = False
+            # Swing oluştuktan sonra, incelediğimiz aralığa (bars_slice) kadar zaten kırılmış mı?
+            for i in range(sw_idx + 1, slice_start_idx):
+                if i >= len(b15): break
+                if break_above and b15[i].close > sw_pr:
+                    already_broken = True
+                    break
+                if not break_above and b15[i].close < sw_pr:
+                    already_broken = True
+                    break
+                    
+            if already_broken:
+                continue # Bu swing önceden kırılmış, yeni bir yapı kırılımı sayılmaz
+                
+            # Seçili aralıkta (bars_slice) İLK DEFA kırılıyor mu?
             for b in bars_slice:
                 if b.index <= sw_idx:
                     continue
@@ -678,7 +699,11 @@ def _collect_fvg_profile_impl(symbol: str):
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
+            old_state = rsm.state_name
             rsm.on_sweep_confirmed(chunk, cur, atr)
+            if rsm.state_name == "TRIGGER_READY":
+                pass # Triggered
+            # We can print if sweep is detected but no trigger
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
@@ -689,11 +714,8 @@ def _collect_fvg_profile_impl(symbol: str):
             if bias_reject:
                 rsm.reset()
                 continue
+            
             h = edt.hour
-            in_session = (h >= sh or h < eh) if spans_midnight else (sh <= h < eh)
-            if not in_session:
-                rsm.reset()
-                continue
 
             # ── Capture FVG for profiling ──
             # Reconstruct 3-candle FVG from V4's trigger_fvg.real_index
@@ -751,6 +773,12 @@ def _collect_fvg_profile_impl(symbol: str):
 
             classic_fvg["v4_fvg_top"] = v4_fvg.top if v4_fvg else None
             classic_fvg["v4_fvg_bottom"] = v4_fvg.bottom if v4_fvg else None
+
+            # ── Session hours filter (matches analyzer_v4.py) ──
+            h = edt.hour
+            if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
+                rsm.reset()
+                continue
 
             # ── ORIGINAL ENTRY LOGIC (unchanged from analyzer_v4) ──
             side = "long" if sd == "bullish" else "short"

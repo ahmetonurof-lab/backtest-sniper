@@ -653,6 +653,12 @@ def _collect_fvg_profile_impl(symbol: str):
             classic_fvg["v4_fvg_top"] = v4_fvg.top if v4_fvg else None
             classic_fvg["v4_fvg_bottom"] = v4_fvg.bottom if v4_fvg else None
 
+            # ── Session hours filter (matches analyzer_v4.py) ──
+            h = edt.hour
+            if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
+                rsm.reset()
+                continue
+
             # ── ORIGINAL ENTRY LOGIC (unchanged from analyzer_v4) ──
             side = "long" if sd == "bullish" else "short"
             ep = cur.close
