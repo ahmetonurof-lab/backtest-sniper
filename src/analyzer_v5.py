@@ -671,18 +671,34 @@ def main():
     print(f"\n{'='*100}")
     print(f"  SUMMARY")
     print(f"{'='*100}")
-    all_reasons = ["FVG_QUALITY", "FVG_SWEPT", "MIN_RISK_DIST", "CBDR_MULT_ZERO", "SHOULD_TRADE_", "QTY_ZERO"]
+
+    # Collect all unique rejection keys across symbols, aggregate SHOULD_TRADE_*
+    all_keys = set()
+    for _, _, _, _, _, rej in results_data:
+        for k in rej:
+            if k.startswith("SHOULD_TRADE_"):
+                all_keys.add("SHOULD_TRADE")
+            elif k not in ("ENTERED",):
+                all_keys.add(k)
+    all_reasons = sorted(all_keys)
+
     hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'ENTERED':>7}"
     for r in all_reasons:
         hdr += f" {r[:10]:>10}"
     print(hdr)
-    print(f"  {'-'*sum(len(hdr.split()) * 3)}")
+    print(f"  {'-'*len(hdr)}")
+
+    def get_rej(rej, key):
+        if key == "SHOULD_TRADE":
+            return sum(v for k, v in rej.items() if k.startswith("SHOULD_TRADE_"))
+        return rej.get(key, 0)
+
     for sym, stats, _, _, fvgs, rej in results_data:
         entered = rej.get("ENTERED", 0)
         row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
         row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
         for r in all_reasons:
-            row += f" {rej.get(r, 0):>10}"
+            row += f" {get_rej(rej, r):>10}"
         print(row)
 
     total_trades = sum(s['total_trades'] for _, s, _, _, _, _ in results_data)
@@ -693,17 +709,19 @@ def main():
     rpt_path = os.path.join(os.path.dirname(__file__), "..", "reports", "analyzer_v5_summary.md")
     with open(rpt_path, "w") as f:
         f.write(f"# analyzer_v5 Summary\n\n")
-        f.write(f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'PnL':>10} |")
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'PnL':>10} | {'ENTERED':>7} |"
         for r in all_reasons:
-            f.write(f" {r:<10} |")
-        f.write(f"\n|{':---'*9}|{':---'*len(all_reasons)}|\n")
+            hdr2 += f" {r:<10} |"
+        f.write(hdr2 + "\n")
+        sep = "|" + "---|" * hdr2.count("|")
+        f.write(sep + "\n")
         for sym, stats, _, _, _, rej in results_data:
             entered = rej.get("ENTERED", 0)
-            f.write(f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
-                    f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['total_pnl']:>+9.0f} |")
+            line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
+            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
             for r in all_reasons:
-                f.write(f" {rej.get(r, 0):>10} |")
-            f.write("\n")
+                line += f" {get_rej(rej, r):>10} |"
+            f.write(line + "\n")
         f.write(f"\n**TOPLAM:** {total_trades} trade, PnL={total_pnl:+.0f}\n")
     print(f"  Rapor: {rpt_path}")
 
