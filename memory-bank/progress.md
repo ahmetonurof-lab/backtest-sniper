@@ -25,6 +25,10 @@
 - BTC WR=%32.2 analizi (Section 12: FVG_VALIDITY red=9048)
 - V5 vs V4 bypass WR karşılaştırması
 
+## ✅ Fixed
+- `backtest_engine.py` & `fvg_profile_v5.py`: missing session hours filter (spans_midnight/sh/eh check) added — previously trading 24/7 instead of session-only
+- Shadow test (analyzer_v4 vs backtest_engine): 29/29 trades birebir eşleşti (13W/11BE/5L, +316 PnL)
+
 ## ✅ Cleanup (2026-07-08)
 - `backtest_engine.py`: orphaned profiling/report code (lines 1079-1919) removed, syntax clean (`py_compile` OK)
 - Removed profiling-only functions: `percentile_sorted`, `cumulative_mit_curve`, `conditional_cancel`, `bootstrap_ci`, `volatility_regime_analysis`
