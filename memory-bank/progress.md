@@ -25,6 +25,12 @@
 - BTC WR=%32.2 analizi (Section 12: FVG_VALIDITY red=9048)
 - V5 vs V4 bypass WR karşılaştırması
 
+## ✅ Cleanup (2026-07-08)
+- `backtest_engine.py`: orphaned profiling/report code (lines 1079-1919) removed, syntax clean (`py_compile` OK)
+- Removed profiling-only functions: `percentile_sorted`, `cumulative_mit_curve`, `conditional_cancel`, `bootstrap_ci`, `volatility_regime_analysis`
+- Removed report functions: `build_report`, `_build_and_save_report`
+- Re-added essential constants + `detect_fvg_3candle`/`fvg_close_confirmed` (used by engine)
+
 ## 🐛 Known Issues
 - fvg_profile_v5.py'de V4 motor kopyası — DRY ihlali (manuel sync)
 - Cline / Goose MCACP ajanları çalışmıyor (söküldü)
