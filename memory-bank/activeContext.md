@@ -9,6 +9,7 @@
 - **Report append mod:** `"w"` → `"a"`, header'a timestamp (`YYYY-MM-DD HH:MM`), her çalıştırma yeni section ekler.
 - **trade_records day_key:** Sharpe hesabı için trade_records dict'ine `day_key` eklendi (satır 479, 520).
 - **Eşik motoru V5'e geçti:** `analyze_cbdr_thresholds.py`'nin `collect_daily_data()`'sı artık `is_high_quality_fvg`, `get_fvg_status` (sweep-based expiry), `get_cbdr_multiplier`, `should_trade`, Early London, weekend bonus kullanıyor. Rejection tracking eklendi.
+- **Weekend bonus config'e tasindi:** Hardcoded liste (ATOM/SUI/APT) kaldirildi. Her coin `CBDR_RISK_MATRIX`'te `weekend_bonus: bool` + `weekend_mult: float` alaniyla kontrol ediliyor. 3 engine dosyasi da guncellendi (analyzer_v5.py, analyze_cbdr_thresholds.py, fvg_profile_v5.py).
 - **analyze_bucket_scaling():** `analyze_cbdr_thresholds.py`'ye eklendi. CBDR_RISK_MATRIX'teki gerçek bucket sınırlarını kullanarak pairwise Wilson CI overlap testi yapıyor. `wilson_lower()` fonksiyonu da eklendi. `ict_cbdr_bucket_scaling.csv` ve MD bölümü üretiliyor. Mevcut `analyze_thresholds()` dokunulmadı.
 - **BNBUSDT config fix:** `sniper/src/config.py`'de 0-1% bucket mult 0.0x → 1.0x (Wilson CI: istatistiksel ayrışma yok).
 

@@ -297,10 +297,11 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 quality_mult = 0.0
                 rejection_counts["CBDR_MULT_ZERO"] += 1
 
-            # ── Weekend bonus (ATOM/SUI/APT) ──
-            if quality_mult > 0 and symbol in ("ATOMUSDT", "SUIUSDT", "APTUSDT"):
+            # ── Haftasonu çarpani (config'den) ──
+            _wprofile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
+            if quality_mult > 0 and _wprofile.get("weekend_bonus", False):
                 if edt.weekday() >= 5:
-                    cbdr_mult *= 1.5
+                    cbdr_mult *= _wprofile.get("weekend_mult", 1.5)
 
             allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
             if not allowed:

@@ -851,10 +851,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 if classic_fvg.get("v4_rejected") is None:
                     classic_fvg["v4_rejected"] = "CBDR_MULT_ZERO"
 
-            # ── V5: Haftasonu çarpani (ATOM/SUI/APT) ──
-            if quality_mult > 0 and symbol in ("ATOMUSDT", "SUIUSDT", "APTUSDT"):
-                if edt.weekday() >= 5:  # Cumartesi=5, Pazar=6
-                    cbdr_mult *= 1.5
+            # ── Haftasonu çarpani (config'den) ──
+            _wprofile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
+            if quality_mult > 0 and _wprofile.get("weekend_bonus", False):
+                if edt.weekday() >= 5:
+                    cbdr_mult *= _wprofile.get("weekend_mult", 1.5)
 
             allowed, reason = should_trade(symbol, cbdr_width_pct=cbdr_w)
             if not allowed:

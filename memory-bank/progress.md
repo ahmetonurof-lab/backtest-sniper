@@ -28,6 +28,9 @@
 - **FVG_SWEPT strict denemesi BAŞARISIZ:** 3-bar chunk[-3:] FVG kontrolü test edildi. Trade sayısı %34 düştü (28554→18792), ortalama PnL/trade aynı kaldı (+19.99→+19.37). Filtre rastgele, iyi/kötü trade'leri eşit oranda reddediyor. Geri alındı.
 
 ## ✅ Done (2026-07-09)
+- **Weekend bonus config'e tasindi:** Hardcoded ATOM/SUI/APT listesi kaldirildi. `CBDR_RISK_MATRIX`'te her coin `weekend_bonus: bool` + `weekend_mult: float` alaniyla kontrol ediliyor. 3 engine dosyasi buna gore guncellendi.
+
+## ✅ Done (2026-07-09)
 - **Rename:** `backtest_engine.py` → `analyzer_v5.py`, imports updated, `py_compile` OK.
 - **FVG expiry fix:** 45‑bar time‑based `is_fvg_valid` → `get_fvg_status` (3‑state: INVALIDATED/ACTIVE_ENTRY_ZONE/ALIVE, wick‑based).
 - **Rejection breakdown report:** `analyzer_v5.py` sonuç + red dağılımını `reports/analyzer_v5_summary.md`'ye yazar.
