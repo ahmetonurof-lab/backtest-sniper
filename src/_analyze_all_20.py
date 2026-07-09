@@ -39,14 +39,14 @@ for sym in config_20.CBDR_RISK_MATRIX:
 
 
 def best_session(stats_dict):
-    """En iyi session'u sec: PF*10 + WR (Sharpe yoksa PF+WR bazli)."""
+    """En iyi session: Score = (BE+% * PF * PnL) / DD."""
     ranked = []
     for sname, st in stats_dict.items():
+        bep = st.get("be_plus_pct", 0)
         pf = st.get("profit_factor", 0)
-        wr = st.get("win_pct", 0)
-        pnl = st.get("total_pnl", 0)
-        dd = st.get("max_dd_pct", 100)
-        score = pf * 10 + wr + (pnl / 1000) - dd
+        pnl = abs(st.get("total_pnl", 0))
+        dd = st.get("max_dd_pct", 1)
+        score = (bep * pf * pnl) / dd
         ranked.append((score, sname, st))
     ranked.sort(key=lambda x: x[0], reverse=True)
     return ranked[0]
@@ -176,9 +176,15 @@ def main():
             stats["rejections"] = dict(rejection_counts)
             results[sname] = stats
 
+            bep = stats.get("be_plus_pct", 0)
+            pf = stats["profit_factor"]
+            pnl = abs(stats["total_pnl"])
+            dd = stats["max_dd_pct"] if stats["max_dd_pct"] > 0 else 1
+            skor = (bep * pf * pnl) / dd
             print(f"    {sname}: {stats['total_trades']} trade | "
-                  f"WR={stats['win_pct']:.1f}% PF={stats['profit_factor']:.2f} "
-                  f"DD={stats['max_dd_pct']:.1f}% PnL={stats['total_pnl']:+.0f}",
+                  f"WR={stats['win_pct']:.1f}% BE+={bep:.1f}% "
+                  f"PF={pf:.2f} DD={stats['max_dd_pct']:.1f}% "
+                  f"Skor={skor:.0f} PnL={stats['total_pnl']:+.0f}",
                   flush=True)
 
         if not results:
@@ -186,15 +192,16 @@ def main():
 
         all_stats[sym] = results
 
-        # En iyi session
+        # En iyi session (Score = BE+% * PF * PnL / DD)
         score, best_sname, best_st = best_session(results)
         current_sname = CURRENT_SESSION_MAP.get(sym)
         note = " (YENI)" if sym not in CURRENT_SESSION_MAP else \
                f" (MEVCUT: {current_sname}, SECILEN: {best_sname})" \
                if best_sname != current_sname else " (AYNI)"
         print(f"  => {sym}: BEST={best_sname} "
-              f"WR={best_st['win_pct']:.1f}% PF={best_st['profit_factor']:.2f} "
-              f"Sharpe={best_st.get('sharpe',0):.2f}{note}", flush=True)
+              f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
+              f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
+              f"Skor={score:.0f}{note}", flush=True)
         session_best[sym] = best_sname
 
     # ─── Adim 2: CBDR bucket ──────────────────────────────────

@@ -631,8 +631,10 @@ def compute_session_stats(trade_records, initial_balance):
     """Bir session'daki unique trade listesinden istatistik hesapla."""
     n = len(trade_records)
     if n == 0:
-        return {'total_trades': 0, 'win_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0}
+        return {'total_trades': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0, 'total_pnl': 0}
     wins = sum(1 for r in trade_records if r[2] > 0)
+    be = sum(1 for r in trade_records if r[2] == 0)
+    be_plus_pct = (wins + be) / n * 100 if n > 0 else 0
     win_pct = wins / n * 100 if n > 0 else 0
 
     gross_profit = sum(r[2] for r in trade_records if r[2] > 0) or 0
@@ -656,8 +658,9 @@ def compute_session_stats(trade_records, initial_balance):
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r[2] for r in trade_records)
 
-    return {'total_trades': n, 'win_pct': win_pct, 'profit_factor': profit_factor,
-            'max_dd_pct': max_dd_pct, 'avg_mae': avg_mae, 'total_pnl': total_pnl}
+    return {'total_trades': n, 'win_pct': win_pct, 'be_plus_pct': be_plus_pct,
+            'profit_factor': profit_factor, 'max_dd_pct': max_dd_pct,
+            'avg_mae': avg_mae, 'total_pnl': total_pnl}
 
 
 def run_session_analysis(sym: str):
@@ -725,15 +728,26 @@ def run_session_analysis(sym: str):
         total_all_trades += len(raw_trades)
         total_unique_trades += stats['total_trades']
 
-    # 4. Adim: Karsilastirmali tabloyu bas
-    print(f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ──────────────────────────────────────┐")
-    print(f"  │ {'Session':<14} {'Total':>7} {'Unique':>7} {'Win%':>7} {'PF':>7} {'MaxDD%':>8} {'AvgMAE':>9} {'PnL':>10} │")
-    print(f"  ├{'─'*14}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*7}┼{'─'*8}┼{'─'*9}┼{'─'*10}┤")
+    # 4. Adim: Karsilastirmali tabloyu bas (Skor = BE+% * PF * PnL / DD)
+    skorlar = []
     for st in stats_rows:
-        print(f"  │ {st['session']:<14} {st['total_trades_raw']:>7} {st['unique_trades']:>7} "
-              f"{st['win_pct']:>5.1f}% {st['profit_factor']:>5.2f} "
-              f"{st['max_dd_pct']:>6.2f}% {st['avg_mae']:>7.2f} {st['total_pnl']:>+8.0f} │")
-    print(f"  └{'─'*14}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*7}┴{'─'*8}┴{'─'*9}┴{'─'*10}┘")
+        bep = st.get('be_plus_pct', st['win_pct'])
+        pf = st['profit_factor']
+        pnl = abs(st['total_pnl'])
+        dd = st['max_dd_pct'] if st['max_dd_pct'] > 0 else 1
+        skor = (bep * pf * pnl) / dd
+        skorlar.append((skor, st['session'], st))
+    best_skor = max(skorlar, key=lambda x: x[0]) if skorlar else (0, "", {})
+    print(f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ───────────────────────────────────────────────────────┐")
+    print(f"  │ {'Session':<14} {'Total':>7} {'Uniq':>6} {'BE+%':>6} {'PF':>6} {'DD%':>5} {'Skor':>10} {'PnL':>9} {'':>4} │")
+    print(f"  ├{'─'*14}┼{'─'*7}┼{'─'*6}┼{'─'*6}┼{'─'*6}┼{'─'*5}┼{'─'*10}┼{'─'*9}┼{'─'*4}┤")
+    for skor, sname, st in skorlar:
+        best_mark = "←" if sname == best_skor[1] else ""
+        print(f"  │ {sname:<14} {st['total_trades_raw']:>7} {st['unique_trades']:>6} "
+              f"{st.get('be_plus_pct', st['win_pct']):>5.1f}% {st['profit_factor']:>5.2f} "
+              f"{st['max_dd_pct']:>4.1f}% {skor:>9.0f} {st['total_pnl']:>+8.0f} {best_mark:>4} │")
+    print(f"  └{'─'*14}┴{'─'*7}┴{'─'*6}┴{'─'*6}┴{'─'*6}┴{'─'*5}┴{'─'*10}┴{'─'*9}┴{'─'*4}┘")
+    print(f"  BEST: {best_skor[1]} (Skor={best_skor[0]:.0f})", flush=True)
     print(f"  Toplam: {total_all_trades} raw trade, {total_unique_trades} unique trade "
           f"({time.time()-t0:.0f}s)", flush=True)
 
