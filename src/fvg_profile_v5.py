@@ -122,6 +122,7 @@ def resample_15m(bars_1m):
 
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
+    confirmed = False
     for b in all_bars:
         if b.index < scan_from:
             continue
@@ -129,13 +130,13 @@ def fvg_close_confirmed(fvg, all_bars):
             if b.close < fvg.bottom:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                return True
+                confirmed = True
         else:
             if b.close > fvg.top:
                 return False
-            # close <= fvg.top: gap içi veya gap altı kapanma = mitigated
-            return True
-    return False
+            if fvg.bottom <= b.close <= fvg.top:
+                confirmed = True
+    return confirmed
 
 
 # ─── Klasik 3-Mum FVG Tespiti (profil analizi için) ───────
@@ -695,7 +696,9 @@ def _collect_fvg_profile_impl(symbol: str):
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
+            if ss.sweep_direction is None:
+                continue
+            rsm.on_sweep(direction=ss.sweep_direction,
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -774,7 +777,7 @@ def _collect_fvg_profile_impl(symbol: str):
             classic_fvg["v4_fvg_top"] = v4_fvg.top if v4_fvg else None
             classic_fvg["v4_fvg_bottom"] = v4_fvg.bottom if v4_fvg else None
 
-            # ── Session hours filter (matches analyzer_v4.py) ──
+            # ── Session hours filter (CBDR hesaplanirken trade yasak) ──
             h = edt.hour
             if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
                 rsm.reset()
@@ -797,9 +800,6 @@ def _collect_fvg_profile_impl(symbol: str):
                 else:
                     sl = ep - rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep - rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep - rp2 * 2
                     rd = abs(sl - ep)
@@ -815,9 +815,6 @@ def _collect_fvg_profile_impl(symbol: str):
                 else:
                     sl = ep + rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep + rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep + rp2 * 2
                     rd = abs(sl - ep)
@@ -892,8 +889,9 @@ def _collect_fvg_profile_impl(symbol: str):
                 entry_day = ss.cbdr_day
                 active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                                "qty": qty, "side": side, "trigger_fvg": tf,
-                               "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                               "day_key": entry_day, "trade_uid": trade_uid})
+                                "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                                "be_triggered": False,
+                                "day_key": entry_day, "trade_uid": trade_uid})
                 rsm.reset()
             else:
                 # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
@@ -907,7 +905,7 @@ def _collect_fvg_profile_impl(symbol: str):
         # ── Trailing (unchanged) ──
         if active and cur.is_closed:
             for t in active:
-                if t.get("closed") or t.get("trailing_count", 0) > 0:
+                if t.get("closed") or t.get("be_triggered", False):
                     continue
                 s2 = t["side"]
                 e2 = t["entry_price"]
@@ -917,11 +915,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 if s2 == "long":
                     if cur.high >= e2 + th2 and t["sl"] < be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
                 else:
                     if cur.low <= e2 - th2 and t["sl"] > be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
@@ -1988,8 +1986,8 @@ def compute_session_stats(trade_records, initial_balance):
     win_pct = wins / n * 100 if n > 0 else 0
     be_plus_pct = (wins + be) / n * 100 if n > 0 else 0
     gross_profit = sum(r["pnl"] for r in trade_records if r["pnl"] > 0) or 0
-    gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0)) or 1e-9
-    profit_factor = gross_profit / gross_loss
+    gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0))
+    profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
     cumulative = 0
     peak = 0
     max_dd = 0
@@ -2000,7 +1998,8 @@ def compute_session_stats(trade_records, initial_balance):
         dd = peak - cumulative
         if dd > max_dd:
             max_dd = dd
-    max_dd_pct = (max_dd / initial_balance) * 100 if initial_balance > 0 else 0
+    peak_balance = initial_balance + peak
+    max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
     losses_list = [r["pnl"] for r in trade_records if r["pnl"] < 0]
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r["pnl"] for r in trade_records)

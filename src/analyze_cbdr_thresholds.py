@@ -94,6 +94,7 @@ def resample_15m(bars_1m):
 
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
+    confirmed = False
     for b in all_bars:
         if b.index < scan_from:
             continue
@@ -101,13 +102,13 @@ def fvg_close_confirmed(fvg, all_bars):
             if b.close < fvg.bottom:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                return True
+                confirmed = True
         else:
             if b.close > fvg.top:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                return True
-    return False
+                confirmed = True
+    return confirmed
 
 
 # ─── FVG status (3-state, analyzer_v5 ile ayni) ──────────
@@ -209,7 +210,9 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
+            if ss.sweep_direction is None:
+                continue
+            rsm.on_sweep(direction=ss.sweep_direction,
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -224,7 +227,6 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 rsm.reset()
                 continue
             h = edt.hour
-            # _in_window: spans_midnight mantigi (SessionState ile uyumlu)
             if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
                 rsm.reset()
                 continue
@@ -245,9 +247,6 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 else:
                     sl = ep - rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep - rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep - rp2 * 2
                     rd = abs(sl - ep)
@@ -258,14 +257,11 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                     if fh <= 0:
                         sl = ep + rp2 * 2
                     else:
-                        ab = max(fh * 0.10, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
+                        ab = max(fh * cfg.FVG_BUFFER_MIN_FACTOR, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
                         sl = tf.top + ab
                 else:
                     sl = ep + rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep + rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep + rp2 * 2
                     rd = abs(sl - ep)
@@ -323,13 +319,14 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
             rejection_counts["ENTERED"] += 1
             active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                            "qty": qty, "side": side, "trigger_fvg": tf,
-                           "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                           "day_key": entry_day, "trade_id": trade_id})
+                            "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                            "be_triggered": False,
+                            "day_key": entry_day, "trade_id": trade_id})
             rsm.reset()
 
         if active and cur.is_closed:
             for t in active:
-                if t.get("closed") or t.get("trailing_count", 0) > 0:
+                if t.get("closed") or t.get("be_triggered", False):
                     continue
                 s2 = t["side"]
                 e2 = t["entry_price"]
@@ -339,11 +336,11 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 if s2 == "long":
                     if cur.high >= e2 + th2 and t["sl"] < be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
                 else:
                     if cur.low <= e2 - th2 and t["sl"] > be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
@@ -639,8 +636,8 @@ def compute_session_stats(trade_records, initial_balance):
     win_pct = wins / n * 100 if n > 0 else 0
 
     gross_profit = sum(r[2] for r in trade_records if r[2] > 0) or 0
-    gross_loss = abs(sum(r[2] for r in trade_records if r[2] < 0)) or 1e-9
-    profit_factor = gross_profit / gross_loss
+    gross_loss = abs(sum(r[2] for r in trade_records if r[2] < 0))
+    profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
 
     cumulative = 0
     peak = 0
@@ -652,7 +649,8 @@ def compute_session_stats(trade_records, initial_balance):
         dd = peak - cumulative
         if dd > max_dd:
             max_dd = dd
-    max_dd_pct = (max_dd / initial_balance) * 100 if initial_balance > 0 else 0
+    peak_balance = initial_balance + peak
+    max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
 
     losses_list = [r[2] for r in trade_records if r[2] < 0]
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0

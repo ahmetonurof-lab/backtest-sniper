@@ -115,6 +115,7 @@ def get_fvg_status(top, bottom, direction, b):
 # ─── FVG close-confirmed helper (trailing için) ─────────
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
+    confirmed = False
     for b in all_bars:
         if b.index < scan_from:
             continue
@@ -122,12 +123,13 @@ def fvg_close_confirmed(fvg, all_bars):
             if b.close < fvg.bottom:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                return True
+                confirmed = True
         else:
             if b.close > fvg.top:
                 return False
-            return True
-    return False
+            if fvg.bottom <= b.close <= fvg.top:
+                confirmed = True
+    return confirmed
 
 
 _LOGGER = None
@@ -185,8 +187,6 @@ def _collect_fvg_profile_impl(symbol: str):
     losses = []
     trade_records = []
 
-    # Profiling: captured FVG population
-    captured_fvgs = []
     fvg_by_uid = {}
     rejection_counts: dict = defaultdict(int)
 
@@ -227,15 +227,13 @@ def _collect_fvg_profile_impl(symbol: str):
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
+            if ss.sweep_direction is None:
+                continue
+            rsm.on_sweep(direction=ss.sweep_direction,
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
-            old_state = rsm.state_name
             rsm.on_sweep_confirmed(chunk, cur, atr)
-            if rsm.state_name == "TRIGGER_READY":
-                pass # Triggered
-            # We can print if sweep is detected but no trigger
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
@@ -246,8 +244,6 @@ def _collect_fvg_profile_impl(symbol: str):
             if bias_reject:
                 rsm.reset()
                 continue
-            
-            h = edt.hour
 
             v4_fvg = rsm.trigger_fvg
             classic_fvg = {
@@ -262,7 +258,7 @@ def _collect_fvg_profile_impl(symbol: str):
             classic_fvg["v4_fvg_top"] = v4_fvg.top if v4_fvg else None
             classic_fvg["v4_fvg_bottom"] = v4_fvg.bottom if v4_fvg else None
 
-            # ── Session hours filter (matches analyzer_v4.py) ──
+            # ── Session hours filter (CBDR hesaplanirken trade yasak) ──
             h = edt.hour
             if (h >= sh or h < eh) if spans_midnight else (sh <= h < eh):
                 rsm.reset()
@@ -285,9 +281,6 @@ def _collect_fvg_profile_impl(symbol: str):
                 else:
                     sl = ep - rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep - rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep - rp2 * 2
                     rd = abs(sl - ep)
@@ -303,9 +296,6 @@ def _collect_fvg_profile_impl(symbol: str):
                 else:
                     sl = ep + rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep + rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep + rp2 * 2
                     rd = abs(sl - ep)
@@ -376,13 +366,13 @@ def _collect_fvg_profile_impl(symbol: str):
                 classic_fvg["v4_cbdr_mult"] = cbdr_mult
                 classic_fvg["v4_final_mult"] = final_mult
                 rejection_counts[classic_fvg["v4_rejected"]] += 1
-                captured_fvgs.append(classic_fvg)
                 fvg_by_uid[trade_uid] = classic_fvg
 
                 entry_day = ss.cbdr_day
                 active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
                                "qty": qty, "side": side, "trigger_fvg": tf,
                                "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
+                               "be_triggered": False,
                                "day_key": entry_day, "trade_uid": trade_uid})
                 rsm.reset()
             else:
@@ -390,14 +380,13 @@ def _collect_fvg_profile_impl(symbol: str):
                 if classic_fvg["v4_rejected"] is None:
                     classic_fvg["v4_rejected"] = "QTY_ZERO"
                 rejection_counts[classic_fvg["v4_rejected"]] += 1
-                captured_fvgs.append(classic_fvg)
                 rsm.reset()
                 continue
 
         # ── Trailing (unchanged) ──
         if active and cur.is_closed:
             for t in active:
-                if t.get("closed") or t.get("trailing_count", 0) > 0:
+                if t.get("closed") or t.get("be_triggered", False):
                     continue
                 s2 = t["side"]
                 e2 = t["entry_price"]
@@ -407,11 +396,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 if s2 == "long":
                     if cur.high >= e2 + th2 and t["sl"] < be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
                 else:
                     if cur.low <= e2 - th2 and t["sl"] > be2:
                         t["sl"] = be2
-                        t["trailing_count"] = 1
+                        t["be_triggered"] = True
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
@@ -571,21 +560,16 @@ def _collect_fvg_profile_impl(symbol: str):
     day_cbdr_cnt = len(day_cbdr)
     day_trades_cnt = len(day_trades)
     trade_cnt = len(trade_records)
-    fvg_cnt = len(captured_fvgs)
-    atr_vals = [b.high - b.low for b in b15]
     print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
-          f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row", flush=True)
+          f"{trade_cnt} islem, {len(daily_rows)} daily_row", flush=True)
     rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
     print(f"    [{symbol}] Red: {rej_str}", flush=True)
-    if len(daily_rows) < 3:
-        print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
-              f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
 
     return daily_rows, wins, losses, trade_records, rejection_counts
 
 
 # ─── Istatistik Hesaplama ────────────────────────────────────
-def compute_session_stats(trade_records, initial_balance):
+def compute_session_stats(trade_records, initial_balance, daily_rows=None):
     from collections import defaultdict
     n = len(trade_records)
     if n == 0:
@@ -596,8 +580,8 @@ def compute_session_stats(trade_records, initial_balance):
     win_pct = wins / n * 100 if n > 0 else 0
     be_plus_pct = (wins + be) / n * 100 if n > 0 else 0
     gross_profit = sum(r["pnl"] for r in trade_records if r["pnl"] > 0) or 0
-    gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0)) or 1e-9
-    profit_factor = gross_profit / gross_loss
+    gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0))
+    profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
     cumulative = 0
     peak = 0
     max_dd = 0
@@ -608,11 +592,16 @@ def compute_session_stats(trade_records, initial_balance):
         dd = peak - cumulative
         if dd > max_dd:
             max_dd = dd
-    max_dd_pct = (max_dd / initial_balance) * 100 if initial_balance > 0 else 0
-    # Sharpe: gunluk PnL bazli yilliklis
+    peak_balance = initial_balance + peak
+    max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
+    # Sharpe: gunluk PnL bazli yilliklis (trade olmayan gunler 0)
     daily_pnl = defaultdict(float)
     for r in trade_records:
         daily_pnl[r.get("day_key", "")] += r["pnl"]
+    if daily_rows is not None:
+        for d in daily_rows:
+            if d not in daily_pnl:
+                daily_pnl[d] = 0.0
     dly = list(daily_pnl.values())
     if len(dly) > 1:
         dly_mean = sum(dly) / len(dly)
@@ -663,8 +652,8 @@ def main():
                 print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
                 continue
 
-            stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
-            results_data.append((sym, stats, None, daily_rows, [], rejection_counts))
+            stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
+            results_data.append((sym, stats, daily_rows, rejection_counts))
 
             print(f"    [{sym}] {stats['total_trades']} islem | "
                   f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
@@ -687,7 +676,7 @@ def main():
 
     # Collect all unique rejection keys across symbols, aggregate SHOULD_TRADE_*
     all_keys = set()
-    for _, _, _, _, _, rej in results_data:
+    for _, _, _, rej in results_data:
         for k in rej:
             if k.startswith("SHOULD_TRADE_"):
                 all_keys.add("SHOULD_TRADE")
@@ -706,7 +695,7 @@ def main():
             return sum(v for k, v in rej.items() if k.startswith("SHOULD_TRADE_"))
         return rej.get(key, 0)
 
-    for sym, stats, _, _, fvgs, rej in results_data:
+    for sym, stats, _, rej in results_data:
         entered = rej.get("ENTERED", 0)
         row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
         row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['max_dd_pct']:>6.1f}% {stats['sharpe']:>6.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
@@ -714,8 +703,8 @@ def main():
             row += f" {get_rej(rej, r):>10}"
         print(row)
 
-    total_trades = sum(s['total_trades'] for _, s, _, _, _, _ in results_data)
-    total_pnl = sum(s['total_pnl'] for _, s, _, _, _, _ in results_data)
+    total_trades = sum(s['total_trades'] for _, s, _, _ in results_data)
+    total_pnl = sum(s['total_pnl'] for _, s, _, _ in results_data)
     print(f"\n  TOPLAM: {total_trades} trade, PnL={total_pnl:+.0f} | Sure: {time.time()-t0:.0f}s")
 
     # ── Report file ──
@@ -729,7 +718,7 @@ def main():
         f.write(hdr2 + "\n")
         sep = "|" + "---|" * hdr2.count("|")
         f.write(sep + "\n")
-        for sym, stats, _, _, _, rej in results_data:
+        for sym, stats, _, rej in results_data:
             entered = rej.get("ENTERED", 0)
             line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
             line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['max_dd_pct']:>6.1f}% | {stats['sharpe']:>6.2f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"

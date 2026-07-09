@@ -27,6 +27,16 @@
 - V5 vs V4 bypass WR karşılaştırması
 - **FVG_SWEPT strict denemesi BAŞARISIZ:** 3-bar chunk[-3:] FVG kontrolü test edildi. Trade sayısı %34 düştü (28554→18792), ortalama PnL/trade aynı kaldı (+19.99→+19.37). Filtre rastgele, iyi/kötü trade'leri eşit oranda reddediyor. Geri alındı.
 
+## ✅ Bug Fix Marathon (2026-07-09)
+- **BUG 3** Bearish FVG onayi fixed
+- **BUG 4** Stop-loss cap kaldirildi, yapisal SL korunuyor
+- **BUG 5** Break-even ayri flag (`be_triggered`)
+- **BUG 6** Profit_factor loss=0 cap (999.0)
+- **BUG 7** MaxDD peak_balance bazli
+- **BUG 9** Sharpe tum gunler dahil (trade yoksa PnL=0)
+- **BUG 10** Sweep direction None skip
+- **Dead code:** captured_fvgs, old_state, results_data 5.eleman, h=edt.hour tekrari temizlendi
+
 ## ✅ Done (2026-07-09)
 - **Weekend bonus config'e tasindi:** Hardcoded ATOM/SUI/APT listesi kaldirildi. `CBDR_RISK_MATRIX`'te her coin `weekend_bonus: bool` + `weekend_mult: float` alaniyla kontrol ediliyor. 3 engine dosyasi buna gore guncellendi.
 
@@ -56,6 +66,7 @@
 - fvg_profile_v5.py'de V4 motor kopyası — DRY ihlali (manuel sync)
 - Cline / Goose MCACP ajanları çalışmıyor (söküldü)
 - V5 üç parametre birden aktif — hangisinin etkili olduğu ayırt edilemez
+- **RSM multi-FVG pursuit:** Kalite filtresine takılan FVG sonrası RSM.reset() tüm sweep'i düşürüyor. Aynı sweep'teki diğer FVG'ler kaçıyor. Fix: rejected FVG UID tracking + skip, reset atma.
 
 ## ✅ Fixed
 - **Phase 3 (2026-07-08):**
