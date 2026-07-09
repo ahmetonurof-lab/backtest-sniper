@@ -59,25 +59,25 @@ DEFAULT_BUCKET_BOUNDS = [
 
 def auto_multiplier(wr: float, wilson_lower: float, trades: int) -> float:
     """WR + Wilson CI alt sinirina gore otomatik multiplier.
-    Mantik:
-      1.5x = WR > 44 veya Wilson_Lower > 38 (guvenli ustun)
-      1.2x = WR > 40 veya Wilson_Lower > 34 (hafif ustun)
-      1.0x = WR > 34 (standart)
-      0.8x = WR > 28 (defansif)
-      0.5x = WR > 22 (zayif)
-      0.0x = WR <= 22 veya trades < 10 (ZEHIRLI)
+    n<100 ise her zaman 1.0x (overfitting onlemi).
+    WR >= 45 ve Wilson >= 40 -> 1.50x
+    WR >= 40 ve Wilson >= 35 -> 1.25x
+    WR >= 35                -> 1.00x
+    WR >= 30                -> 0.75x
+    WR >= 25                -> 0.50x
+    WR < 25                 -> 0.00x
     """
-    if trades < 10:
-        return 0.0
-    if wr > 44 or wilson_lower > 38:
-        return 1.5
-    if wr > 40 or wilson_lower > 34:
-        return 1.2
-    if wr > 34:
+    if trades < 100:
         return 1.0
-    if wr > 28:
-        return 0.8
-    if wr > 22:
+    if wr >= 45 and wilson_lower >= 40:
+        return 1.5
+    if wr >= 40 and wilson_lower >= 35:
+        return 1.25
+    if wr >= 35:
+        return 1.0
+    if wr >= 30:
+        return 0.75
+    if wr >= 25:
         return 0.5
     return 0.0
 
