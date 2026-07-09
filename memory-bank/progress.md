@@ -8,6 +8,7 @@
 - V3 engine (sweep_full_v3.py) + analyzer_v3
 - 3 session bazlı CBDR script (cbdr_default/real/asia)
 - CBDR threshold analysis (analyze_cbdr_thresholds.py)
+- CBDR bucket scaling analizi (analyze_cbdr_thresholds.py — pairwise Wilson CI overlap, CBDR_RISK_MATRIX gerçek bucket sınırları)
 - FVG lifecycle analyzer (fvg_lifecycle_analyzer.py)
 - FVG coin profile (fvg_coin_profile.py — 13 coin)
 - MULT parametre taraması (mult_scan.py — 15 değer x 13 coin)
