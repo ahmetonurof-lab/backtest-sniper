@@ -4597,8 +4597,8 @@
           "hash": "sha256:f61320312ed5e5b1"
         },
         "src\\config.py": {
-          "last_modified": "2026-07-07T15:32:04",
-          "hash": "sha256:65bfe03676bbcb97"
+          "last_modified": "2026-07-09T12:53:10",
+          "hash": "sha256:588f0adc0fa6842e"
         },
         "tests\\test_websocket.py": {
           "last_modified": "2026-06-26T01:10:59",
@@ -4786,19 +4786,19 @@
         "src.analyzer_v5.compute_session_stats": {
           "file": "src\\analyzer_v5.py",
           "line_start": 587,
-          "line_end": 618,
+          "line_end": 630,
           "signature": "def compute_session_stats(trade_records, initial_balance):"
         },
         "src.analyzer_v5.main": {
           "file": "src\\analyzer_v5.py",
-          "line_start": 622,
-          "line_end": 726,
+          "line_start": 634,
+          "line_end": 739,
           "signature": "def main():"
         },
         "src.analyzer_v5.main.get_rej": {
           "file": "src\\analyzer_v5.py",
-          "line_start": 691,
-          "line_end": 694,
+          "line_start": 703,
+          "line_end": 706,
           "signature": "def get_rej(rej, key):"
         },
         "src.analyze_cbdr_risk_mult.load_data": {
@@ -6261,10 +6261,6 @@
         }
       },
       "files": {
-        "debug.py": {
-          "last_modified": "2026-07-08T11:48:14",
-          "hash": "sha256:443140c9d3f8b1ae"
-        },
         "src\\analyzer.py": {
           "last_modified": "2026-07-06T12:55:37",
           "hash": "sha256:ffac43e58ded09e4"
@@ -6282,8 +6278,8 @@
           "hash": "sha256:75feb826910d8ccb"
         },
         "src\\analyzer_v5.py": {
-          "last_modified": "2026-07-09T01:31:13",
-          "hash": "sha256:3b5aa256fdd09252"
+          "last_modified": "2026-07-09T14:41:52",
+          "hash": "sha256:8842719663244fa9"
         },
         "src\\analyze_cbdr_risk_mult.py": {
           "last_modified": "2026-07-06T12:55:39",
@@ -6437,10 +6433,6 @@
           "last_modified": "2026-07-03T10:45:08",
           "hash": "sha256:9b3c8783272ccea8"
         },
-        "src\\_test_hang.py": {
-          "last_modified": "2026-07-07T11:56:41",
-          "hash": "sha256:c9c73ba03b9ce1f8"
-        },
         "src\\_test_mult_monkey.py": {
           "last_modified": "2026-07-03T10:42:12",
           "hash": "sha256:46c03ba5b74e1cb2"
@@ -6482,7 +6474,7 @@
           "hash": "sha256:6dacdce0362ca3db"
         }
       },
-      "last_full_scan": "2026-07-09T12:35:59"
+      "last_full_scan": "2026-07-09T14:42:36"
     }
   }
 }

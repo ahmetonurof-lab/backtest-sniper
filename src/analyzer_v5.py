@@ -476,7 +476,7 @@ def _collect_fvg_profile_impl(symbol: str):
                 diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"]})
+                trade_records.append({"result": t["result"], "pnl": t["pnl"], "day_key": t.get("day_key", "")})
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -517,7 +517,7 @@ def _collect_fvg_profile_impl(symbol: str):
                 diff = (lp - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - lp)
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"]})
+                trade_records.append({"result": t["result"], "pnl": t["pnl"], "day_key": t.get("day_key", "")})
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -585,9 +585,10 @@ def _collect_fvg_profile_impl(symbol: str):
 
 # ─── Istatistik Hesaplama ────────────────────────────────────
 def compute_session_stats(trade_records, initial_balance):
+    from collections import defaultdict
     n = len(trade_records)
     if n == 0:
-        return {'total_trades': 0, 'wins': 0, 'be': 0, 'losses': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0, 'total_pnl': 0}
+        return {'total_trades': 0, 'wins': 0, 'be': 0, 'losses': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'sharpe': 0, 'avg_mae': 0, 'total_pnl': 0}
     wins = sum(1 for r in trade_records if r["pnl"] > 0)
     be = sum(1 for r in trade_records if r["pnl"] == 0)
     losses = n - wins - be
@@ -607,13 +608,24 @@ def compute_session_stats(trade_records, initial_balance):
         if dd > max_dd:
             max_dd = dd
     max_dd_pct = (max_dd / initial_balance) * 100 if initial_balance > 0 else 0
+    # Sharpe: gunluk PnL bazli yilliklis
+    daily_pnl = defaultdict(float)
+    for r in trade_records:
+        daily_pnl[r.get("day_key", "")] += r["pnl"]
+    dly = list(daily_pnl.values())
+    if len(dly) > 1:
+        dly_mean = sum(dly) / len(dly)
+        daily_std = (sum((x - dly_mean) ** 2 for x in dly) / len(dly)) ** 0.5
+        sharpe = (dly_mean / daily_std) * (365 ** 0.5) if daily_std > 0 else 0
+    else:
+        sharpe = 0
     losses_list = [r["pnl"] for r in trade_records if r["pnl"] < 0]
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r["pnl"] for r in trade_records)
     return {
         'total_trades': n, 'win_pct': win_pct, 'be_plus_pct': be_plus_pct,
         'wins': wins, 'be': be, 'losses': losses,
-        'profit_factor': profit_factor, 'max_dd_pct': max_dd_pct,
+        'profit_factor': profit_factor, 'max_dd_pct': max_dd_pct, 'sharpe': sharpe,
         'avg_mae': avg_mae, 'total_pnl': total_pnl,
     }
 
@@ -682,7 +694,7 @@ def main():
                 all_keys.add(k)
     all_reasons = sorted(all_keys)
 
-    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'ENTERED':>7}"
+    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'MaxDD%':>7} {'Sharpe':>7} {'PnL':>10} {'ENTERED':>7}"
     for r in all_reasons:
         hdr += f" {r[:10]:>10}"
     print(hdr)
@@ -696,7 +708,7 @@ def main():
     for sym, stats, _, _, fvgs, rej in results_data:
         entered = rej.get("ENTERED", 0)
         row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
-        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
+        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['max_dd_pct']:>6.1f}% {stats['sharpe']:>6.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
         for r in all_reasons:
             row += f" {get_rej(rej, r):>10}"
         print(row)
@@ -707,9 +719,10 @@ def main():
 
     # ── Report file ──
     rpt_path = os.path.join(os.path.dirname(__file__), "..", "reports", "analyzer_v5_summary.md")
-    with open(rpt_path, "w") as f:
-        f.write(f"# analyzer_v5 Summary\n\n")
-        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'PnL':>10} | {'ENTERED':>7} |"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with open(rpt_path, "a") as f:
+        f.write(f"\n---\n# analyzer_v5 Summary — {ts}\n\n")
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'MaxDD%':>7} | {'Sharpe':>7} | {'PnL':>10} | {'ENTERED':>7} |"
         for r in all_reasons:
             hdr2 += f" {r:<10} |"
         f.write(hdr2 + "\n")
@@ -718,7 +731,7 @@ def main():
         for sym, stats, _, _, _, rej in results_data:
             entered = rej.get("ENTERED", 0)
             line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
-            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
+            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['max_dd_pct']:>6.1f}% | {stats['sharpe']:>6.2f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
             for r in all_reasons:
                 line += f" {get_rej(rej, r):>10} |"
             f.write(line + "\n")
