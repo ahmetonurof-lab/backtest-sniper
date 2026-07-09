@@ -51,6 +51,17 @@ def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     return min(1.0, (centre + margin) / denominator)
 
 
+def wilson_lower(wins: int, trades: int, z: float = 1.96) -> float:
+    if trades == 0:
+        return 0.0
+    z2 = z * z
+    p_hat = wins / trades
+    denominator = 1 + z2 / trades
+    centre = p_hat + z2 / (2 * trades)
+    margin = z * math.sqrt((p_hat * (1 - p_hat) + z2 / (4 * trades)) / trades)
+    return max(0.0, (centre - margin) / denominator)
+
+
 @functools.lru_cache(maxsize=32)
 def load_data(filepath):
     """CSV'den bar verisini yukle. Timestamp UTC normalize edilir (DST koruma).
@@ -514,6 +525,110 @@ def analyze_thresholds(daily_rows, symbol: str, min_bucket_trades: int = 100):
     }
 
 
+# ─── Bucket label helpers ───────────────────────────────────────────
+_BUCKET_LABEL_MAP = {
+    (0.0, 1.0): "0-1%",
+    (1.0, 1.5): "1-1.5%",
+    (1.5, 2.0): "1.5-2%",
+    (2.0, 3.0): "2-3%",
+    (3.0, 5.0): "3-5%",
+    (5.0, 999.0): ">5%",
+}
+
+
+def _bucket_label(lo: float, hi: float) -> str:
+    for (blo, bhi), lbl in _BUCKET_LABEL_MAP.items():
+        if abs(lo - blo) < 0.01 and abs(hi - bhi) < 0.01:
+            return lbl
+    return f"{lo:.1f}-{hi:.1f}%"
+
+
+def analyze_bucket_scaling(daily_rows: list[dict], symbol: str, min_bucket_trades: int = 100) -> dict:
+    """
+    CBDR_RISK_MATRIX'teki GERCEK (lo, hi, mult) bucket sinirlarini kullanarak
+    her bucket icin WR + Wilson CI hesapla ve pairwise karsilastirma yap.
+
+    fvg_profile_v5.py bootstrap_ci overlap desenini Wilson CI overlap ile izler:
+      overlap = not (ci_j_upper < ci_i_lower or ci_j_lower > ci_i_upper)
+    """
+    profile = cfg.CBDR_RISK_MATRIX.get(symbol)
+    if not profile:
+        return None
+    matrix_buckets = profile.get("buckets", [])
+    if not matrix_buckets:
+        return None
+
+    valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
+    if not valid:
+        return None
+
+    # Her gunu gercek bucket sinirlarina ata
+    bucket_data = defaultdict(lambda: {"trades": 0, "wins": 0})
+    for d in valid:
+        cbdr_w = d["cbdr_pct"]
+        for lo, hi, _mult in matrix_buckets:
+            if lo <= cbdr_w < hi:
+                bucket_data[(lo, hi)]["trades"] += d.get("trades", 0)
+                bucket_data[(lo, hi)]["wins"] += d.get("wins", 0)
+                break
+
+    # Bucket istatistikleri
+    bucket_stats = []
+    for lo, hi, mult in matrix_buckets:
+        bd = bucket_data.get((lo, hi), {"trades": 0, "wins": 0})
+        n = bd["trades"]
+        w = bd["wins"]
+        wr = w / n if n > 0 else 0.0
+        bucket_stats.append({
+            "lo": lo, "hi": hi, "mult": mult,
+            "label": _bucket_label(lo, hi),
+            "trades": n, "wins": w,
+            "wr": round(wr * 100, 1),
+            "wilson_upper": round(wilson_upper(w, n) * 100, 1),
+            "wilson_lower": round(wilson_lower(w, n) * 100, 1),
+        })
+
+    # Pairwise karsilastirma — sadece n >= min_bucket_trades olan bucket'lar
+    qualifying = [b for b in bucket_stats if b["trades"] >= min_bucket_trades]
+    comparisons = []
+    divergent_count = 0
+
+    for i in range(len(qualifying)):
+        for j in range(i + 1, len(qualifying)):
+            bi = qualifying[i]
+            bj = qualifying[j]
+            ci_i_lo = bi["wilson_lower"] / 100.0
+            ci_i_hi = bi["wilson_upper"] / 100.0
+            ci_j_lo = bj["wilson_lower"] / 100.0
+            ci_j_hi = bj["wilson_upper"] / 100.0
+            overlap = not (ci_j_hi < ci_i_lo or ci_j_lo > ci_i_hi)
+            if overlap:
+                verdict = "FARK YOK"
+            else:
+                verdict = "ANLAMLI FARK VAR"
+                divergent_count += 1
+            comparisons.append({
+                "bucket_a": bi["label"], "bucket_b": bj["label"],
+                "n_a": bi["trades"], "n_b": bj["trades"],
+                "wr_a": bi["wr"], "wr_b": bj["wr"],
+                "ci_overlap": "Evet" if overlap else "Hayır",
+                "verdict": verdict,
+            })
+
+    total_buckets = len(qualifying)
+    return {
+        "symbol": symbol,
+        "bucket_stats": bucket_stats,
+        "comparisons": comparisons,
+        "divergent_pairs": divergent_count,
+        "total_qualifying_buckets": total_buckets,
+        "summary": (
+            f"{divergent_count}/{len(comparisons)} bucket cifti birbirinden ayrisiyor"
+            if comparisons else "Yeterli bucket yok (n>=100)"
+        ),
+    }
+
+
 def compute_session_stats(trade_records, initial_balance):
     """Bir session'daki unique trade listesinden istatistik hesapla."""
     n = len(trade_records)
@@ -625,6 +740,7 @@ def run_session_analysis(sym: str):
 
     # 5. Adim: Her session icin CBDR genisligi bucket analizi (Wilson score)
     threshold_results = {}
+    bucket_scaling_results = {}
     for sname in session_names_ordered:
         daily_rows = session_raw_data[sname]['daily_rows']
         analysis = analyze_thresholds(daily_rows, sym)
@@ -640,7 +756,24 @@ def run_session_analysis(sym: str):
         for b in analysis["buckets"]:
             print(f"  {b['range']:<18} {b['days']:>4} {b['trades']:>6} {b['wr']:>5.1f}% {b['pnl']:>+9.0f}")
 
-    return session_raw_data, unique_trade_records, threshold_results
+        # Bucket scaling analizi (CBDR_RISK_MATRIX bucket sinirlariyla)
+        bs = analyze_bucket_scaling(daily_rows, sym)
+        if bs is not None:
+            bucket_scaling_results[sname] = bs
+            print(f"\n  [{sym}] {sname} — Bucket Scaling (CBDR_RISK_MATRIX sinirlari)")
+            print(f"  {'Bucket':<10} {'Mult':>5} {'Islem':>6} {'WR%':>6} {'WilsonLo':>8} {'WilsonHi':>8}")
+            print(f"  {'-'*50}")
+            for bs_b in bs["bucket_stats"]:
+                print(f"  {bs_b['label']:<10} {bs_b['mult']:>4.1f}x {bs_b['trades']:>6} "
+                      f"{bs_b['wr']:>5.1f}% {bs_b['wilson_lower']:>7.1f}% {bs_b['wilson_upper']:>7.1f}%")
+            if bs["comparisons"]:
+                print(f"  Pairwise: {bs['summary']}")
+                for c in bs["comparisons"]:
+                    print(f"    {c['bucket_a']:>8} vs {c['bucket_b']:<8} "
+                          f"WR {c['wr_a']:.1f}% vs {c['wr_b']:.1f}% "
+                          f"CI: {c['ci_overlap']} → {c['verdict']}")
+
+    return session_raw_data, unique_trade_records, threshold_results, bucket_scaling_results
 
 
 def main():
@@ -658,7 +791,7 @@ def main():
         result = run_session_analysis(sym)
         if result is None:
             continue
-        all_session_results[sym] = result  # (session_raw, unique_trades, threshold_results)
+        all_session_results[sym] = result  # (session_raw, unique_trades, threshold_results, bucket_scaling_results)
 
     # ── Ozet CSV & MD rapor ──
     report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
@@ -670,7 +803,7 @@ def main():
     # Session bazinda CSV satirlari
     csv_rows = []
     for sym in sorted(all_session_results):
-        session_raw, unique_trades, threshold_results = all_session_results[sym]
+        session_raw, unique_trades, threshold_results, _ = all_session_results[sym]
         for sname in SESSION_CONFIGS:
             if sname not in session_raw:
                 continue
@@ -698,6 +831,42 @@ def main():
         w.writerows(csv_rows)
     print(f"\n  CSV rapor: {csv_path}")
 
+    # ── Bucket Scaling CSV ──
+    bs_csv_path = os.path.join(report_dir, "ict_cbdr_bucket_scaling.csv")
+    bs_csv_rows = []
+    for sym in sorted(all_session_results):
+        _, _, _, bucket_scaling_results = all_session_results[sym]
+        for sname, bs in bucket_scaling_results.items():
+            for c in bs["comparisons"]:
+                bs_csv_rows.append({
+                    "Coin": sym,
+                    "Session": sname,
+                    "Bucket_A": c["bucket_a"],
+                    "Bucket_B": c["bucket_b"],
+                    "N_A": c["n_a"],
+                    "N_B": c["n_b"],
+                    "WR_A": f"{c['wr_a']:.1f}%",
+                    "WR_B": f"{c['wr_b']:.1f}%",
+                    "CI_Overlap": c["ci_overlap"],
+                    "Verdict": c["verdict"],
+                })
+            # Ozet satir
+            bs_csv_rows.append({
+                "Coin": sym, "Session": sname,
+                "Bucket_A": "--- OZET ---", "Bucket_B": bs["summary"],
+                "N_A": "", "N_B": "", "WR_A": "", "WR_B": "",
+                "CI_Overlap": "",
+                "Verdict": f"{bs['divergent_pairs']} cift ayrisiyor",
+            })
+
+    with open(bs_csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["Coin", "Session", "Bucket_A", "Bucket_B",
+                                           "N_A", "N_B", "WR_A", "WR_B",
+                                           "CI_Overlap", "Verdict"])
+        w.writeheader()
+        w.writerows(bs_csv_rows)
+    print(f"  Bucket Scaling CSV: {bs_csv_path}")
+
     # MD rapor
     lines = []
     lines.append("# ICT CBDR Threshold Analysis — Multi-Session Comparison")
@@ -719,7 +888,7 @@ def main():
     lines.append("")
 
     for sym in sorted(all_session_results):
-        session_raw, unique_trades, threshold_results = all_session_results[sym]
+        session_raw, unique_trades, threshold_results, bucket_scaling_results = all_session_results[sym]
         for sname in SESSION_CONFIGS:
             if sname not in session_raw:
                 continue
@@ -744,6 +913,26 @@ def main():
                 lines.append(f"|{'-'*14}:|{'-'*4}:|{'-'*6}:|{'-'*5}:|{'-'*8}:|")
                 for b in thr.get("buckets", []):
                     lines.append(f"| {b['range']:<14} | {b['days']:>4} | {b['trades']:>6} | {b['wr']:>4.1f}% | {b['pnl']:>+7.0f} |")
+            # Bucket Scaling MD bolumu
+            bs = bucket_scaling_results.get(sname)
+            if bs:
+                lines.append("")
+                lines.append(f"#### Bucket Scaling (CBDR_RISK_MATRIX)")
+                lines.append("")
+                lines.append(f"| Bucket | Mult | Islem | WR% | Wilson Lower | Wilson Upper |")
+                lines.append(f"|{'-'*10}:|{'-'*5}:|{'-'*6}:|{'-'*5}:|{'-'*12}:|{'-'*12}:|")
+                for bs_b in bs["bucket_stats"]:
+                    lines.append(f"| {bs_b['label']:<10} | {bs_b['mult']:.1f}x | {bs_b['trades']:>6} | "
+                                 f"{bs_b['wr']:>4.1f}% | {bs_b['wilson_lower']:>10.1f}% | {bs_b['wilson_upper']:>10.1f}% |")
+                if bs["comparisons"]:
+                    lines.append("")
+                    lines.append(f"**Pairwise CI Overlap:** {bs['summary']}")
+                    lines.append("")
+                    lines.append(f"| Bucket A | Bucket B | N_A | N_B | WR_A | WR_B | CI Overlap | Verdict |")
+                    lines.append(f"|{'-'*10}|{'-'*10}|{'-'*5}|{'-'*5}|{'-'*6}|{'-'*6}|{'-'*10}|{'-'*18}|")
+                    for c in bs["comparisons"]:
+                        lines.append(f"| {c['bucket_a']:<10} | {c['bucket_b']:<10} | {c['n_a']:>3} | {c['n_b']:>3} | "
+                                     f"{c['wr_a']:>4.1f}% | {c['wr_b']:>4.1f}% | {c['ci_overlap']:<10} | {c['verdict']:<18} |")
             lines.append("")
 
     lines.append("---")
