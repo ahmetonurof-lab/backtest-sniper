@@ -1,0 +1,309 @@
+====================================================================================================
+  20 COIN FUTURES ANALIZI
+  Adim 1: Session fit testi (3 session)
+  Adim 2: CBDR Bucket + Wilson CI
+  Adim 3: Config ciktisi
+  Mod: PARALEL (4 worker)
+====================================================================================================
+
+20 coin 4 worker ile isleniyor...
+
+    [REAL_CBDR] CSV yukleniyor...    [REAL_CBDR] CSV yukleniyor...    [REAL_CBDR] CSV yukleniy    [REAL_CBDR] %100 (87600/87600)r... 1314000 bar,  1314000 bar,  1314000 bar,  1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [DEFAULT] %100 (87600/87600)1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+   SOLUSDT REAL_CBDR     1478 trade | WR=47.8% BE+=72.4% PF=3.38 DD=1.2% Skor=4685742 PnL=+22836
+   SOLUSDT DEFAULT       1843 trade | WR=48.0% BE+=70.8% PF=3.02 DD=1.0% Skor=5009044 PnL=+23328
+   SOLUSDT ASIA_RANGE    1680 trade | WR=44.8% BE+=69.3% PF=2.61 DD=1.2% Skor=2564164 PnL=+17472
+    [REAL_CBDR] CSV yukleniyor...  => SOLUSDT: BEST=DEFAULT BE+=70.8% PF=3.02 DD=1.0% PnL=+23328 Skor=5009044
+         (0.0, 1.0, 1.5)           n= 401 WR= 47.6% CI=[ 42.8%, 52.5%] -> 1.5x
+         (1.0, 1.5, 1.2)           n= 443 WR= 41.8% CI=[ 37.3%, 46.4%] -> 1.2x
+         (1.5, 2.0, 1.5)           n= 471 WR= 52.9% CI=[ 48.4%, 57.3%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 315 WR= 47.6% CI=[ 42.2%, 53.1%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 140 WR= 50.0% CI=[ 41.8%, 58.2%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  73 WR= 54.8% CI=[ 43.4%, 65.7%] -> 1.0x
+  --- 1/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   BTCUSDT REAL_CBDR     1405 trade | WR=44.8% BE+=68.8% PF=2.99 DD=1.1% Skor=3700191 PnL=+19981
+   BTCUSDT DEFAULT       1734 trade | WR=45.1% BE+=68.7% PF=2.91 DD=1.5% Skor=3033966 PnL=+22603
+   BTCUSDT ASIA_RANGE    1789 trade | WR=43.6% BE+=66.3% PF=2.78 DD=1.8% Skor=2299988 PnL=+22115
+    [REAL_CBDR] CSV yukleniyor...  => BTCUSDT: BEST=REAL_CBDR BE+=68.8% PF=2.99 DD=1.1% PnL=+19981 Skor=3700191
+         (0.0, 1.0, 1.0)           n= 625 WR= 38.1% CI=[ 34.4%, 41.9%] -> 1.0x
+         (1.0, 1.5, 1.5)           n= 366 WR= 45.6% CI=[ 40.6%, 50.8%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 173 WR= 59.0% CI=[ 51.5%, 66.0%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 200 WR= 50.0% CI=[ 43.1%, 56.9%] -> 1.5x
+         (3.0, 5.0, 1.0)           n=  31 WR= 48.4% CI=[ 32.0%, 65.2%] -> 1.0x
+         (5.0, 999.0, 1.0)         n=  10 WR= 70.0% CI=[ 39.7%, 89.2%] -> 1.0x
+  --- 2/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+  AVAXUSDT REAL_CBDR     1673 trade | WR=50.7% BE+=72.6% PF=3.47 DD=1.2% Skor=5668944 PnL=+26037
+    [REAL_CBDR] CSV yukleniyor...  AVAXUSDT DEFAULT       1990 trade | WR=51.1% BE+=72.6% PF=3.35 DD=1.4% Skor=5017538 PnL=+28883
+  AVAXUSDT ASIA_RANGE    1862 trade | WR=49.1% BE+=71.4% PF=3.15 DD=1.0% Skor=5497188 PnL=+24575
+  => AVAXUSDT: BEST=REAL_CBDR BE+=72.6% PF=3.47 DD=1.2% PnL=+26037 Skor=5668944
+         (0.0, 1.0, 1.5)           n= 151 WR= 62.3% CI=[ 54.3%, 69.6%] -> 1.5x
+         (1.0, 1.5, 1.5)           n= 308 WR= 45.8% CI=[ 40.3%, 51.4%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 424 WR= 51.9% CI=[ 47.1%, 56.6%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 382 WR= 48.2% CI=[ 43.2%, 53.2%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 284 WR= 53.5% CI=[ 47.7%, 59.2%] -> 1.5x
+         (5.0, 999.0, 1.2)         n= 124 WR= 46.0% CI=[ 37.4%, 54.7%] -> 1.2x
+  --- 3/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   BNBUSDT REAL_CBDR     1388 trade | WR=47.3% BE+=71.5% PF=3.56 DD=1.0% Skor=5877928 PnL=+22515
+   BNBUSDT DEFAULT       1766 trade | WR=48.2% BE+=69.8% PF=3.49 DD=1.2% Skor=6035621 PnL=+29595
+   BNBUSDT ASIA_RANGE    2049 trade | WR=50.6% BE+=72.1% PF=3.36 DD=0.6% Skor=11068272 PnL=+29554
+  => BNBUSDT: BEST=ASIA_RANGE BE+=72.1% PF=3.36 DD=0.6% PnL=+29554 Skor=11068272
+    [REAL_CBDR] CSV yukleniyor...         (0.0, 1.0, 1.5)           n= 968 WR= 49.2% CI=[ 46.0%, 52.3%] -> 1.5x
+         (1.0, 1.5, 1.5)           n= 532 WR= 52.8% CI=[ 48.6%, 57.0%] -> 1.5x
+         (1.5, 2.0, 1.2)           n= 190 WR= 46.3% CI=[ 39.4%, 53.4%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 197 WR= 58.9% CI=[ 51.9%, 65.5%] -> 1.5x
+         (3.0, 5.0, 1.2)           n= 154 WR= 46.8% CI=[ 39.0%, 54.6%] -> 1.2x
+         (5.0, 999.0, 1.0)         n=   8 WR= 37.5% CI=[ 13.7%, 69.4%] -> 1.0x
+  --- 4/20 basarili (0 hata) ---
+
+    [REAL_CBDR] %100 (87600/87600)00 bar,  1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [DEFAULT] %100 (87600/87600)1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+   XRPUSDT REAL_CBDR     1556 trade | WR=48.0% BE+=69.4% PF=2.72 DD=1.4% Skor=2553475 PnL=+18719
+   XRPUSDT DEFAULT       1977 trade | WR=48.6% BE+=69.3% PF=2.84 DD=1.1% Skor=4226156 PnL=+24414
+   XRPUSDT ASIA_RANGE    1833 trade | WR=46.3% BE+=68.5% PF=2.51 DD=1.3% Skor=2340231 PnL=+17765
+  => XRPUSDT: BEST=DEFAULT BE+=69.3% PF=2.84 DD=1.1% PnL=+24414 Skor=4226156
+         (0.0, 1.0, 1.5)           n= 791 WR= 46.4% CI=[ 42.9%, 49.9%] -> 1.5x
+    [REAL_CBDR] CSV yukleniyor...         (1.0, 1.5, 1.5)           n= 430 WR= 45.6% CI=[ 40.9%, 50.3%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 281 WR= 47.7% CI=[ 41.9%, 53.5%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 297 WR= 53.5% CI=[ 47.9%, 59.1%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 145 WR= 58.6% CI=[ 50.5%, 66.3%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  33 WR= 57.6% CI=[ 40.8%, 72.8%] -> 1.0x
+  --- 5/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+  LINKUSDT REAL_CBDR     1467 trade | WR=46.8% BE+=71.2% PF=3.00 DD=1.8% Skor=2457752 PnL=+20266
+  LINKUSDT DEFAULT       1658 trade | WR=44.9% BE+=68.8% PF=2.56 DD=1.9% Skor=1705406 PnL=+18450
+  LINKUSDT ASIA_RANGE    1701 trade | WR=45.5% BE+=68.8% PF=2.90 DD=1.8% Skor=2486927 PnL=+21804
+    [REAL_CBDR] CSV yukleniyor...  => LINKUSDT: BEST=ASIA_RANGE BE+=68.8% PF=2.90 DD=1.8% PnL=+21804 Skor=2486927
+         (0.0, 1.0, 1.0)           n= 297 WR= 39.4% CI=[ 34.0%, 45.1%] -> 1.0x
+         (1.0, 1.5, 1.2)           n= 399 WR= 40.6% CI=[ 35.9%, 45.5%] -> 1.2x
+         (1.5, 2.0, 1.2)           n= 336 WR= 43.2% CI=[ 38.0%, 48.5%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 450 WR= 50.4% CI=[ 45.8%, 55.0%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 163 WR= 56.4% CI=[ 48.8%, 63.8%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  56 WR= 55.4% CI=[ 42.4%, 67.6%] -> 1.0x
+  --- 6/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+  ATOMUSDT REAL_CBDR     1600 trade | WR=47.4% BE+=72.6% PF=3.73 DD=0.9% Skor=8320197 PnL=+28461
+  ATOMUSDT DEFAULT       1747 trade | WR=45.2% BE+=70.1% PF=3.30 DD=1.1% Skor=5942200 PnL=+27178
+    [REAL_CBDR] CSV yukleniyor...  ATOMUSDT ASIA_RANGE    1822 trade | WR=47.7% BE+=71.0% PF=3.55 DD=0.9% Skor=8340197 PnL=+28307
+  => ATOMUSDT: BEST=ASIA_RANGE BE+=71.0% PF=3.55 DD=0.9% PnL=+28307 Skor=8340197
+         (0.0, 1.0, 1.5)           n= 378 WR= 50.3% CI=[ 45.2%, 55.3%] -> 1.5x
+         (1.0, 1.5, 1.2)           n= 508 WR= 40.7% CI=[ 36.6%, 45.1%] -> 1.2x
+         (1.5, 2.0, 1.5)           n= 338 WR= 50.9% CI=[ 45.6%, 56.2%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 386 WR= 45.1% CI=[ 40.2%, 50.1%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 184 WR= 60.3% CI=[ 53.1%, 67.1%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  28 WR= 53.6% CI=[ 35.8%, 70.5%] -> 1.0x
+  --- 7/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   ADAUSDT REAL_CBDR     1507 trade | WR=46.1% BE+=72.2% PF=3.34 DD=1.4% Skor=4286047 PnL=+25157
+    [REAL_CBDR] CSV yukleniyor...   ADAUSDT DEFAULT       1852 trade | WR=47.5% BE+=71.7% PF=3.42 DD=1.2% Skor=6074424 PnL=+30670
+   ADAUSDT ASIA_RANGE    1587 trade | WR=46.2% BE+=70.9% PF=2.97 DD=1.4% Skor=3142290 PnL=+20390
+  => ADAUSDT: BEST=DEFAULT BE+=71.7% PF=3.42 DD=1.2% PnL=+30670 Skor=6074424
+         (0.0, 1.0, 1.2)           n= 363 WR= 42.4% CI=[ 37.4%, 47.6%] -> 1.2x
+         (1.0, 1.5, 1.5)           n= 409 WR= 47.9% CI=[ 43.1%, 52.8%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 364 WR= 50.0% CI=[ 44.9%, 55.1%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 427 WR= 46.1% CI=[ 41.5%, 50.9%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 224 WR= 52.2% CI=[ 45.7%, 58.7%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  65 WR= 50.8% CI=[ 38.9%, 62.5%] -> 1.0x
+  --- 8/20 basarili (0 hata) ---
+
+    [REAL_CBDR] %100 (87600/87600)00 bar,  1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [DEFAULT] %100 (87600/87600)1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+    [REAL_CBDR] CSV yukleniyor...  NEARUSDT REAL_CBDR     1422 trade | WR=41.9% BE+=69.0% PF=2.99 DD=3.0% Skor=1378083 PnL=+20040
+  NEARUSDT DEFAULT       1798 trade | WR=47.1% BE+=69.4% PF=2.98 DD=1.2% Skor=4199385 PnL=+23573
+  NEARUSDT ASIA_RANGE    1940 trade | WR=49.0% BE+=71.1% PF=3.45 DD=1.1% Skor=6211923 PnL=+28716
+  => NEARUSDT: BEST=ASIA_RANGE BE+=71.1% PF=3.45 DD=1.1% PnL=+28716 Skor=6211923
+         (0.0, 1.0, 1.2)           n= 104 WR= 47.1% CI=[ 37.8%, 56.6%] -> 1.2x
+         (1.0, 1.5, 1.2)           n= 470 WR= 44.7% CI=[ 40.2%, 49.2%] -> 1.2x
+         (1.5, 2.0, 1.5)           n= 423 WR= 50.6% CI=[ 45.8%, 55.3%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 476 WR= 46.2% CI=[ 41.8%, 50.7%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 335 WR= 52.8% CI=[ 47.5%, 58.1%] -> 1.5x
+         (5.0, 999.0, 1.5)         n= 132 WR= 61.4% CI=[ 52.8%, 69.2%] -> 1.5x
+  --- 9/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   DOTUSDT REAL_CBDR     1629 trade | WR=49.0% BE+=71.5% PF=3.60 DD=1.2% Skor=6443717 PnL=+28847
+   DOTUSDT DEFAULT       1933 trade | WR=49.4% BE+=71.4% PF=3.66 DD=0.9% Skor=10159338 PnL=+34827
+   DOTUSDT ASIA_RANGE    1787 trade | WR=46.7% BE+=69.3% PF=2.94 DD=1.5% Skor=3302957 PnL=+23708
+  => DOTUSDT: BEST=DEFAULT BE+=71.4% PF=3.66 DD=0.9% PnL=+34827 Skor=10159338
+         (0.0, 1.0, 1.5)           n= 380 WR= 48.2% CI=[ 43.2%, 53.2%] -> 1.5x
+         (1.0, 1.5, 1.5)           n= 442 WR= 47.5% CI=[ 42.9%, 52.2%] -> 1.5x
+         (1.5, 2.0, 1.2)           n= 403 WR= 43.4% CI=[ 38.7%, 48.3%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 450 WR= 55.3% CI=[ 50.7%, 59.9%] -> 1.5x
+    [REAL_CBDR] CSV yukleniyor...         (3.0, 5.0, 1.2)           n= 179 WR= 44.1% CI=[ 37.1%, 51.5%] -> 1.2x
+         (5.0, 999.0, 1.0)         n=  79 WR= 73.4% CI=[ 62.8%, 81.9%] -> 1.0x
+  --- 10/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   ETHUSDT REAL_CBDR     1388 trade | WR=42.3% BE+=69.3% PF=2.48 DD=2.0% Skor=1269073 PnL=+14985
+   ETHUSDT DEFAULT       1538 trade | WR=42.7% BE+=67.3% PF=2.35 DD=1.6% Skor=1470868 PnL=+15092
+   ETHUSDT ASIA_RANGE    1483 trade | WR=39.6% BE+=64.0% PF=2.04 DD=3.0% Skor=533230 PnL=+12079
+  => ETHUSDT: BEST=DEFAULT BE+=67.3% PF=2.35 DD=1.6% PnL=+15092 Skor=1470868
+         (0.0, 1.0, 1.2)           n= 645 WR= 41.6% CI=[ 37.8%, 45.4%] -> 1.2x
+         (1.0, 1.5, 1.2)           n= 407 WR= 42.0% CI=[ 37.3%, 46.9%] -> 1.2x
+         (1.5, 2.0, 1.2)           n= 213 WR= 46.0% CI=[ 39.4%, 52.7%] -> 1.2x
+    [REAL_CBDR] CSV yukleniyor...         (2.0, 3.0, 1.2)           n= 202 WR= 43.6% CI=[ 36.9%, 50.5%] -> 1.2x
+         (3.0, 5.0, 1.0)           n=  51 WR= 35.3% CI=[ 23.6%, 49.0%] -> 1.0x
+         (5.0, 999.0, 1.0)         n=  20 WR= 65.0% CI=[ 43.3%, 81.9%] -> 1.0x
+  --- 11/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   APTUSDT REAL_CBDR     1725 trade | WR=44.2% BE+=69.5% PF=3.08 DD=1.4% Skor=3845588 PnL=+24245
+   APTUSDT DEFAULT       2059 trade | WR=48.9% BE+=71.1% PF=3.24 DD=0.9% Skor=7669484 PnL=+28542
+   APTUSDT ASIA_RANGE    2022 trade | WR=49.2% BE+=71.5% PF=3.25 DD=1.3% Skor=4934846 PnL=+27793
+  => APTUSDT: BEST=DEFAULT BE+=71.1% PF=3.24 DD=0.9% PnL=+28542 Skor=7669484
+    [REAL_CBDR] CSV yukleniyor...         (0.0, 1.0, 1.0)           n= 206 WR= 36.4% CI=[ 30.1%, 43.2%] -> 1.0x
+         (1.0, 1.5, 1.2)           n= 496 WR= 42.9% CI=[ 38.7%, 47.3%] -> 1.2x
+         (1.5, 2.0, 1.5)           n= 480 WR= 51.7% CI=[ 47.2%, 56.1%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 479 WR= 56.8% CI=[ 52.3%, 61.1%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 355 WR= 49.6% CI=[ 44.4%, 54.8%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  43 WR= 53.5% CI=[ 38.9%, 67.5%] -> 1.0x
+  --- 12/20 basarili (0 hata) ---
+
+    [REAL_CBDR] %100 (87600/87600)00 bar,  1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [REAL_CBDR] %100 (87600/87600)   [DEFAULT] CSV yukleniyor... 1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [DEFAULT] %100 (87600/87600)1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [DEFAULT] %100 (87600/87600).. 1314000 bar, 
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+    [REAL_CBDR] CSV yukleniyor...   ARBUSDT REAL_CBDR     1492 trade | WR=51.7% BE+=72.7% PF=3.69 DD=1.0% Skor=7203703 PnL=+25889
+   ARBUSDT DEFAULT       1831 trade | WR=48.9% BE+=71.6% PF=3.23 DD=1.0% Skor=6064701 PnL=+27246
+   ARBUSDT ASIA_RANGE    1893 trade | WR=49.3% BE+=71.5% PF=3.00 DD=0.9% Skor=5358359 PnL=+23248
+  => ARBUSDT: BEST=REAL_CBDR BE+=72.7% PF=3.69 DD=1.0% PnL=+25889 Skor=7203703
+         (0.0, 1.0, 1.0)           n=  48 WR= 22.9% CI=[ 13.3%, 36.5%] -> 1.0x
+         (1.0, 1.5, 1.5)           n= 236 WR= 48.3% CI=[ 42.0%, 54.7%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 345 WR= 56.5% CI=[ 51.2%, 61.7%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 419 WR= 52.0% CI=[ 47.2%, 56.8%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 299 WR= 51.5% CI=[ 45.9%, 57.1%] -> 1.5x
+         (5.0, 999.0, 1.5)         n= 145 WR= 55.2% CI=[ 47.0%, 63.0%] -> 1.5x
+  --- 13/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   SUIUSDT REAL_CBDR     1569 trade | WR=41.4% BE+=68.2% PF=2.16 DD=1.9% Skor=1083445 PnL=+14278
+   SUIUSDT DEFAULT       1850 trade | WR=45.1% BE+=68.7% PF=2.55 DD=1.3% Skor=2893868 PnL=+20857
+   SUIUSDT ASIA_RANGE    1804 trade | WR=45.1% BE+=68.0% PF=2.77 DD=1.7% Skor=2500697 PnL=+23193
+  => SUIUSDT: BEST=DEFAULT BE+=68.7% PF=2.55 DD=1.3% PnL=+20857 Skor=2893868
+         (0.0, 1.0, 1.2)           n= 186 WR= 44.6% CI=[ 37.7%, 51.8%] -> 1.2x
+         (1.0, 1.5, 1.2)           n= 313 WR= 42.2% CI=[ 36.8%, 47.7%] -> 1.2x
+         (1.5, 2.0, 1.2)           n= 370 WR= 44.3% CI=[ 39.3%, 49.4%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 513 WR= 47.6% CI=[ 43.3%, 51.9%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 358 WR= 45.3% CI=[ 40.2%, 50.4%] -> 1.5x
+         (5.0, 999.0, 1.2)         n= 110 WR= 44.5% CI=[ 35.6%, 53.9%] -> 1.2x
+  --- 14/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   INJUSDT REAL_CBDR     1460 trade | WR=44.7% BE+=68.3% PF=2.65 DD=2.7% Skor=1198639 PnL=+18047
+   INJUSDT DEFAULT       1791 trade | WR=42.4% BE+=67.6% PF=2.48 DD=1.7% Skor=1929011 PnL=+19987
+   INJUSDT ASIA_RANGE    1920 trade | WR=44.4% BE+=67.9% PF=2.91 DD=1.5% Skor=3244657 PnL=+24300
+  => INJUSDT: BEST=ASIA_RANGE BE+=67.9% PF=2.91 DD=1.5% PnL=+24300 Skor=3244657
+         (0.0, 1.0, 0.8)           n= 120 WR= 34.2% CI=[ 26.3%, 43.0%] -> 0.8x
+         (1.0, 1.5, 1.5)           n= 383 WR= 45.2% CI=[ 40.3%, 50.2%] -> 1.5x
+         (1.5, 2.0, 1.2)           n= 378 WR= 42.1% CI=[ 37.2%, 47.1%] -> 1.2x
+         (2.0, 3.0, 1.2)           n= 500 WR= 44.0% CI=[ 39.7%, 48.4%] -> 1.2x
+         (3.0, 5.0, 1.5)           n= 471 WR= 51.4% CI=[ 46.9%, 55.9%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  68 WR= 26.5% CI=[ 17.4%, 38.0%] -> 1.0x
+  --- 15/20 basarili (0 hata) ---
+    [REAL_CBDR] CSV yukleniyor...
+    [ASIA_RANGE] %100 (87600/87600)
+    OPUSDT REAL_CBDR     1683 trade | WR=51.9% BE+=73.6% PF=4.25 DD=1.0% Skor=10036558 PnL=+32906
+    OPUSDT DEFAULT       1886 trade | WR=49.0% BE+=71.7% PF=3.45 DD=0.8% Skor=8837284 PnL=+28926
+    OPUSDT ASIA_RANGE    1827 trade | WR=48.1% BE+=71.6% PF=3.24 DD=0.8% Skor=6959697 PnL=+23978
+  => OPUSDT: BEST=REAL_CBDR BE+=73.6% PF=4.25 DD=1.0% PnL=+32906 Skor=10036558
+         (0.0, 1.0, 1.0)           n=  57 WR= 50.9% CI=[ 38.3%, 63.4%] -> 1.0x
+         (1.0, 1.5, 1.5)           n= 223 WR= 48.9% CI=[ 42.4%, 55.4%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 298 WR= 46.6% CI=[ 41.1%, 52.3%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 555 WR= 53.7% CI=[ 49.5%, 57.8%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 377 WR= 54.4% CI=[ 49.3%, 59.3%] -> 1.5x
+         (5.0, 999.0, 1.5)         n= 173 WR= 53.8% CI=[ 46.3%, 61.0%] -> 1.5x
+  --- 16/20 basarili (0 hata) ---
+
+    [REAL_CBDR] %100 (87600/87600)1314000 bar,  1314000 bar,  1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)1314000 bar, 
+    [REAL_CBDR] %100 (87600/87600)14000 bar, 
+    [DEFAULT] %100 (87600/87600))314000 bar, 
+    [REAL_CBDR] %100 (87600/87600) 1314000 bar, 
+    [DEFAULT] %100 (87600/87600)0)14000 bar, 
+    [DEFAULT] %100 (87600/87600)0) 1314000 bar, 
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+    [ASIA_RANGE] %63 (55500/87600)  ALGOUSDT REAL_CBDR     1460 trade | WR=48.7% BE+=71.5% PF=3.98 DD=0.6% Skor=12661418 PnL=+26455
+  ALGOUSDT DEFAULT       1695 trade | WR=48.3% BE+=69.8% PF=3.77 DD=0.9% Skor=8642546 PnL=+30491
+  ALGOUSDT ASIA_RANGE    1799 trade | WR=48.3% BE+=71.3% PF=3.31 DD=0.8% Skor=7866040 PnL=+25460
+  => ALGOUSDT: BEST=REAL_CBDR BE+=71.5% PF=3.98 DD=0.6% PnL=+26455 Skor=12661418
+         (0.0, 1.0, 1.0)           n=  44 WR= 52.3% CI=[ 37.9%, 66.2%] -> 1.0x
+         (1.0, 1.5, 1.5)           n= 284 WR= 48.2% CI=[ 42.5%, 54.0%] -> 1.5x
+         (1.5, 2.0, 1.5)           n= 280 WR= 46.8% CI=[ 41.0%, 52.6%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 421 WR= 49.4% CI=[ 44.7%, 54.2%] -> 1.5x
+         (3.0, 5.0, 1.2)           n= 251 WR= 45.0% CI=[ 39.0%, 51.2%] -> 1.2x
+         (5.0, 999.0, 1.5)         n= 180 WR= 55.0% CI=[ 47.7%, 62.1%] -> 1.5x
+  --- 17/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+   UNIUSDT REAL_CBDR     1352 trade | WR=40.5% BE+=68.0% PF=2.63 DD=1.6% Skor=1943483 PnL=+17101
+   UNIUSDT DEFAULT       1735 trade | WR=46.3% BE+=71.8% PF=3.46 DD=1.1% Skor=6353443 PnL=+28509
+   UNIUSDT ASIA_RANGE    1614 trade | WR=45.1% BE+=68.8% PF=3.23 DD=2.0% Skor=2711198 PnL=+24467
+  => UNIUSDT: BEST=DEFAULT BE+=71.8% PF=3.46 DD=1.1% PnL=+28509 Skor=6353443
+         (0.0, 1.0, 1.0)           n= 166 WR= 39.2% CI=[ 32.1%, 46.7%] -> 1.0x
+         (1.0, 1.5, 1.0)           n= 444 WR= 37.6% CI=[ 33.2%, 42.2%] -> 1.0x
+         (1.5, 2.0, 1.2)           n= 337 WR= 43.0% CI=[ 37.8%, 48.4%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 417 WR= 60.2% CI=[ 55.4%, 64.8%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 278 WR= 51.4% CI=[ 45.6%, 57.3%] -> 1.5x
+         (5.0, 999.0, 1.0)         n=  93 WR= 34.4% CI=[ 25.5%, 44.5%] -> 1.0x
+  --- 18/20 basarili (0 hata) ---
+
+    [DEFAULT] %100 (87600/87600)0)
+    [ASIA_RANGE] %100 (87600/87600)1314000 bar, 
+  AAVEUSDT REAL_CBDR     1578 trade | WR=49.6% BE+=71.1% PF=3.26 DD=1.3% Skor=4380694 PnL=+24707
+  AAVEUSDT DEFAULT       1803 trade | WR=50.6% BE+=71.7% PF=3.57 DD=1.0% Skor=7540037 PnL=+30687
+  AAVEUSDT ASIA_RANGE    1815 trade | WR=45.7% BE+=68.7% PF=2.83 DD=1.9% Skor=2158365 PnL=+20918
+  => AAVEUSDT: BEST=DEFAULT BE+=71.7% PF=3.57 DD=1.0% PnL=+30687 Skor=7540037
+         (0.0, 1.0, 1.0)           n= 192 WR= 41.7% CI=[ 34.9%, 48.7%] -> 1.0x
+         (1.0, 1.5, 1.5)           n= 468 WR= 51.9% CI=[ 47.4%, 56.4%] -> 1.5x
+         (1.5, 2.0, 1.2)           n= 293 WR= 42.3% CI=[ 36.8%, 48.0%] -> 1.2x
+         (2.0, 3.0, 1.5)           n= 435 WR= 50.6% CI=[ 45.9%, 55.2%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 301 WR= 57.1% CI=[ 51.5%, 62.6%] -> 1.5x
+         (5.0, 999.0, 1.5)         n= 114 WR= 64.9% CI=[ 55.8%, 73.1%] -> 1.5x
+  --- 19/20 basarili (0 hata) ---
+
+    [ASIA_RANGE] %100 (87600/87600)
+  DOGEUSDT REAL_CBDR     1371 trade | WR=48.4% BE+=71.3% PF=3.64 DD=1.3% Skor=4841914 PnL=+24759
+  DOGEUSDT DEFAULT       1679 trade | WR=46.6% BE+=69.8% PF=3.35 DD=1.0% Skor=5824072 PnL=+25556
+  DOGEUSDT ASIA_RANGE    1537 trade | WR=46.3% BE+=71.6% PF=3.04 DD=1.7% Skor=2483667 PnL=+19057
+  => DOGEUSDT: BEST=DEFAULT BE+=69.8% PF=3.35 DD=1.0% PnL=+25556 Skor=5824072
+         (0.0, 1.0, 1.0)           n= 315 WR= 38.7% CI=[ 33.5%, 44.2%] -> 1.0x
+         (1.0, 1.5, 1.0)           n= 320 WR= 36.9% CI=[ 31.8%, 42.3%] -> 1.0x
+         (1.5, 2.0, 1.5)           n= 270 WR= 48.5% CI=[ 42.6%, 54.5%] -> 1.5x
+         (2.0, 3.0, 1.5)           n= 401 WR= 50.4% CI=[ 45.5%, 55.2%] -> 1.5x
+         (3.0, 5.0, 1.5)           n= 266 WR= 58.3% CI=[ 52.3%, 64.0%] -> 1.5x
+         (5.0, 999.0, 1.5)         n= 107 WR= 51.4% CI=[ 42.0%, 60.7%] -> 1.5x
+  --- 20/20 basarili (0 hata) ---

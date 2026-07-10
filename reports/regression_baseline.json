@@ -1,0 +1,14 @@
+{
+  "symbol": "BTCUSDT",
+  "session": "REAL_CBDR",
+  "total_trades": 1760,
+  "win_pct": 48.4,
+  "profit_factor": 3.67,
+  "max_dd_pct": 7.0,
+  "sharpe": 6.67,
+  "total_pnl": 34016.0,
+  "wins": 851,
+  "be": 366,
+  "losses": 543,
+  "entered": 1760
+}

@@ -310,7 +310,6 @@ def collect_daily_data(
     fbm = cfg.FVG_BUFFER_MULT
     ATM = cfg.ATR_TRAIL_MULT
     TMM = cfg.TRAIL_MIN_MOVE_MULT
-    BERM = cfg.BE_RISK_MULT
     FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
     COMMISSION_RATE = 0.0005  # %0.05 Binance futures taker fee (each leg)
 
@@ -519,25 +518,8 @@ def collect_daily_data(
 
         if active and cur.is_closed:
             for t in active:
-                if t.get("closed") or t.get("be_triggered", False):
+                if t.get("closed"):
                     continue
-                s2 = t["side"]
-                e2 = t["entry_price"]
-                rpt2 = abs(t["initial_sl"] - e2)
-                th2 = rpt2 * BERM
-                be2 = (
-                    e2 * (1 + COMMISSION_RATE) / (1 - COMMISSION_RATE)
-                    if s2 == "long"
-                    else e2 * (1 - COMMISSION_RATE) / (1 + COMMISSION_RATE)
-                )
-                if s2 == "long":
-                    if cur.high >= e2 + th2 and t["sl"] < be2:
-                        t["sl"] = be2
-                        t["be_triggered"] = True
-                else:
-                    if cur.low <= e2 - th2 and t["sl"] > be2:
-                        t["sl"] = be2
-                        t["be_triggered"] = True
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)

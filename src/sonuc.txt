@@ -1,0 +1,10 @@
+====================================================================================================
+  20 COIN FUTURES ANALIZI
+  Adim 1: Session fit testi (3 session)
+  Adim 2: CBDR Bucket + Wilson CI
+  Adim 3: Config ciktisi
+====================================================================================================
+
+[ADIM 1] Session fit testi...
+
+  BTCUSDT:
