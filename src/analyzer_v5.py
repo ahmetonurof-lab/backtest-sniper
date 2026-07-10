@@ -126,8 +126,7 @@ def fvg_close_confirmed(fvg, all_bars):
         else:
             if b.close > fvg.top:
                 return False
-            if fvg.bottom <= b.close <= fvg.top:
-                return True
+            return True
     return False
 
 
