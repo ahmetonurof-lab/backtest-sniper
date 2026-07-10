@@ -17,8 +17,14 @@
 - **collect_daily_data cache:** Adim 1→Adim 2, 4. cagri yok.
 
 ## Next Actions
-1. **FVG_SIZE_MAP:** futures ATR bazli hesapla (su an 0.0 placeholder)
-2. **Canli bot testi:** guncel config ile paper trade baslat
+1. **Komisyon + Slippage:** %0.05 + slippage maliyetini engine'e ekle
+2. **ETH duzelt:** ya tamamen cikar ya FVG tetikleme sartlarini zorlastir
+3. **VIP List:** Sharpe > 4.5 & MaxDD < %1 coin havuzu (OP, BNB, AAVE, ALGO, ADA, ARB)
+4. **DD-bazli pozisyon:** dusuk DD coine daha buyuk pozisyon (BNB 3x ETH)
+5. **FVG_SWEPT filtresi:** sadece sweep onay mumundan sonra isleme gir (WR/PF tavani)
+6. **Pipeline:** komisyon ekle -> ETH ayikla -> pozisyonu Sharpe'a gore optimize et
+7. **FVG_SIZE_MAP:** futures ATR bazli hesapla (su an 0.0 placeholder)
+8. **Canli bot testi:** guncel config ile paper trade baslat
 
 ## Notlar
 - Tum veriler futures'tan indirildi (20 coin de hazir).
