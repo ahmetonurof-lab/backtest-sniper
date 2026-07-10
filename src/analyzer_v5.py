@@ -53,12 +53,12 @@ def load_data(filepath):
     n = len(df)
     bars = [None] * n
     o = df["open"].to_numpy(dtype=float)
-    h = df["high"].to_numpy(dtype=float)
-    l = df["low"].to_numpy(dtype=float)
+    high_arr = df["high"].to_numpy(dtype=float)
+    low_arr = df["low"].to_numpy(dtype=float)
     c = df["close"].to_numpy(dtype=float)
     v = df["volume"].to_numpy(dtype=float)
     for i in range(n):
-        bars[i] = Bar(index=i, open=o[i], high=h[i], low=l[i], close=c[i],
+        bars[i] = Bar(index=i, open=o[i], high=high_arr[i], low=low_arr[i], close=c[i],
                       volume=v[i], is_closed=True, timestamp=int(ts_ms[i]))
     t2 = time.time()
     print(f"      load_data: {n} bar {t1-t0:.1f}s (csv) + {t2-t1:.1f}s (bar) = {t2-t0:.1f}s")
@@ -181,7 +181,7 @@ def _collect_fvg_profile_impl(symbol: str):
 
     day_cbdr = {}
     day_trades = defaultdict(list)
-    active = []
+    active: list = []
     wins = []
     losses = []
     trade_records = []
@@ -619,48 +619,111 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
 
 
 # ─── Main ─────────────────────────────────────────────────────
+# ─── Worker: tek sembol analizi (paralel surec) ──────────────
+def _analyze_one_sym_v5(sym: str) -> dict | None:
+    """Worker: collect_fvg_profile + compute_session_stats.
+    Ayri ProcessPoolExecutor worker'inda calisir."""
+    import os, sys, time
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    _SNIPER_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "sniper", "src")
+    if _SNIPER_SRC not in sys.path:
+        sys.path.insert(0, _SNIPER_SRC)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    import config as cfg
+    cfg.MIN_REL_FVG_THRESHOLD = 0.40
+    from session_router import get_session_hours
+
+    # Import engine from same module
+    from analyzer_v5 import collect_fvg_profile, compute_session_stats
+
+    try:
+        result = collect_fvg_profile(sym)
+        if result is None or (isinstance(result, tuple) and result[0] is None):
+            return {"sym": sym, "error": "VERI YOK"}
+        daily_rows, wins, losses, trade_records, rejection_counts = result
+        if len(daily_rows) < 1:
+            return {"sym": sym, "error": "YETERSIZ VERI"}
+        stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
+        return {
+            "sym": sym, "stats": stats, "daily_rows": daily_rows,
+            "rejection_counts": rejection_counts,
+        }
+    except Exception as e:
+        return {"sym": sym, "error": str(e)}
+
+
 def main():
-    t0 = time.time()
-
-    print("=" * 100)
-    print("  FVG PROFILE V5 Engine")
-    print("  Engine: V4 (live-identical) — Sweep -> RSM -> Quality -> Entry -> Trailing")
-    print(f"  Coinler: {', '.join(SYMBOLS_TO_TEST)}")
-    print("=" * 100)
-
-    # QuantLogger (same as analyzer_v4)
-    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", "trades_multi_session.parquet")
+    """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER
-    _LOGGER = QuantLogger(parquet_path)
+    import argparse
+    parser = argparse.ArgumentParser(description="V5 backtest engine")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Paralel worker sayisi (1=serial, default=1)")
+    parser.add_argument("--serial", action="store_true", help="Serial mod")
+    args = parser.parse_args()
 
+    use_serial = args.serial or args.workers <= 1
+    n_workers = args.workers if not use_serial else 1
+
+    t0 = time.time()
     results_data = []
 
-    for sym in SYMBOLS_TO_TEST:
-        try:
-            profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
-            sname = profile.get("session", "DEFAULT")
-            sh_info = get_session_hours(sym)
-            print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
-            result = collect_fvg_profile(sym)
-            if result is None or (isinstance(result, tuple) and result[0] is None):
-                print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
-                continue
-            daily_rows, wins, losses, trade_records, rejection_counts = result
-            if len(daily_rows) < 1:
-                print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
-                continue
+    print("=" * 100)
+    print("  V5 PROFIL — CBDR→Sweep→RSM→FVG→Entry→Trail→Exit")
+    print("  Live-identical backtest engine")
+    if not use_serial:
+        print(f"  Mod: PARALEL ({n_workers} worker)")
+    print("=" * 100)
 
-            stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
-            results_data.append((sym, stats, daily_rows, rejection_counts))
-
-            print(f"    [{sym}] {stats['total_trades']} islem | "
-                  f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                  f"WR={stats['win_pct']:.1f}%")
-        except Exception as e:
-            import traceback
-            print(f"    [{sym}] HATA: {e}")
-            traceback.print_exc()
-            continue
+    if use_serial:
+        for sym in sorted(cfg.SYMBOLS):
+            try:
+                profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
+                sname = profile.get("session", "DEFAULT")
+                sh_info = get_session_hours(sym)
+                print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00]", flush=True)
+                result = collect_fvg_profile(sym)
+                if result is None or (isinstance(result, tuple) and result[0] is None):
+                    print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
+                    continue
+                daily_rows, wins, losses, trade_records, rejection_counts = result
+                if len(daily_rows) < 1:
+                    print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
+                    continue
+                stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
+                results_data.append((sym, stats, daily_rows, rejection_counts))
+                print(f"    [{sym}] {stats['total_trades']} islem | "
+                      f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                      f"WR={stats['win_pct']:.1f}%")
+            except Exception as e:
+                import traceback
+                print(f"    [{sym}] HATA: {e}")
+                traceback.print_exc()
+                continue
+    else:
+        # ── Paralel mod ──
+        import concurrent.futures
+        syms = sorted(cfg.SYMBOLS)
+        print(f"\n  {len(syms)} coin {n_workers} worker ile isleniyor...\n", flush=True)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
+            fut_map = {executor.submit(_analyze_one_sym_v5, sym): sym for sym in syms}
+            for future in concurrent.futures.as_completed(fut_map):
+                sym = fut_map[future]
+                try:
+                    res = future.result()
+                except Exception as e:
+                    print(f"  [!] {sym}: HATA - {e}", flush=True)
+                    continue
+                if res is None or "error" in res:
+                    msg = res.get("error", "BILINMEYEN") if res else "NONE"
+                    print(f"  {sym}: {msg}", flush=True)
+                    continue
+                stats = res["stats"]
+                results_data.append((sym, stats, res["daily_rows"], res["rejection_counts"]))
+                print(f"  {sym}: {stats['total_trades']} islem | "
+                      f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                      f"WR={stats['win_pct']:.1f}% PnL={stats['total_pnl']:+0f}", flush=True)
 
     # ── Parquet ──
     if _LOGGER is not None:
