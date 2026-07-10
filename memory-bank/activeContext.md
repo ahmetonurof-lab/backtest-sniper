@@ -1,9 +1,10 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-10: Bug fix marathon revert + hizli load_data + ProcessPoolExecutor paralel. Config sniper/src/config.py'ye yerlesti. Pre-commit hooks kuruldu. analyzer_v5.py da paralel calisiyor.
+2026-07-10: Bug fix marathon revert + hizli load_data + ProcessPoolExecutor paralel. Config sniper/src/config.py'ye yerlesti. Pre-commit hooks kuruldu. analyze_cbdr_thresholds.py stratejisi analyzer_v5.py ile birebir ayni hale getirildi (next-bar entry, komisyon, BE, same-bar guard). Sezon/bucket wilson analizine hazir.
 
 ## Recently Completed
+- **analyze_cbdr_thresholds.py V5 hizalamasi (2026-07-10):** threshold motoru V5 ile birebir ayni stratejiye oturtuldu. Degisenler: `MIN_REL_FVG_THRESHOLD` 0.50→0.40, next-bar-open entry (+ bounds guard), `entry_bar: sb+1`, SL cap `rd > rp2*2` kaldirildi, commission-based BE, komisyon PnL'den düsüldü, same-bar exit guard (continue), just_locked low>0 check.
 - **get_fvg_status fix (2026-07-10):** `analyzer_v5.py` + `analyze_cbdr_thresholds.py` — INVALIDATED artık wick (high/low) değil **close** bazlı. Bearish: `close > top` → invalidate; Bullish: `close < bottom` → invalidate. ACTIVE_ENTRY_ZONE çift yönlü overlap: `bar.high >= bottom AND bar.low <= top`. BSL wick'i gap üstündeyken entry'nin INVALIDATED olması hatası düzeldi. Trade sayısı %48 arttı (34,366→51,034), net PnL 2.8x (+$248K→+$695K).
 - **Komisyon modeli (2026-07-10):** analyzer_v5.py — SLIPPAGE kaldırıldı, %0.05 entry + %0.05 exit komisyon ayrı ayrı hesaplanıyor. Raporda Fee sütunu eklendi, PnL → net PnL olarak yeniden adlandırıldı. `COMMISSION_RATE=0.0005`, her leg ayrı hesaplanır.
 - **BE komisyon bazlı (2026-07-10):** analyzer_v5.py — BE seviyesi BESP (fixed point) yerine `entry × (1 ± COMMISSION_RATE) / (1 ∓ COMMISSION_RATE)` formülüne çevrildi. BE tetiklendiğinde net PnL ≈ 0 olur.
@@ -32,5 +33,5 @@
 
 ## Notlar
 - Tum veriler futures'tan indirildi (20 coin de hazir).
-- `_analyze_all_20.py`, `analyze_cbdr_thresholds.py`, `analyzer_v5.py` — ayni motor. Bug fix marathon sonrasi 3 dosyada da ayni 3 hata vardi, hepsi duzeltildi.
+- `_analyze_all_20.py`, `analyze_cbdr_thresholds.py`, `analyzer_v5.py` — ayni motor + ayni strateji. Bug fix marathon sonrasi 3 dosyada da ayni 3 hata vardi, hepsi duzeltildi. Threshholds V5'e hizalandi (11b71f2).
 - Gercek config `sniper/src/config.py`'de. `config_20.py` sadece test icin.
