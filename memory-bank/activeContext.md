@@ -18,8 +18,8 @@
 
 ## Next Actions
 1. **20 coin analizi:** `python _analyze_all_20.py --workers 4`
-2. **Sonuclari degerlendir:** analyze_cbdr_thresholds.py referansiyla karsilastir.
-3. **`sniper/src/config.py` guncelle:** SYMBOLS + CBDR_RISK_MATRIX + FVG_SIZE_MAP + weekend_bonus.
+2. **Canli backtest:** `python analyzer_v5.py` ile sonuclari dogrula (guncel config ile)
+3. **FVG_SIZE_MAP:** futures ATR bazli hesapla, su an 0.0 placeholder
 
 ## Notlar
 - Tum veriler futures'tan indirildi (20 coin de hazir).
