@@ -40,7 +40,7 @@ class _cfg:
     TP_RR = 2.0
     FVG_BUFFER_MULT = 0.50
     EARLY_LONDON_RISK_MULT = 1.5
-    MIN_REL_FVG_THRESHOLD = 0.50
+    MIN_REL_FVG_THRESHOLD = 0.40
     FVG_WICK_RATIO_MAX = 0.75
     FVG_BUFFER_MIN_FACTOR = 0.10
     ATR_TRAIL_MULT = 0.25
@@ -311,8 +311,8 @@ def collect_daily_data(
     ATM = cfg.ATR_TRAIL_MULT
     TMM = cfg.TRAIL_MIN_MOVE_MULT
     BERM = cfg.BE_RISK_MULT
-    BESP = cfg.BE_SPREAD_PTS
     FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
+    COMMISSION_RATE = 0.0005  # %0.05 Binance futures taker fee (each leg)
 
     # load_data @lru_cache sayesinde 2./3. session'da ayni coin icin
     # diskten tekrar okumaz, direkt memory'den doner.
@@ -370,7 +370,7 @@ def collect_daily_data(
         ss.update(edt, cur.open, cur.high, cur.low, cur.close, atr)
         just_locked = ss.cbdr_locked and not locked_before
 
-        if just_locked and ss.cbdr_body_high > 0:
+        if just_locked and ss.cbdr_body_high > 0 and ss.cbdr_body_low > 0:
             w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
@@ -399,8 +399,13 @@ def collect_daily_data(
                 rsm.reset()
                 continue
 
+            # ── Next-bar-open entry (look-ahead bias giderildi) ──
+            if sb + 1 >= total_bars:
+                rsm.reset()
+                continue
+            next_bar = b15[sb + 1]
             side = "long" if sd == "bullish" else "short"
-            ep = cur.close
+            ep = next_bar.open
             rp2 = atr * sam
             tf = rsm.trigger_fvg
 
@@ -415,9 +420,6 @@ def collect_daily_data(
                 else:
                     sl = ep - rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep - rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep - rp2 * 2
                     rd = abs(sl - ep)
@@ -436,9 +438,6 @@ def collect_daily_data(
                 else:
                     sl = ep + rp2 * 2
                 rd = abs(sl - ep)
-                if tf and rd > rp2 * 2.0:
-                    sl = ep + rp2 * 2
-                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep + rp2 * 2
                     rd = abs(sl - ep)
@@ -500,7 +499,7 @@ def collect_daily_data(
             rejection_counts["ENTERED"] += 1
             active.append(
                 {
-                    "entry_bar": sb,
+                    "entry_bar": sb + 1,
                     "entry_price": ep,
                     "sl": sl,
                     "tp": tp,
@@ -516,6 +515,7 @@ def collect_daily_data(
                 }
             )
             rsm.reset()
+            continue  # ayni-bar trailing/exit calistirma
 
         if active and cur.is_closed:
             for t in active:
@@ -525,7 +525,11 @@ def collect_daily_data(
                 e2 = t["entry_price"]
                 rpt2 = abs(t["initial_sl"] - e2)
                 th2 = rpt2 * BERM
-                be2 = e2 + BESP if s2 == "long" else e2 - BESP
+                be2 = (
+                    e2 * (1 + COMMISSION_RATE) / (1 - COMMISSION_RATE)
+                    if s2 == "long"
+                    else e2 * (1 - COMMISSION_RATE) / (1 + COMMISSION_RATE)
+                )
                 if s2 == "long":
                     if cur.high >= e2 + th2 and t["sl"] < be2:
                         t["sl"] = be2
@@ -618,7 +622,13 @@ def collect_daily_data(
                     if t["side"] == "long"
                     else (t["entry_price"] - t["exit_price"])
                 )
-                t["pnl"] = round(diff * t["qty"], 2)
+                entry_fee = t["entry_price"] * t["qty"] * COMMISSION_RATE
+                exit_fee = t["exit_price"] * t["qty"] * COMMISSION_RATE
+                total_fee = entry_fee + exit_fee
+                t["entry_fee"] = round(entry_fee, 2)
+                t["exit_fee"] = round(exit_fee, 2)
+                t["fee"] = round(total_fee, 2)
+                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
                 # Overlap filtrelemesi icin trade record'u sakla
                 trade_records.append(
