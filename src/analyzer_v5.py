@@ -1,6 +1,7 @@
 """
 backtest_engine.py — V5 backtest engine: live-identical trade motoru.
 """
+
 # ruff: noqa: E402, E702
 import math
 import os
@@ -11,13 +12,16 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
+os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(
+    os.path.dirname(__file__), "..", "output"
+)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
 if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
 import config as cfg
+
 # --- V5 overrides ---
 cfg.MIN_REL_FVG_THRESHOLD = 0.40  # gap/ATR eşiği 0.50→0.40 (fee drag koruması)
 # Coin bazli expiry, _collect_fvg_profile_impl icinde set edilecek
@@ -27,29 +31,54 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, get_session_hours
-from quant_logger import QuantLogger
+from session_router import (
+    get_cbdr_multiplier,
+    should_trade,
+    is_high_quality_fvg,
+    get_session_hours,
+)
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# ── Komisyon ───────────────────────────────────────────────────────
+COMMISSION_RATE = 0.0005  # %0.05 Binance futures taker fee (each leg)
+
 # ─── Session ──────────────────────────────────────────────────────
 SESSION_NAME = "MULTI_SESSION"
-SESSION_HOURS = {'start': 22, 'end': 2}
+SESSION_HOURS = {"start": 22, "end": 2}
 
 SYMBOLS_TO_TEST = [
-    'BTCUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'XRPUSDT',
-    'ATOMUSDT', 'ADAUSDT', 'APTUSDT', 'DOTUSDT', 'NEARUSDT', 'ETHUSDT', 'SUIUSDT'
+    "BTCUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "XRPUSDT",
+    "ATOMUSDT",
+    "ADAUSDT",
+    "APTUSDT",
+    "DOTUSDT",
+    "NEARUSDT",
+    "ETHUSDT",
+    "SUIUSDT",
 ]
 
 _DATA_CACHE: dict[str, list] = {}
+
 
 def load_data(filepath):
     if filepath in _DATA_CACHE:
         return _DATA_CACHE[filepath]
     t0 = time.time()
-    df = pd.read_csv(filepath, usecols=["open_time", "open", "high", "low", "close", "volume"])
+    df = pd.read_csv(
+        filepath, usecols=["open_time", "open", "high", "low", "close", "volume"]
+    )
     t1 = time.time()
-    ts_ms = pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S").values.astype("datetime64[ms]").astype("int64")
+    ts_ms = (
+        pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
+        .values.astype("datetime64[ms]")
+        .astype("int64")
+    )
     n = len(df)
     bars = [None] * n
     o = df["open"].to_numpy(dtype=float)
@@ -58,10 +87,20 @@ def load_data(filepath):
     c = df["close"].to_numpy(dtype=float)
     v = df["volume"].to_numpy(dtype=float)
     for i in range(n):
-        bars[i] = Bar(index=i, open=o[i], high=high_arr[i], low=low_arr[i], close=c[i],
-                      volume=v[i], is_closed=True, timestamp=int(ts_ms[i]))
+        bars[i] = Bar(
+            index=i,
+            open=o[i],
+            high=high_arr[i],
+            low=low_arr[i],
+            close=c[i],
+            volume=v[i],
+            is_closed=True,
+            timestamp=int(ts_ms[i]),
+        )
     t2 = time.time()
-    print(f"      load_data: {n} bar {t1-t0:.1f}s (csv) + {t2-t1:.1f}s (bar) = {t2-t0:.1f}s")
+    print(
+        f"      load_data: {n} bar {t1 - t0:.1f}s (csv) + {t2 - t1:.1f}s (bar) = {t2 - t0:.1f}s"
+    )
     _DATA_CACHE[filepath] = bars
     return bars
 
@@ -81,10 +120,18 @@ def resample_15m(bars_1m):
         c = buckets[slot]
         if len(c) < 15:
             continue  # Eksik veri → bu 15m bar'ı atla
-        m15.append(Bar(index=len(m15), open=c[0].open,
-                       high=max(b.high for b in c), low=min(b.low for b in c),
-                       close=c[-1].close, volume=sum(b.volume for b in c),
-                       is_closed=True, timestamp=slot))
+        m15.append(
+            Bar(
+                index=len(m15),
+                open=c[0].open,
+                high=max(b.high for b in c),
+                low=min(b.low for b in c),
+                close=c[-1].close,
+                volume=sum(b.volume for b in c),
+                is_closed=True,
+                timestamp=slot,
+            )
+        )
     return m15
 
 
@@ -92,22 +139,22 @@ def resample_15m(bars_1m):
 def get_fvg_status(top, bottom, direction, b):
     """
     Returns: 'INVALIDATED', 'ACTIVE_ENTRY_ZONE', or 'ALIVE'
-    
-    INVALIDATED:  Fiyat gap'i kırdı (bullish → low < bottom, bearish → high > top).
-                  Bu FVG ölmüştür, pool'dan sil.
-    ACTIVE_ENTRY_ZONE: Fiyat FVG gap'inin içine girdi (wick touch). Entry sinyali.
+
+    INVALIDATED:  Fiyat gap'in karşı tarafına close yaptı (bullish → close < bottom,
+                  bearish → close > top). Bu FVG ölmüştür, pool'dan sil.
+    ACTIVE_ENTRY_ZONE: Fiyat FVG gap'inin içine girdi (bar overlap). Entry sinyali.
     ALIVE:        Henüz bir şey olmadı, bekle.
     """
     if direction == "bullish":
-        if b.low < bottom:
+        if b.close < bottom:
             return "INVALIDATED"
-        if b.low <= top:
+        if b.high >= bottom and b.low <= top:
             return "ACTIVE_ENTRY_ZONE"
         return "ALIVE"
     # bearish
-    if b.high > top:
+    if b.close > top:
         return "INVALIDATED"
-    if b.high >= bottom:
+    if b.high >= bottom and b.low <= top:
         return "ACTIVE_ENTRY_ZONE"
     return "ALIVE"
 
@@ -126,7 +173,8 @@ def fvg_close_confirmed(fvg, all_bars):
         else:
             if b.close > fvg.top:
                 return False
-            return True
+            if fvg.bottom <= b.close <= fvg.top:
+                return True
     return False
 
 
@@ -139,6 +187,7 @@ def collect_fvg_profile(symbol: str):
         return _collect_fvg_profile_impl(symbol)
     except Exception as e:
         import traceback
+
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
         return None, None, None, None, None
@@ -146,7 +195,9 @@ def collect_fvg_profile(symbol: str):
 
 def _collect_fvg_profile_impl(symbol: str):
     # --- (coin bazli FVG expiry kalkti — yerini is_fvg_alive aldi) ---
-    csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
+    csv_path = os.path.join(
+        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv"
+    )
     if not os.path.isfile(csv_path):
         return None, None, None, None, None
 
@@ -158,7 +209,6 @@ def _collect_fvg_profile_impl(symbol: str):
     ATM = cfg.ATR_TRAIL_MULT
     TMM = cfg.TRAIL_MIN_MOVE_MULT
     BERM = cfg.BE_RISK_MULT
-    BESP = cfg.BE_SPREAD_PTS
     FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
 
     b1 = load_data(csv_path)
@@ -172,8 +222,8 @@ def _collect_fvg_profile_impl(symbol: str):
     _profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
     _sname = _profile.get("session", "DEFAULT")
     _sh_info = get_session_hours(symbol)
-    sh = _sh_info['start']
-    eh = _sh_info['end']
+    sh = _sh_info["start"]
+    eh = _sh_info["end"]
     spans_midnight = sh > eh
     ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
@@ -198,13 +248,14 @@ def _collect_fvg_profile_impl(symbol: str):
             atr_val = update_atr(atr_val, tr)
         prev_close = bar.close
 
-
     total_bars = len(b15)
     for sb in range(500, total_bars):
         if (sb - 500) % 5000 == 0:
             pct = (sb - 500) / (total_bars - 500) * 100
-            print(f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
-        chunk = b15[sb - 500: sb + 1]
+            print(
+                f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True
+            )
+        chunk = b15[sb - 500 : sb + 1]
         cur = b15[sb]
         tr = calculate_true_range(cur, prev_close)
         atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
@@ -225,8 +276,11 @@ def _collect_fvg_profile_impl(symbol: str):
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
-                         level=ss.sweep_level or 0.0, bar_index=None)
+            rsm.on_sweep(
+                direction=ss.sweep_direction or "bullish",
+                level=ss.sweep_level or 0.0,
+                bar_index=None,
+            )
 
         if rsm.state_name == "SWEEP_DETECTED":
             rsm.on_sweep_confirmed(chunk, cur, atr)
@@ -234,9 +288,11 @@ def _collect_fvg_profile_impl(symbol: str):
         if rsm.can_trigger() and not active:
             sd = rsm.direction
             db = ss.daily_bias
-            bias_reject = (sd == "bullish" and db == DailyBias.BEARISH) or \
-                          (sd == "bearish" and db == DailyBias.BULLISH) or \
-                          db == DailyBias.NEUTRAL
+            bias_reject = (
+                (sd == "bullish" and db == DailyBias.BEARISH)
+                or (sd == "bearish" and db == DailyBias.BULLISH)
+                or db == DailyBias.NEUTRAL
+            )
             if bias_reject:
                 rsm.reset()
                 continue
@@ -260,9 +316,13 @@ def _collect_fvg_profile_impl(symbol: str):
                 rsm.reset()
                 continue
 
-            # ── ORIGINAL ENTRY LOGIC (unchanged from analyzer_v4) ──
+            # ── FIX #3: Next-bar-open entry (look-ahead bias giderildi) ──
+            if sb + 1 >= total_bars:
+                rsm.reset()
+                continue
+            next_bar = b15[sb + 1]
             side = "long" if sd == "bullish" else "short"
-            ep = cur.close
+            ep = next_bar.open
             rp2 = atr * sam
             tf = v4_fvg
 
@@ -272,7 +332,10 @@ def _collect_fvg_profile_impl(symbol: str):
                     if fh <= 0:
                         sl = ep - rp2 * 2
                     else:
-                        ab = max(fh * cfg.FVG_BUFFER_MIN_FACTOR, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
+                        ab = max(
+                            fh * cfg.FVG_BUFFER_MIN_FACTOR,
+                            max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)),
+                        )
                         sl = tf.bottom - ab
                 else:
                     sl = ep - rp2 * 2
@@ -287,7 +350,10 @@ def _collect_fvg_profile_impl(symbol: str):
                     if fh <= 0:
                         sl = ep + rp2 * 2
                     else:
-                        ab = max(fh * cfg.FVG_BUFFER_MIN_FACTOR, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
+                        ab = max(
+                            fh * cfg.FVG_BUFFER_MIN_FACTOR,
+                            max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)),
+                        )
                         sl = tf.top + ab
                 else:
                     sl = ep + rp2 * 2
@@ -320,8 +386,12 @@ def _collect_fvg_profile_impl(symbol: str):
             # ── CBDR + should_trade ──
             cbdr_w = None
             if ss.cbdr_body_low > 0 and not math.isinf(ss.cbdr_body_low):
-                cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
-            cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+                cbdr_w = (
+                    (ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low
+                ) * 100
+            cbdr_mult = (
+                get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+            )
             if cbdr_mult == 0.0:
                 quality_mult = 0.0
                 if classic_fvg.get("v4_rejected") is None:
@@ -345,9 +415,9 @@ def _collect_fvg_profile_impl(symbol: str):
             final_mult = el_mult * cbdr_mult * quality_mult
 
             qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
-            
+
             # --- FIX: Only enter if quality/validity checks passed (qty > 0)
-            # Do NOT reset RSM if we just failed a quality filter, 
+            # Do NOT reset RSM if we just failed a quality filter,
             # allow RSM to continue hunting for the next FVG in this sweep.
             if qty > 0:
                 # ── ENTERED ──
@@ -365,12 +435,25 @@ def _collect_fvg_profile_impl(symbol: str):
                 fvg_by_uid[trade_uid] = classic_fvg
 
                 entry_day = ss.cbdr_day
-                active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
-                               "qty": qty, "side": side, "trigger_fvg": tf,
-                               "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                               "be_triggered": False,
-                               "day_key": entry_day, "trade_uid": trade_uid})
+                active.append(
+                    {
+                        "entry_bar": sb + 1,
+                        "entry_price": ep,
+                        "sl": sl,
+                        "tp": tp,
+                        "qty": qty,
+                        "side": side,
+                        "trigger_fvg": tf,
+                        "initial_sl": sl,
+                        "initial_tp": tp,
+                        "trailing_count": 0,
+                        "be_triggered": False,
+                        "day_key": entry_day,
+                        "trade_uid": trade_uid,
+                    }
+                )
                 rsm.reset()
+                continue  # ayni-bar trailing/exit calistirma
             else:
                 # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
                 if classic_fvg["v4_rejected"] is None:
@@ -388,7 +471,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 e2 = t["entry_price"]
                 rpt2 = abs(t["initial_sl"] - e2)
                 th2 = rpt2 * BERM
-                be2 = e2 + BESP if s2 == "long" else e2 - BESP
+                be2 = (
+                    e2 * (1 + COMMISSION_RATE) / (1 - COMMISSION_RATE)
+                    if s2 == "long"
+                    else e2 * (1 - COMMISSION_RATE) / (1 + COMMISSION_RATE)
+                )
                 if s2 == "long":
                     if cur.high >= e2 + th2 and t["sl"] < be2:
                         t["sl"] = be2
@@ -400,7 +487,12 @@ def _collect_fvg_profile_impl(symbol: str):
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
-            cfvgs = detect_fvgs(tc, lookback=min(50, len(tc)), timeframe="15m", min_fvg_size=min_fvg_size)
+            cfvgs = detect_fvgs(
+                tc,
+                lookback=min(50, len(tc)),
+                timeframe="15m",
+                min_fvg_size=min_fvg_size,
+            )
             for t in active:
                 if t.get("closed"):
                     continue
@@ -446,23 +538,52 @@ def _collect_fvg_profile_impl(symbol: str):
             ex = False
             if t["side"] == "long":
                 if cur.low <= t["sl"]:
-                    t["exit_price"] = t["sl"]; t["exit_bar"] = sb
-                    t["result"] = "SL"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["sl"]
+                    t["exit_bar"] = sb
+                    t["result"] = "SL"
+                    t["closed"] = True
+                    ex = True
                 elif cur.high >= t["tp"]:
-                    t["exit_price"] = t["tp"]; t["exit_bar"] = sb
-                    t["result"] = "TP"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["tp"]
+                    t["exit_bar"] = sb
+                    t["result"] = "TP"
+                    t["closed"] = True
+                    ex = True
             else:
                 if cur.high >= t["sl"]:
-                    t["exit_price"] = t["sl"]; t["exit_bar"] = sb
-                    t["result"] = "SL"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["sl"]
+                    t["exit_bar"] = sb
+                    t["result"] = "SL"
+                    t["closed"] = True
+                    ex = True
                 elif cur.low <= t["tp"]:
-                    t["exit_price"] = t["tp"]; t["exit_bar"] = sb
-                    t["result"] = "TP"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["tp"]
+                    t["exit_bar"] = sb
+                    t["result"] = "TP"
+                    t["closed"] = True
+                    ex = True
             if ex:
-                diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
-                t["pnl"] = round(diff * t["qty"], 2)
+                diff = (
+                    (t["exit_price"] - t["entry_price"])
+                    if t["side"] == "long"
+                    else (t["entry_price"] - t["exit_price"])
+                )
+                entry_fee = t["entry_price"] * t["qty"] * COMMISSION_RATE
+                exit_fee = t["exit_price"] * t["qty"] * COMMISSION_RATE
+                total_fee = entry_fee + exit_fee
+                t["entry_fee"] = round(entry_fee, 2)
+                t["exit_fee"] = round(exit_fee, 2)
+                t["fee"] = round(total_fee, 2)
+                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"], "day_key": t.get("day_key", "")})
+                trade_records.append(
+                    {
+                        "result": t["result"],
+                        "pnl": t["pnl"],
+                        "fee": t["fee"],
+                        "day_key": t.get("day_key", ""),
+                    }
+                )
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -473,20 +594,44 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_ = fvg_by_uid[uid]
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
-                    f_["v4_real_hit_target"] = (t["result"] == "TP")
-                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
+                    f_["v4_real_hit_target"] = t["result"] == "TP"
+                    f_["v4_real_hit_stop"] = t["result"] == "SL"
                 if _LOGGER is not None:
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
-                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
-                        "entry_time": edt, "entry_price": round(t["entry_price"], 6),
-                        "exit_price": round(t["exit_price"], 6), "result": t["result"],
-                        "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
-                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
-                        "trailing_count": t.get("trailing_count", 0),
-                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None, "atr": round(atr, 6),})
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
+                    fvg_sz = (
+                        (t["trigger_fvg"].top - t["trigger_fvg"].bottom)
+                        if t.get("trigger_fvg")
+                        else None
+                    )
+                    _LOGGER.log_trade(
+                        {
+                            "symbol": symbol,
+                            "session": _sname,
+                            "side": t["side"].upper(),
+                            "entry_time": edt,
+                            "entry_price": round(t["entry_price"], 6),
+                            "exit_price": round(t["exit_price"], 6),
+                            "result": t["result"],
+                            "final_pnl_usd": round(t["pnl"], 2),
+                            "risk_usd": round(risk_usd, 2),
+                            "r_multiple": round(t["pnl"] / risk_usd, 4)
+                            if risk_usd > 0
+                            else 0.0,
+                            "trailing_count": t.get("trailing_count", 0),
+                            "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                            "atr": round(atr, 6),
+                        }
+                    )
             else:
                 sa.append(t)
         active = sa
@@ -500,10 +645,27 @@ def _collect_fvg_profile_impl(symbol: str):
                 t["exit_bar"] = len(b15) - 1
                 t["result"] = "OPEN"
                 t["closed"] = True
-                diff = (lp - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - lp)
-                t["pnl"] = round(diff * t["qty"], 2)
+                diff = (
+                    (lp - t["entry_price"])
+                    if t["side"] == "long"
+                    else (t["entry_price"] - lp)
+                )
+                entry_fee = t["entry_price"] * t["qty"] * COMMISSION_RATE
+                exit_fee = lp * t["qty"] * COMMISSION_RATE
+                total_fee = entry_fee + exit_fee
+                t["entry_fee"] = round(entry_fee, 2)
+                t["exit_fee"] = round(exit_fee, 2)
+                t["fee"] = round(total_fee, 2)
+                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                trade_records.append({"result": t["result"], "pnl": t["pnl"], "day_key": t.get("day_key", "")})
+                trade_records.append(
+                    {
+                        "result": t["result"],
+                        "pnl": t["pnl"],
+                        "fee": t["fee"],
+                        "day_key": t.get("day_key", ""),
+                    }
+                )
                 if t["pnl"] > 0:
                     wins.append(t)
                 else:
@@ -514,23 +676,46 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_ = fvg_by_uid[uid]
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
-                    f_["v4_real_hit_target"] = (t["result"] == "TP")
-                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
+                    f_["v4_real_hit_target"] = t["result"] == "TP"
+                    f_["v4_real_hit_stop"] = t["result"] == "SL"
                 if _LOGGER is not None:
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
-                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
-                        "entry_time": edt, "entry_price": round(t["entry_price"], 6),
-                        "exit_price": round(t["exit_price"], 6), "result": "OPEN",
-                        "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
-                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
-                        "trailing_count": t.get("trailing_count", 0),
-                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None, "atr": round(atr, 6),})
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
+                    fvg_sz = (
+                        (t["trigger_fvg"].top - t["trigger_fvg"].bottom)
+                        if t.get("trigger_fvg")
+                        else None
+                    )
+                    _LOGGER.log_trade(
+                        {
+                            "symbol": symbol,
+                            "session": _sname,
+                            "side": t["side"].upper(),
+                            "entry_time": edt,
+                            "entry_price": round(t["entry_price"], 6),
+                            "exit_price": round(t["exit_price"], 6),
+                            "result": "OPEN",
+                            "final_pnl_usd": round(t["pnl"], 2),
+                            "risk_usd": round(risk_usd, 2),
+                            "r_multiple": round(t["pnl"] / risk_usd, 4)
+                            if risk_usd > 0
+                            else 0.0,
+                            "trailing_count": t.get("trailing_count", 0),
+                            "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                            "atr": round(atr, 6),
+                        }
+                    )
 
     print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
-
 
     # ── Daily rows ──
     daily_rows = []
@@ -547,17 +732,27 @@ def _collect_fvg_profile_impl(symbol: str):
         n_trades = len(tlist)
         n_wins = sum(1 for p in tlist if p > 0)
         n_be = sum(1 for p in tlist if p == 0)
-        daily_rows.append({
-            "day_key": dk, "cbdr_pct": w, "trades": n_trades,
-            "wins": n_wins, "be": n_be, "losses": n_trades - n_wins - n_be, "pnl": total_pnl,
-        })
+        daily_rows.append(
+            {
+                "day_key": dk,
+                "cbdr_pct": w,
+                "trades": n_trades,
+                "wins": n_wins,
+                "be": n_be,
+                "losses": n_trades - n_wins - n_be,
+                "pnl": total_pnl,
+            }
+        )
     print(f"    [{symbol}] Daily rows tamam ({len(daily_rows)} row)", flush=True)
 
     day_cbdr_cnt = len(day_cbdr)
     day_trades_cnt = len(day_trades)
     trade_cnt = len(trade_records)
-    print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
-          f"{trade_cnt} islem, {len(daily_rows)} daily_row", flush=True)
+    print(
+        f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
+        f"{trade_cnt} islem, {len(daily_rows)} daily_row",
+        flush=True,
+    )
     rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
     print(f"    [{symbol}] Red: {rej_str}", flush=True)
 
@@ -567,9 +762,22 @@ def _collect_fvg_profile_impl(symbol: str):
 # ─── Istatistik Hesaplama ────────────────────────────────────
 def compute_session_stats(trade_records, initial_balance, daily_rows=None):
     from collections import defaultdict
+
     n = len(trade_records)
     if n == 0:
-        return {'total_trades': 0, 'wins': 0, 'be': 0, 'losses': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'sharpe': 0, 'avg_mae': 0, 'total_pnl': 0}
+        return {
+            "total_trades": 0,
+            "wins": 0,
+            "be": 0,
+            "losses": 0,
+            "win_pct": 0,
+            "be_plus_pct": 0,
+            "profit_factor": 0,
+            "max_dd_pct": 0,
+            "sharpe": 0,
+            "avg_mae": 0,
+            "total_pnl": 0,
+        }
     wins = sum(1 for r in trade_records if r["pnl"] > 0)
     be = sum(1 for r in trade_records if r["pnl"] == 0)
     losses = n - wins - be
@@ -603,17 +811,26 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
     if len(dly) > 1:
         dly_mean = sum(dly) / len(dly)
         daily_std = (sum((x - dly_mean) ** 2 for x in dly) / len(dly)) ** 0.5
-        sharpe = (dly_mean / daily_std) * (365 ** 0.5) if daily_std > 0 else 0
+        sharpe = (dly_mean / daily_std) * (365**0.5) if daily_std > 0 else 0
     else:
         sharpe = 0
     losses_list = [r["pnl"] for r in trade_records if r["pnl"] < 0]
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r["pnl"] for r in trade_records)
+    total_fee = sum(r.get("fee", 0) for r in trade_records)
     return {
-        'total_trades': n, 'win_pct': win_pct, 'be_plus_pct': be_plus_pct,
-        'wins': wins, 'be': be, 'losses': losses,
-        'profit_factor': profit_factor, 'max_dd_pct': max_dd_pct, 'sharpe': sharpe,
-        'avg_mae': avg_mae, 'total_pnl': total_pnl,
+        "total_trades": n,
+        "win_pct": win_pct,
+        "be_plus_pct": be_plus_pct,
+        "wins": wins,
+        "be": be,
+        "losses": losses,
+        "profit_factor": profit_factor,
+        "max_dd_pct": max_dd_pct,
+        "sharpe": sharpe,
+        "avg_mae": avg_mae,
+        "total_pnl": total_pnl,
+        "total_fee": total_fee,
     }
 
 
@@ -622,16 +839,20 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
 def _analyze_one_sym_v5(sym: str) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir."""
-    import os, sys, time
+    import os
+    import sys
+
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    _SNIPER_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "sniper", "src")
+    _SNIPER_SRC = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "sniper", "src"
+    )
     if _SNIPER_SRC not in sys.path:
         sys.path.insert(0, _SNIPER_SRC)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     import config as cfg
+
     cfg.MIN_REL_FVG_THRESHOLD = 0.40
-    from session_router import get_session_hours
 
     # Import engine from same module
     from analyzer_v5 import collect_fvg_profile, compute_session_stats
@@ -645,7 +866,9 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
             return {"sym": sym, "error": "YETERSIZ VERI"}
         stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
         return {
-            "sym": sym, "stats": stats, "daily_rows": daily_rows,
+            "sym": sym,
+            "stats": stats,
+            "daily_rows": daily_rows,
             "rejection_counts": rejection_counts,
         }
     except Exception as e:
@@ -656,9 +879,14 @@ def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER
     import argparse
+
     parser = argparse.ArgumentParser(description="V5 backtest engine")
-    parser.add_argument("--workers", type=int, default=1,
-                        help="Paralel worker sayisi (1=serial, default=1)")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Paralel worker sayisi (1=serial, default=1)",
+    )
     parser.add_argument("--serial", action="store_true", help="Serial mod")
     args = parser.parse_args()
 
@@ -681,28 +909,40 @@ def main():
                 profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
                 sname = profile.get("session", "DEFAULT")
                 sh_info = get_session_hours(sym)
-                print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00]", flush=True)
+                print(
+                    f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00]",
+                    flush=True,
+                )
                 result = collect_fvg_profile(sym)
                 if result is None or (isinstance(result, tuple) and result[0] is None):
                     print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
                     continue
                 daily_rows, wins, losses, trade_records, rejection_counts = result
                 if len(daily_rows) < 1:
-                    print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
+                    print(
+                        f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})",
+                        flush=True,
+                    )
                     continue
-                stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
+                stats = compute_session_stats(
+                    trade_records, cfg.INITIAL_BALANCE, daily_rows
+                )
                 results_data.append((sym, stats, daily_rows, rejection_counts))
-                print(f"    [{sym}] {stats['total_trades']} islem | "
-                      f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                      f"WR={stats['win_pct']:.1f}%")
+                print(
+                    f"    [{sym}] {stats['total_trades']} islem | "
+                    f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                    f"WR={stats['win_pct']:.1f}%"
+                )
             except Exception as e:
                 import traceback
+
                 print(f"    [{sym}] HATA: {e}")
                 traceback.print_exc()
                 continue
     else:
         # ── Paralel mod ──
         import concurrent.futures
+
         syms = sorted(cfg.SYMBOLS)
         print(f"\n  {len(syms)} coin {n_workers} worker ile isleniyor...\n", flush=True)
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
@@ -719,10 +959,15 @@ def main():
                     print(f"  {sym}: {msg}", flush=True)
                     continue
                 stats = res["stats"]
-                results_data.append((sym, stats, res["daily_rows"], res["rejection_counts"]))
-                print(f"  {sym}: {stats['total_trades']} islem | "
-                      f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                      f"WR={stats['win_pct']:.1f}% PnL={stats['total_pnl']:+0f}", flush=True)
+                results_data.append(
+                    (sym, stats, res["daily_rows"], res["rejection_counts"])
+                )
+                print(
+                    f"  {sym}: {stats['total_trades']} islem | "
+                    f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                    f"WR={stats['win_pct']:.1f}% net PnL={stats['total_pnl']:+0f}",
+                    flush=True,
+                )
 
     # ── Parquet ──
     if _LOGGER is not None:
@@ -730,9 +975,9 @@ def main():
         _LOGGER = None
 
     # ── Summary ──
-    print(f"\n{'='*100}")
-    print(f"  SUMMARY")
-    print(f"{'='*100}")
+    print(f"\n{'=' * 100}")
+    print("  SUMMARY")
+    print(f"{'=' * 100}")
 
     # Collect all unique rejection keys across symbols, aggregate SHOULD_TRADE_*
     all_keys = set()
@@ -744,11 +989,11 @@ def main():
                 all_keys.add(k)
     all_reasons = sorted(all_keys)
 
-    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'MaxDD%':>7} {'Sharpe':>7} {'PnL':>10} {'ENTERED':>7}"
+    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'MaxDD%':>7} {'Sharpe':>7} {'Fee':>10} {'net PnL':>10} {'ENTERED':>7}"
     for r in all_reasons:
         hdr += f" {r[:10]:>10}"
     print(hdr)
-    print(f"  {'-'*len(hdr)}")
+    print(f"  {'-' * len(hdr)}")
 
     def get_rej(rej, key):
         if key == "SHOULD_TRADE":
@@ -758,21 +1003,26 @@ def main():
     for sym, stats, _, rej in results_data:
         entered = rej.get("ENTERED", 0)
         row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
-        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['max_dd_pct']:>6.1f}% {stats['sharpe']:>6.2f} {stats['total_pnl']:>+9.0f} {entered:>7}"
+        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['max_dd_pct']:>6.1f}% {stats['sharpe']:>6.2f} {stats['total_fee']:>+9.0f} {stats['total_pnl']:>+9.0f} {entered:>7}"
         for r in all_reasons:
             row += f" {get_rej(rej, r):>10}"
         print(row)
 
-    total_trades = sum(s['total_trades'] for _, s, _, _ in results_data)
-    total_pnl = sum(s['total_pnl'] for _, s, _, _ in results_data)
-    print(f"\n  TOPLAM: {total_trades} trade, PnL={total_pnl:+.0f} | Sure: {time.time()-t0:.0f}s")
+    total_trades = sum(s["total_trades"] for _, s, _, _ in results_data)
+    total_pnl = sum(s["total_pnl"] for _, s, _, _ in results_data)
+    total_fee_sum = sum(s["total_fee"] for _, s, _, _ in results_data)
+    print(
+        f"\n  TOPLAM: {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f} | Sure: {time.time() - t0:.0f}s"
+    )
 
     # ── Report file ──
-    rpt_path = os.path.join(os.path.dirname(__file__), "..", "reports", "analyzer_v5_summary.md")
+    rpt_path = os.path.join(
+        os.path.dirname(__file__), "..", "reports", "analyzer_v5_summary.md"
+    )
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     with open(rpt_path, "a") as f:
         f.write(f"\n---\n# analyzer_v5 Summary — {ts}\n\n")
-        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'MaxDD%':>7} | {'Sharpe':>7} | {'PnL':>10} | {'ENTERED':>7} |"
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'MaxDD%':>7} | {'Sharpe':>7} | {'Fee':>10} | {'net PnL':>10} | {'ENTERED':>7} |"
         for r in all_reasons:
             hdr2 += f" {r:<10} |"
         f.write(hdr2 + "\n")
@@ -781,14 +1031,15 @@ def main():
         for sym, stats, _, rej in results_data:
             entered = rej.get("ENTERED", 0)
             line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
-            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['max_dd_pct']:>6.1f}% | {stats['sharpe']:>6.2f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
+            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['max_dd_pct']:>6.1f}% | {stats['sharpe']:>6.2f} | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
             for r in all_reasons:
                 line += f" {get_rej(rej, r):>10} |"
             f.write(line + "\n")
-        f.write(f"\n**TOPLAM:** {total_trades} trade, PnL={total_pnl:+.0f}\n")
+        f.write(
+            f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}\n"
+        )
     print(f"  Rapor: {rpt_path}")
 
 
 if __name__ == "__main__":
     main()
-
