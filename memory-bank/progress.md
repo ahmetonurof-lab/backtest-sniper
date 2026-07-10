@@ -27,15 +27,21 @@
 - V5 vs V4 bypass WR karşılaştırması
 - **FVG_SWEPT strict denemesi BAŞARISIZ:** 3-bar chunk[-3:] FVG kontrolü test edildi. Trade sayısı %34 düştü (28554→18792), ortalama PnL/trade aynı kaldı (+19.99→+19.37). Filtre rastgele, iyi/kötü trade'leri eşit oranda reddediyor. Geri alındı.
 
-## ✅ Bug Fix Marathon (2026-07-09)
-- **BUG 3** Bearish FVG onayi fixed
-- **BUG 4** Stop-loss cap kaldirildi, yapisal SL korunuyor
-- **BUG 5** Break-even ayri flag (`be_triggered`)
-- **BUG 6** Profit_factor loss=0 cap (999.0)
-- **BUG 7** MaxDD peak_balance bazli
-- **BUG 9** Sharpe tum gunler dahil (trade yoksa PnL=0)
-- **BUG 10** Sweep direction None skip
-- **Dead code:** captured_fvgs, old_state, results_data 5.eleman, h=edt.hour tekrari temizlendi
+## 🔴 Bug Fix Marathon Revert (2026-07-10)
+Bug fix marathon (`351af0e`) backtest sonucunu negatife cevirdi. Tespit edilen 3 hata geri alindi:
+
+- **BUG 3 (fvg_close_confirmed) REVERTED:** `confirmed = True` flag + full-scan trailing → early-return. Yeni kod sonraki barlarda FVG invalidation kontrolu yapip trailing'i bloke ediyor, WR %48→%15 dusuruyordu.
+- **BUG 4 (stop-loss cap) REVERTED:** FVG bazli SL 2xATR cap (if tf and rd > rp2 * 2.0) geri eklendi. Cap kalkinca buyuk risk distance → kucuk pozisyon → QTY_ZERO.
+- **BUG 10 (sweep direction None) REVERTED:** `continue` → default `"bullish"`. `if None: continue` tum bar'i atliyor, trade management kaciyordu (trailing/exit islemez).
+
+Korunan: BUG 5 (be_triggered), BUG 6 (PF cap), BUG 7 (MaxDD), BUG 9 (Sharpe), dead code cleanup.
+
+## ✅ Hizli Yukleme + Paralel Isleme (2026-07-10)
+- **load_data hizlandi:** csv.DictReader+strptime → csv.reader+calendar.timegm. 107s→24s/coin.
+- **resample_15m cache:** `@lru_cache` timestamp-bazli. 2./3. session aninda doner.
+- **_analyze_all_20.py ProcessPoolExecutor:** `--workers N` ile coin'leri paralel isler. 4 coin × 2 worker = 151s.
+- **collect_daily_data cache:** Adim 1 sonuclari Adim 2'de tekrar kullanilir. 4. collect_daily_data cagrisi sifir.
+- **CSV yukleniyor mesaji:** Ilk 24s sessiz kalmaz, progress gorunur.
 
 ## ✅ Done (2026-07-09)
 - **Weekend bonus config'e tasindi:** Hardcoded ATOM/SUI/APT listesi kaldirildi. `CBDR_RISK_MATRIX`'te her coin `weekend_bonus: bool` + `weekend_mult: float` alaniyla kontrol ediliyor. 3 engine dosyasi buna gore guncellendi.

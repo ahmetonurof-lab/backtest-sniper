@@ -5,28 +5,94 @@ Her gun icin CBDR genisligi % + o gunku trade sonuclari.
 """
 # ruff: noqa: E402, E702 — path manipulation requires late imports;
 # semicolons are pre-existing legacy style, kept for minimal diff.
+import calendar
 import csv
 import functools
 import math
 import os
 import sys
 import time
-from datetime import datetime, timezone
 from collections import defaultdict
+from datetime import datetime, timezone
 
 os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-_SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _THIS_DIR)
+_SNIPER_SRC = os.path.join(_THIS_DIR, "..", "..", "sniper", "src")
 if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
-import config as cfg
 from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import is_high_quality_fvg, get_cbdr_multiplier, should_trade
+
+
+# ── docs/config_reference.py snapshot (sadece risk sabitleri, eşik/sezon yok) ──
+class _cfg:
+    INITIAL_BALANCE = 10000.0
+    RISK_PER_TRADE = 0.003
+    SL_ATR_MULT = 1.5
+    TP_RR = 2.0
+    FVG_BUFFER_MULT = 0.50
+    EARLY_LONDON_RISK_MULT = 1.5
+    MIN_REL_FVG_THRESHOLD = 0.50
+    FVG_WICK_RATIO_MAX = 0.75
+    FVG_BUFFER_MIN_FACTOR = 0.10
+    ATR_TRAIL_MULT = 0.25
+    TRAIL_MIN_MOVE_MULT = 0.2
+    BE_RISK_MULT = 1.0
+    BE_SPREAD_PTS = 0.0
+    FVG_MIN_SIZE_ATR_MULT = 0.06
+    GLOBAL_FVG_EXPIRY_BARS = 45
+    MIN_RISK_DIST_ATR_MULT = 0.1
+    CBDR_DEAD_THRESHOLD_PCT = 0.5
+    ASIA_DEAD_THRESHOLD_PCT = 0.3
+    CBDR_SWEEP_ATR_TOLERANCE_MULT = 0.5
+    CBDR_SWEEP_DEFAULT_TOLERANCE = 10.0
+    CBDR_RISK_MATRIX = {}  # sıfırdan test: ön tanımlı eşik/sezon yok
+    SYMBOLS = [
+        "BTCUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
+        "XRPUSDT", "ATOMUSDT", "ADAUSDT", "APTUSDT", "DOTUSDT",
+        "NEARUSDT", "ETHUSDT", "SUIUSDT",
+        "OPUSDT", "ARBUSDT", "INJUSDT", "ALGOUSDT",
+        "AAVEUSDT", "UNIUSDT", "DOGEUSDT",
+    ]
+
+
+def get_cbdr_multiplier(symbol: str, cbdr_pct: float) -> float:
+    profile = _cfg.CBDR_RISK_MATRIX.get(symbol)
+    if not profile:
+        return 1.0
+    for lo, hi, mult in profile["buckets"]:
+        if lo <= cbdr_pct < hi:
+            return mult
+    return 1.0
+
+
+def should_trade(symbol: str, cbdr_width_pct: float | None = None) -> tuple[bool, str]:
+    profile = _cfg.CBDR_RISK_MATRIX.get(symbol)
+    if profile is None:
+        return True, ""  # sıfırdan test: matrix'te yoksa her CBDR'ye izin ver
+    if cbdr_width_pct is not None:
+        cbdr_mult = get_cbdr_multiplier(symbol, cbdr_width_pct)
+        if cbdr_mult == 0.0:
+            return False, symbol + " CBDR=" + f"{cbdr_width_pct:.2f}%" + " Zehirli Bolge (mult=0.0)"
+    return True, ""
+
+
+def is_high_quality_fvg(fvg_pips: float, current_atr: float) -> bool:
+    if current_atr <= 1e-8:
+        return False
+    rel_fvg = fvg_pips / current_atr
+    if rel_fvg < _cfg.MIN_REL_FVG_THRESHOLD:
+        return False
+    return True
+
+
+# cfg alias for code compat (_cfg oldugu icin cfg.X calisir)
+cfg = _cfg
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -65,36 +131,54 @@ def wilson_lower(wins: int, trades: int, z: float = 1.96) -> float:
 @functools.lru_cache(maxsize=32)
 def load_data(filepath):
     """CSV'den bar verisini yukle. Timestamp UTC normalize edilir (DST koruma).
-    @lru_cache: ayni dosya 2. kez istenince direkt memory'den doner."""
+    @lru_cache: ayni dosya 2. kez istenince direkt memory'den doner.
+    Hizli path: csv.reader + manual timestamp parse (~2x faster than DictReader+strptime)."""
     bars = []
     with open(filepath, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
+        reader = csv.reader(f)
+        next(reader)  # header: open_time,open,high,low,close,volume
         for i, row in enumerate(reader):
-            # UTC normalize: replace(tzinfo=timezone.utc) ile DST kaymasi engellenir
-            ts = int(datetime.strptime(row["open_time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
-            bars.append(Bar(index=i, open=float(row["open"]), high=float(row["high"]),
-                            low=float(row["low"]), close=float(row["close"]),
-                            volume=float(row["volume"]), is_closed=True, timestamp=ts))
+            ts_str = row[0]
+            year = int(ts_str[0:4]); month = int(ts_str[5:7]); day = int(ts_str[8:10])
+            hour = int(ts_str[11:13]); minute = int(ts_str[14:16]); second = int(ts_str[17:19])
+            ts = int(calendar.timegm((year, month, day, hour, minute, second)) * 1000)
+            bars.append(Bar(index=i, open=float(row[1]), high=float(row[2]),
+                            low=float(row[3]), close=float(row[4]),
+                            volume=float(row[5]), is_closed=True, timestamp=ts))
     return bars
 
 
 def resample_15m(bars_1m):
-    """1m bar'lari 15m bar'a donustur."""
+    """1m bar'lari 15m bar'a donustur.
+    @lru_cache: ayni bar listesi 2. kez istenince tekrar hesaplama."""
+    return _resample_15m_impl(tuple(bars_1m))
+
+
+@functools.lru_cache(maxsize=32)
+def _resample_15m_impl(bars_tuple):
+    """Timestamp-bazli 15m resample (analyzer_v5 ile ayni).
+    15m slot'larina kure göre grupla, eksik dilimleri atla."""
+    _15M_MS = 15 * 60 * 1000
+    buckets = {}
+    for b in bars_tuple:
+        slot = (b.timestamp // _15M_MS) * _15M_MS
+        if slot not in buckets:
+            buckets[slot] = []
+        buckets[slot].append(b)
     m15 = []
-    for i in range(0, len(bars_1m), 15):
-        c = bars_1m[i:i + 15]
+    for slot in sorted(buckets):
+        c = buckets[slot]
         if len(c) < 15:
-            break
+            continue
         m15.append(Bar(index=len(m15), open=c[0].open,
                        high=max(b.high for b in c), low=min(b.low for b in c),
                        close=c[-1].close, volume=sum(b.volume for b in c),
-                       is_closed=True, timestamp=c[0].timestamp))
+                       is_closed=True, timestamp=slot))
     return m15
 
 
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
-    confirmed = False
     for b in all_bars:
         if b.index < scan_from:
             continue
@@ -102,13 +186,13 @@ def fvg_close_confirmed(fvg, all_bars):
             if b.close < fvg.bottom:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                confirmed = True
+                return True
         else:
             if b.close > fvg.top:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                confirmed = True
-    return confirmed
+                return True
+    return False
 
 
 # ─── FVG status (3-state, analyzer_v5 ile ayni) ──────────
@@ -139,6 +223,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
         session_hours = {'start': 19, 'end': 1}
     # Veri: data/daily/{symbol}_1m_raw.csv — raw 1m verisi
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
+    print(f"    [{session_name}] CSV yukleniyor...", end="", flush=True)
     if not os.path.isfile(csv_path):
         return None
     data_path = csv_path
@@ -157,6 +242,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
     # load_data @lru_cache sayesinde 2./3. session'da ayni coin icin
     # diskten tekrar okumaz, direkt memory'den doner.
     b1 = load_data(data_path)
+    print(f" {len(b1)} bar, ", end="", flush=True)
     b15 = resample_15m(b1)
     if not b15:
         return None
@@ -210,9 +296,7 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            if ss.sweep_direction is None:
-                continue
-            rsm.on_sweep(direction=ss.sweep_direction,
+            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -247,6 +331,9 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 else:
                     sl = ep - rp2 * 2
                 rd = abs(sl - ep)
+                if tf and rd > rp2 * 2.0:
+                    sl = ep - rp2 * 2
+                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep - rp2 * 2
                     rd = abs(sl - ep)
@@ -262,6 +349,9 @@ def collect_daily_data(symbol: str, session_name: str = 'REAL_CBDR', session_hou
                 else:
                     sl = ep + rp2 * 2
                 rd = abs(sl - ep)
+                if tf and rd > rp2 * 2.0:
+                    sl = ep + rp2 * 2
+                    rd = abs(sl - ep)
                 if rd <= 0:
                     sl = ep + rp2 * 2
                     rd = abs(sl - ep)

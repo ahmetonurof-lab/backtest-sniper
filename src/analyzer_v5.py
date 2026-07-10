@@ -115,7 +115,6 @@ def get_fvg_status(top, bottom, direction, b):
 # ─── FVG close-confirmed helper (trailing için) ─────────
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
-    confirmed = False
     for b in all_bars:
         if b.index < scan_from:
             continue
@@ -123,13 +122,13 @@ def fvg_close_confirmed(fvg, all_bars):
             if b.close < fvg.bottom:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                confirmed = True
+                return True
         else:
             if b.close > fvg.top:
                 return False
             if fvg.bottom <= b.close <= fvg.top:
-                confirmed = True
-    return confirmed
+                return True
+    return False
 
 
 _LOGGER = None
@@ -227,9 +226,7 @@ def _collect_fvg_profile_impl(symbol: str):
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            if ss.sweep_direction is None:
-                continue
-            rsm.on_sweep(direction=ss.sweep_direction,
+            rsm.on_sweep(direction=ss.sweep_direction or "bullish",
                          level=ss.sweep_level or 0.0, bar_index=None)
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -600,8 +597,9 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         daily_pnl[r.get("day_key", "")] += r["pnl"]
     if daily_rows is not None:
         for d in daily_rows:
-            if d not in daily_pnl:
-                daily_pnl[d] = 0.0
+            dk = d["day_key"] if isinstance(d, dict) else d
+            if dk not in daily_pnl:
+                daily_pnl[dk] = 0.0
     dly = list(daily_pnl.values())
     if len(dly) > 1:
         dly_mean = sum(dly) / len(dly)
