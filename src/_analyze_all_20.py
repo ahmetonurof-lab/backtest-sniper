@@ -71,7 +71,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
     from analyze_cbdr_thresholds import (
         collect_daily_data, compute_session_stats,
         analyze_bucket_scaling, wilson_lower, wilson_upper,
-        SESSION_CONFIGS
+        auto_multiplier, SESSION_CONFIGS
     )
 
     csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv")
@@ -134,20 +134,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
                 wr = w / n if n > 0 else 0.0
                 wl = wilson_lower(w, n) * 100
                 wh = wilson_upper(w, n) * 100
-                mult = 1.0
-                if n >= 100:
-                    if wr * 100 >= 45 and wl >= 40:
-                        mult = 1.5
-                    elif wr * 100 >= 40 and wl >= 35:
-                        mult = 1.25
-                    elif wr * 100 >= 35:
-                        mult = 1.0
-                    elif wr * 100 >= 30:
-                        mult = 0.75
-                    elif wr * 100 >= 25:
-                        mult = 0.5
-                    else:
-                        mult = 0.0
+                mult = auto_multiplier(wr * 100, wl, n)
                 bucket_stats.append({
                     "lo": lo, "hi": hi, "mult": mult,
                     "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
@@ -174,7 +161,7 @@ def _run_serial(workers: int):
     from analyze_cbdr_thresholds import (
         collect_daily_data, compute_session_stats,
         analyze_bucket_scaling, wilson_lower, wilson_upper,
-        SESSION_CONFIGS
+        auto_multiplier, SESSION_CONFIGS
     )
     session_best = {}
     bucket_results = {}
@@ -257,20 +244,7 @@ def _run_serial(workers: int):
                     wr = w / n if n > 0 else 0.0
                     wl = wilson_lower(w, n) * 100
                     wh = wilson_upper(w, n) * 100
-                    mult = 1.0
-                    if n >= 100:
-                        if wr * 100 >= 45 and wl >= 40:
-                            mult = 1.5
-                        elif wr * 100 >= 40 and wl >= 35:
-                            mult = 1.25
-                        elif wr * 100 >= 35:
-                            mult = 1.0
-                        elif wr * 100 >= 30:
-                            mult = 0.75
-                        elif wr * 100 >= 25:
-                            mult = 0.5
-                        else:
-                            mult = 0.0
+                    mult = auto_multiplier(wr * 100, wl, n)
                     bucket_stats.append({
                         "lo": lo, "hi": hi, "mult": mult,
                         "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
