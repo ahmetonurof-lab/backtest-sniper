@@ -13,6 +13,7 @@ import math
 import os
 import sys
 import time
+import pandas as pd
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -118,8 +119,6 @@ def is_high_quality_fvg(fvg_pips: float, current_atr: float) -> bool:
 # cfg alias for code compat (_cfg oldugu icin cfg.X calisir)
 cfg = _cfg
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 # ─── Session configs ───────────────────────────────────────────────
 # Her session kendi start/end saatleriyle izole state'te calisir.
 # Canli SessionState kullanilir (IctRangeState kopyasi kaldirildi).
@@ -179,13 +178,39 @@ def auto_multiplier(wr: float, wilson_lower: float, trades: int) -> float:
 
 @functools.lru_cache(maxsize=32)
 def load_data(filepath):
-    """CSV'den bar verisini yukle. Timestamp UTC normalize edilir (DST koruma).
-    @lru_cache: ayni dosya 2. kez istenince direkt memory'den doner.
-    Hizli path: csv.reader + manual timestamp parse (~2x faster than DictReader+strptime)."""
+    """CSV veya Feather'den bar verisini yukle."""
     bars = []
+    if filepath.endswith(".feather"):
+        df = pd.read_feather(filepath)
+        df.columns = [c.strip() for c in df.columns]
+        n = len(df)
+        o = df["open"].to_numpy(dtype=float)
+        high_arr = df["high"].to_numpy(dtype=float)
+        low_arr = df["low"].to_numpy(dtype=float)
+        c = df["close"].to_numpy(dtype=float)
+        v = df["volume"].to_numpy(dtype=float)
+        ts_ms = (
+            pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
+            .values.astype("datetime64[ms]")
+            .astype("int64")
+        )
+        for i in range(n):
+            bars.append(
+                Bar(
+                    index=i,
+                    open=o[i],
+                    high=high_arr[i],
+                    low=low_arr[i],
+                    close=c[i],
+                    volume=v[i],
+                    is_closed=True,
+                    timestamp=int(ts_ms[i]),
+                )
+            )
+        return bars
     with open(filepath, encoding="utf-8") as f:
         reader = csv.reader(f)
-        next(reader)  # header: open_time,open,high,low,close,volume
+        next(reader)
         for i, row in enumerate(reader):
             ts_str = row[0]
             year = int(ts_str[0:4])
@@ -282,7 +307,10 @@ def get_fvg_status(top, bottom, direction, b):
 
 
 def collect_daily_data(
-    symbol: str, session_name: str = "REAL_CBDR", session_hours: dict = None
+    symbol: str,
+    session_name: str = "REAL_CBDR",
+    session_hours: dict = None,
+    quiet: bool = False,
 ):
     """
     Run CBDR backtest for a specific session config.
@@ -291,17 +319,17 @@ def collect_daily_data(
     Canli sniper/src/session.py'deki SessionState kullanilir (IctRangeState kopyasi yok).
     Return: (daily_rows, wins, losses, trade_records)
     trade_records: overlap filtrelemesi icin her trade'in unique ID'sini icerir.
+    quiet: True ise progress print'leri atlanir (paralel mod icin).
     """
     if session_hours is None:
         session_hours = {"start": 19, "end": 1}
-    # Veri: data/daily/{symbol}_1m_raw.csv — raw 1m verisi
-    csv_path = os.path.join(
-        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv"
+    # Veri: data/daily/{symbol}_1m_raw.feather — raw 1m verisi
+    feather_path = os.path.join(
+        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.feather"
     )
-    print(f"    [{session_name}] CSV yukleniyor...", end="", flush=True)
-    if not os.path.isfile(csv_path):
+    if not os.path.isfile(feather_path):
         return None
-    data_path = csv_path
+    data_path = feather_path
 
     ic = cfg.INITIAL_BALANCE
     rpt = cfg.RISK_PER_TRADE
@@ -316,7 +344,8 @@ def collect_daily_data(
     # load_data @lru_cache sayesinde 2./3. session'da ayni coin icin
     # diskten tekrar okumaz, direkt memory'den doner.
     b1 = load_data(data_path)
-    print(f" {len(b1)} bar, ", end="", flush=True)
+    if not quiet:
+        print(f"    [{session_name}] {len(b1)} bar, ", end="", flush=True)
     b15 = resample_15m(b1)
     if not b15:
         return None
@@ -345,8 +374,7 @@ def collect_daily_data(
 
     total_bars = len(b15)
     for sb in range(500, total_bars):
-        # Ilerleme gostergesi: her 5000 bar'da bir nokta bas
-        if (sb - 500) % 5000 == 0:
+        if not quiet and (sb - 500) % 5000 == 0:
             pct = (sb - 500) / (total_bars - 500) * 100
             print(
                 f"\r    [{session_name}] %{pct:.0f} ({sb}/{total_bars})",
@@ -377,7 +405,7 @@ def collect_daily_data(
             rsm.on_sweep(
                 direction=ss.sweep_direction or "bullish",
                 level=ss.sweep_level or 0.0,
-                bar_index=None,
+                bar_index=sb,
             )
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -656,8 +684,8 @@ def collect_daily_data(
                 else:
                     losses.append(t)
 
-    # Ilerleme satirini temizle
-    print(f"\r    [{session_name}] %100 ({total_bars}/{total_bars})", flush=True)
+    if not quiet:
+        print(f"\r    [{session_name}] %100 ({total_bars}/{total_bars})", flush=True)
     daily_rows = []
     all_keys = sorted(set(list(day_cbdr.keys()) + list(day_trades.keys())))
     for dk in all_keys:
@@ -1085,6 +1113,7 @@ def run_session_analysis(sym: str):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
     all_session_results = {}
 

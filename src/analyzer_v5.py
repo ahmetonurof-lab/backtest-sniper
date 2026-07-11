@@ -38,8 +38,6 @@ from session_router import (
     get_session_hours,
 )
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 # ── Komisyon ───────────────────────────────────────────────────────
 COMMISSION_RATE = 0.0005  # %0.05 Binance futures taker fee (each leg)
 
@@ -70,9 +68,7 @@ def load_data(filepath):
     if filepath in _DATA_CACHE:
         return _DATA_CACHE[filepath]
     t0 = time.time()
-    df = pd.read_csv(
-        filepath, usecols=["open_time", "open", "high", "low", "close", "volume"]
-    )
+    df = pd.read_feather(filepath)
     t1 = time.time()
     ts_ms = (
         pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
@@ -99,7 +95,7 @@ def load_data(filepath):
         )
     t2 = time.time()
     print(
-        f"      load_data: {n} bar {t1 - t0:.1f}s (csv) + {t2 - t1:.1f}s (bar) = {t2 - t0:.1f}s"
+        f"      load_data: {n} bar {t1 - t0:.1f}s (feather) + {t2 - t1:.1f}s (bar) = {t2 - t0:.1f}s"
     )
     _DATA_CACHE[filepath] = bars
     return bars
@@ -195,10 +191,10 @@ def collect_fvg_profile(symbol: str):
 
 def _collect_fvg_profile_impl(symbol: str):
     # --- (coin bazli FVG expiry kalkti — yerini is_fvg_alive aldi) ---
-    csv_path = os.path.join(
-        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv"
+    feather_path = os.path.join(
+        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.feather"
     )
-    if not os.path.isfile(csv_path):
+    if not os.path.isfile(feather_path):
         return None, None, None, None, None
 
     ic = cfg.INITIAL_BALANCE
@@ -210,7 +206,7 @@ def _collect_fvg_profile_impl(symbol: str):
     TMM = cfg.TRAIL_MIN_MOVE_MULT
     FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
 
-    b1 = load_data(csv_path)
+    b1 = load_data(feather_path)
     b15 = resample_15m(b1)
     if not b15:
         print(f"    [{symbol}] resample_15m bos dondu")
@@ -278,7 +274,7 @@ def _collect_fvg_profile_impl(symbol: str):
             rsm.on_sweep(
                 direction=ss.sweep_direction or "bullish",
                 level=ss.sweep_level or 0.0,
-                bar_index=None,
+                bar_index=sb,
             )
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -830,7 +826,10 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
     )
     if _SNIPER_SRC not in sys.path:
         sys.path.insert(0, _SNIPER_SRC)
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
     import config as cfg
 
@@ -875,6 +874,7 @@ def main():
     use_serial = args.serial or args.workers <= 1
     n_workers = args.workers if not use_serial else 1
 
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
     results_data = []
 
