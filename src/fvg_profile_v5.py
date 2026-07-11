@@ -6,9 +6,8 @@ V4 filtrelerine ek olarak:
   3) Haftasonu çarpani: ATOM/SUI/APT (+1.5x weekend)
   4) Coin bazli FVG expiry (45b veya 5b)
 """
+
 # ruff: noqa: E402, E702
-import csv
-import functools
 import math
 import os
 import random
@@ -18,33 +17,36 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
-import numpy as np
 import pandas as pd
 
-os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(os.path.dirname(__file__), "..", "output")
+os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(
+    os.path.dirname(__file__), "..", "output"
+)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 _SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
 if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
 import config as cfg
-# --- V5 overrides ---
-cfg.MIN_REL_FVG_THRESHOLD = 0.40  # gap/ATR eşiği 0.50→0.40 (fee drag koruması)
-# Coin bazli expiry, _collect_fvg_profile_impl icinde set edilecek
-# ---
 from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
-from session_router import get_cbdr_multiplier, should_trade, is_high_quality_fvg, is_fvg_valid, get_session_hours
+from session_router import (
+    get_cbdr_multiplier,
+    should_trade,
+    is_high_quality_fvg,
+    is_fvg_valid,
+    get_session_hours,
+)
 from quant_logger import QuantLogger
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ─── Profil Parametreleri ───────────────────────────────────
 SESSION_NAME = "MULTI_SESSION"  # her coin kendi session'inda (get_session_hours ile)
-SESSION_HOURS = {'start': 22, 'end': 2}
+SESSION_HOURS = {"start": 22, "end": 2}
 
 
 LOOKBACK_BARS = 200
@@ -53,17 +55,38 @@ N_BOOTSTRAP = 100
 BOOTSTRAP_SEED = 42
 FEE_TAKER = 0.0004
 CONT_WINDOWS = [10, 20, 40]
-DEPTH_BUCKETS = [(0, 25, "0-25%"), (25, 50, "25-50%"), (50, 75, "50-75%"),
-                 (75, 100, "75-100%"), (100, 150, "100-150%"), (150, 9999, ">150%")]
+DEPTH_BUCKETS = [
+    (0, 25, "0-25%"),
+    (25, 50, "25-50%"),
+    (50, 75, "50-75%"),
+    (75, 100, "75-100%"),
+    (100, 150, "100-150%"),
+    (150, 9999, ">150%"),
+]
 
 SYMBOLS_TO_TEST = [
-    'BTCUSDT', 'BNBUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'XRPUSDT', 'ATOMUSDT', 'ADAUSDT', 'APTUSDT', 'DOTUSDT', 'NEARUSDT', 'ETHUSDT', 'SUIUSDT'
+    "BTCUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "XRPUSDT",
+    "ATOMUSDT",
+    "ADAUSDT",
+    "APTUSDT",
+    "DOTUSDT",
+    "NEARUSDT",
+    "ETHUSDT",
+    "SUIUSDT",
 ]
+
 
 # ─── Helpers ─────────────────────────────────────────────────
 def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     if trades == 0:
-        return 0.0  # BUG 12 FIX: 0 işlem = bilgi yok; 1.0 yanıltıcı (%100 WR gibi görünür)
+        return (
+            0.0  # BUG 12 FIX: 0 işlem = bilgi yok; 1.0 yanıltıcı (%100 WR gibi görünür)
+        )
     z2 = z * z
     p_hat = wins / trades
     denominator = 1 + z2 / trades
@@ -74,25 +97,42 @@ def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
 
 _DATA_CACHE: dict[str, list] = {}
 
+
 def load_data(filepath):
     if filepath in _DATA_CACHE:
         return _DATA_CACHE[filepath]
     t0 = time.time()
-    df = pd.read_csv(filepath, usecols=["open_time", "open", "high", "low", "close", "volume"])
+    df = pd.read_csv(
+        filepath, usecols=["open_time", "open", "high", "low", "close", "volume"]
+    )
     t1 = time.time()
-    ts_ms = pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S").values.astype("datetime64[ms]").astype("int64")
+    ts_ms = (
+        pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
+        .values.astype("datetime64[ms]")
+        .astype("int64")
+    )
     n = len(df)
     bars = [None] * n
     o = df["open"].to_numpy(dtype=float)
     h = df["high"].to_numpy(dtype=float)
-    l = df["low"].to_numpy(dtype=float)
+    low_prices = df["low"].to_numpy(dtype=float)
     c = df["close"].to_numpy(dtype=float)
     v = df["volume"].to_numpy(dtype=float)
     for i in range(n):
-        bars[i] = Bar(index=i, open=o[i], high=h[i], low=l[i], close=c[i],
-                      volume=v[i], is_closed=True, timestamp=int(ts_ms[i]))
+        bars[i] = Bar(
+            index=i,
+            open=o[i],
+            high=h[i],
+            low=low_prices[i],
+            close=c[i],
+            volume=v[i],
+            is_closed=True,
+            timestamp=int(ts_ms[i]),
+        )
     t2 = time.time()
-    print(f"      load_data: {n} bar {t1-t0:.1f}s (csv) + {t2-t1:.1f}s (bar) = {t2-t0:.1f}s")
+    print(
+        f"      load_data: {n} bar {t1-t0:.1f}s (csv) + {t2-t1:.1f}s (bar) = {t2-t0:.1f}s"
+    )
     _DATA_CACHE[filepath] = bars
     return bars
 
@@ -112,12 +152,19 @@ def resample_15m(bars_1m):
         c = buckets[slot]
         if len(c) < 15:
             continue  # Eksik veri → bu 15m bar'ı atla
-        m15.append(Bar(index=len(m15), open=c[0].open,
-                       high=max(b.high for b in c), low=min(b.low for b in c),
-                       close=c[-1].close, volume=sum(b.volume for b in c),
-                       is_closed=True, timestamp=slot))
+        m15.append(
+            Bar(
+                index=len(m15),
+                open=c[0].open,
+                high=max(b.high for b in c),
+                low=min(b.low for b in c),
+                close=c[-1].close,
+                volume=sum(b.volume for b in c),
+                is_closed=True,
+                timestamp=slot,
+            )
+        )
     return m15
-
 
 
 def fvg_close_confirmed(fvg, all_bars):
@@ -143,16 +190,31 @@ def fvg_close_confirmed(fvg, all_bars):
 def detect_fvg_3candle(c1, c2, c3, atr):
     if c3.low > c1.high:
         gap = c3.low - c1.high
-        return {"direction": "bullish", "top": c3.low, "bottom": c1.high,
-                "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c3.index, "atr": atr}  # BUG 10 FIX: c2→c3 (FVG c3 kapanınca tamamlanır)
+        return {
+            "direction": "bullish",
+            "top": c3.low,
+            "bottom": c1.high,
+            "size": gap,
+            "c1": c1,
+            "c2": c2,
+            "c3": c3,
+            "bar_index": c3.index,
+            "atr": atr,
+        }  # BUG 10 FIX: c2→c3 (FVG c3 kapanınca tamamlanır)
     if c1.low > c3.high:
         gap = c1.low - c3.high
-        return {"direction": "bearish", "top": c1.low, "bottom": c3.high,
-                "size": gap, "c1": c1, "c2": c2, "c3": c3,
-                "bar_index": c3.index, "atr": atr}  # BUG 10 FIX: c2→c3
+        return {
+            "direction": "bearish",
+            "top": c1.low,
+            "bottom": c3.high,
+            "size": gap,
+            "c1": c1,
+            "c2": c2,
+            "c3": c3,
+            "bar_index": c3.index,
+            "atr": atr,
+        }  # BUG 10 FIX: c2→c3
     return None
-
 
 
 def classify_c3(fvg):
@@ -186,12 +248,16 @@ def classify_c3(fvg):
     return "CONSOLIDATION"
 
 
-
 def calc_c2_anatomy(c2):
     body = abs(c2.close - c2.open)
     rng = c2.high - c2.low
     if rng == 0:
-        return {"body_ratio": 0.0, "upper_wick_ratio": 0.0, "lower_wick_ratio": 0.0, "clv": 0.0}
+        return {
+            "body_ratio": 0.0,
+            "upper_wick_ratio": 0.0,
+            "lower_wick_ratio": 0.0,
+            "clv": 0.0,
+        }
     return {
         "body_ratio": round(body / rng, 4),
         "upper_wick_ratio": round((c2.high - max(c2.open, c2.close)) / rng, 4),
@@ -207,23 +273,35 @@ def detect_sweep(b15, c3_pos, lookback=20):
         return {"swept_high": False, "swept_low": False}
     swings_h, swings_l = [], []
     for i in range(2, len(pre_bars) - 2):
-        h, l = pre_bars[i].high, pre_bars[i].low
-        if h > pre_bars[i - 2].high and h > pre_bars[i - 1].high and h > pre_bars[i + 1].high and h > pre_bars[i + 2].high:
+        h, lp = pre_bars[i].high, pre_bars[i].low
+        if (
+            h > pre_bars[i - 2].high
+            and h > pre_bars[i - 1].high
+            and h > pre_bars[i + 1].high
+            and h > pre_bars[i + 2].high
+        ):
             swings_h.append((lo + i, h))
-        if l < pre_bars[i - 2].low and l < pre_bars[i - 1].low and l < pre_bars[i + 1].low and l < pre_bars[i + 2].low:
-            swings_l.append((lo + i, l))
+        if (
+            lp < pre_bars[i - 2].low
+            and lp < pre_bars[i - 1].low
+            and lp < pre_bars[i + 1].low
+            and lp < pre_bars[i + 2].low
+        ):
+            swings_l.append((lo + i, lp))
     swept_h, swept_l = False, False
-    recent = b15[max(0, c3_pos - lookback):c3_pos]
+    recent = b15[max(0, c3_pos - lookback) : c3_pos]
     for idx, pr in swings_h:
         for b in recent:
             if b.index > idx and b.high > pr and b.close < pr:
-                swept_h = True; break
+                swept_h = True
+                break
         if swept_h:
             break
     for idx, pr in swings_l:
         for b in recent:
             if b.index > idx and b.low < pr and b.close > pr:
-                swept_l = True; break
+                swept_l = True
+                break
         if swept_l:
             break
     return {"swept_high": swept_h, "swept_low": swept_l}
@@ -235,11 +313,22 @@ def track_fvg_outcome(fvg, bars_after):
     fvg_top, fvg_bottom = fvg["top"], fvg["bottom"]
     fvg_index = fvg["bar_index"]
     atr = fvg["atr"]
-    result = {"mitigated": False, "mitigate_bar": None, "mitigate_price": None,
-              "bars_to_mitigate": None, "continuation_10": None, "continuation_20": None,
-              "continuation_40": None, "continuation": None, "invalidated": False,
-              "invalidate_bar": None, "max_excursion": 0.0, "max_excursion_dir": None,
-              "bars_tracked": 0, "close_price_at_end": None}
+    result = {
+        "mitigated": False,
+        "mitigate_bar": None,
+        "mitigate_price": None,
+        "bars_to_mitigate": None,
+        "continuation_10": None,
+        "continuation_20": None,
+        "continuation_40": None,
+        "continuation": None,
+        "invalidated": False,
+        "invalidate_bar": None,
+        "max_excursion": 0.0,
+        "max_excursion_dir": None,
+        "bars_tracked": 0,
+        "close_price_at_end": None,
+    }
     invalidate_dist = atr
     mitigated = False
     for offset, b in enumerate(bars_after):
@@ -267,11 +356,11 @@ def track_fvg_outcome(fvg, bars_after):
                     break
         # BUG 4 FIX: MAE (adverse) ve MFE (favorable) excursion ayrı takip edilir
         if direction == "bullish":
-            mae = max(0, fvg_bottom - b.low)   # fiyat gap altına gitti mi?
-            mfe = max(0, b.high - fvg_top)     # fiyat gap üstüne geçti mi?
+            mae = max(0, fvg_bottom - b.low)  # fiyat gap altına gitti mi?
+            mfe = max(0, b.high - fvg_top)  # fiyat gap üstüne geçti mi?
         else:
-            mae = max(0, b.high - fvg_top)     # fiyat gap üstüne çıktı mı?
-            mfe = max(0, fvg_bottom - b.low)   # fiyat gap altına geçti mi?
+            mae = max(0, b.high - fvg_top)  # fiyat gap üstüne çıktı mı?
+            mfe = max(0, fvg_bottom - b.low)  # fiyat gap altına geçti mi?
         if mae > result.get("max_mae", 0.0):
             result["max_mae"] = mae
         if mfe > result.get("max_mfe", 0.0):
@@ -280,14 +369,24 @@ def track_fvg_outcome(fvg, bars_after):
         exc = max(mae, mfe)
         if exc > result["max_excursion"]:
             result["max_excursion"] = exc
-            result["max_excursion_dir"] = "beyond" if (
-                (direction == "bullish" and b.high > fvg_top) or
-                (direction == "bearish" and b.low < fvg_bottom)
-            ) else "reverse"
+            result["max_excursion_dir"] = (
+                "beyond"
+                if (
+                    (direction == "bullish" and b.high > fvg_top)
+                    or (direction == "bearish" and b.low < fvg_bottom)
+                )
+                else "reverse"
+            )
         # BUG 5 FIX: Continuation'ı mitigasyon anında tek seferinde hesapla
         if not mitigated and touched_fvg:
-            cond = (direction == "bullish" and fvg_bottom <= b.close <= fvg_top) or (direction == "bearish" and fvg_bottom <= b.close <= fvg_top)
-            wick = (direction == "bullish" and b.close >= fvg_bottom and b.low <= fvg_top) or (direction == "bearish" and b.close <= fvg_top and b.high >= fvg_bottom)
+            cond = (direction == "bullish" and fvg_bottom <= b.close <= fvg_top) or (
+                direction == "bearish" and fvg_bottom <= b.close <= fvg_top
+            )
+            wick = (
+                direction == "bullish" and b.close >= fvg_bottom and b.low <= fvg_top
+            ) or (
+                direction == "bearish" and b.close <= fvg_top and b.high >= fvg_bottom
+            )
             if cond or wick:
                 mitigated = True
                 result["mitigated"] = True
@@ -295,11 +394,19 @@ def track_fvg_outcome(fvg, bars_after):
                 result["mitigate_price"] = b.close
                 result["bars_to_mitigate"] = offset
                 # Continuation'ı mitigation anında tek seferinde hesapla
-                for win_offset, win_key in [(10, "continuation_10"), (20, "continuation_20"), (40, "continuation_40")]:
+                for win_offset, win_key in [
+                    (10, "continuation_10"),
+                    (20, "continuation_20"),
+                    (40, "continuation_40"),
+                ]:
                     fo = offset + win_offset
                     if fo < len(bars_after):
                         fb = bars_after[fo]
-                        result[win_key] = fb.close > fvg_top if direction == "bullish" else fb.close < fvg_bottom
+                        result[win_key] = (
+                            fb.close > fvg_top
+                            if direction == "bullish"
+                            else fb.close < fvg_bottom
+                        )
                     else:
                         result[win_key] = False
 
@@ -319,23 +426,36 @@ def simulate_rr_new(fvg, bars_after):
     if direction == "bullish":
         # Bullish FVG fill: fiyat gap'e geri döner, gap_bottom'dan girilir
         entry_price = gap_bottom
-        stop_price = gap_bottom - gap_width  # 1R risk = gap_width kadar aşağı
+
         target_price = gap_top + gap_width * 2.0  # 2R hedef
     else:
         # Bearish FVG fill: fiyat gap'e geri döner, gap_top'tan girilir
         entry_price = gap_top
-        stop_price = gap_top + gap_width   # 1R risk = gap_width kadar yukarı
+
         target_price = gap_bottom - gap_width * 2.0  # 2R hedef
     risk_pct = gap_width / max(entry_price, 0.000001)
     fee_leg_R = FEE_TAKER / max(risk_pct, 0.000001)
 
-    r = {"touched": False, "entry_bar": None, "entry_price": entry_price,
-         "hit_target": False, "hit_stop": False, "no_outcome": True,
-         "net_profit_R": 0.0, "risk": gap_width,
-         "max_depth_pct": 0.0, "max_depth_class": None,
-         "first_touch_depth": None, "first_touch_class": None,
-         "touches": [], "invalidation_bar": None, "outcome_bar": None,
-         "continuation_10": False, "continuation_20": False, "continuation_40": False}
+    r = {
+        "touched": False,
+        "entry_bar": None,
+        "entry_price": entry_price,
+        "hit_target": False,
+        "hit_stop": False,
+        "no_outcome": True,
+        "net_profit_R": 0.0,
+        "risk": gap_width,
+        "max_depth_pct": 0.0,
+        "max_depth_class": None,
+        "first_touch_depth": None,
+        "first_touch_class": None,
+        "touches": [],
+        "invalidation_bar": None,
+        "outcome_bar": None,
+        "continuation_10": False,
+        "continuation_20": False,
+        "continuation_40": False,
+    }
     entered = False
     for offset, b in enumerate(bars_after):
         if offset >= LOOKBACK_BARS:
@@ -350,9 +470,18 @@ def simulate_rr_new(fvg, bars_after):
                 continue
         tinfo = None
         if touches:
-            depth = max(0, (gap_top - b.low) / gap_width * 100) if direction == "bullish" else max(0, (b.high - gap_bottom) / gap_width * 100)
+            depth = (
+                max(0, (gap_top - b.low) / gap_width * 100)
+                if direction == "bullish"
+                else max(0, (b.high - gap_bottom) / gap_width * 100)
+            )
             ci = gap_bottom <= b.close <= gap_top
-            tinfo = {"bar": offset, "depth_pct": round(depth, 1), "wick_only": not ci, "close_in_fvg": ci}
+            tinfo = {
+                "bar": offset,
+                "depth_pct": round(depth, 1),
+                "wick_only": not ci,
+                "close_in_fvg": ci,
+            }
             r["touches"].append(tinfo)
             if depth > r["max_depth_pct"]:
                 r["max_depth_pct"] = depth
@@ -360,24 +489,37 @@ def simulate_rr_new(fvg, bars_after):
             if r["first_touch_depth"] is None:
                 r["first_touch_depth"] = round(depth, 1)
                 r["first_touch_class"] = "WICK_ONLY" if not ci else "BODY_CLOSE"
-        inval = (direction == "bullish" and b.close < gap_bottom) or (direction == "bearish" and b.close > gap_top)
+        inval = (direction == "bullish" and b.close < gap_bottom) or (
+            direction == "bearish" and b.close > gap_top
+        )
         if inval:
-            r["hit_stop"] = True; r["no_outcome"] = False
-            r["invalidation_bar"] = offset; r["outcome_bar"] = offset
+            r["hit_stop"] = True
+            r["no_outcome"] = False
+            r["invalidation_bar"] = offset
+            r["outcome_bar"] = offset
             r["net_profit_R"] = -1.0 - 2.0 * fee_leg_R
-            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
+            _check_continuation(
+                r, bars_after, offset, direction, entry_price, gap_width
+            )
             return r
-        hit_t = (direction == "bullish" and b.high >= target_price) or (direction == "bearish" and b.low <= target_price)
+        hit_t = (direction == "bullish" and b.high >= target_price) or (
+            direction == "bearish" and b.low <= target_price
+        )
         if hit_t:
-            r["hit_target"] = True; r["no_outcome"] = False
+            r["hit_target"] = True
+            r["no_outcome"] = False
             r["outcome_bar"] = offset
             r["net_profit_R"] = 2.0 - 2.0 * fee_leg_R
-            _check_continuation(r, bars_after, offset, direction, entry_price, gap_width)
+            _check_continuation(
+                r, bars_after, offset, direction, entry_price, gap_width
+            )
             return r
     if entered:
         r["no_outcome"] = True
         r["net_profit_R"] = -2.0 * fee_leg_R
-        _check_continuation(r, bars_after, len(bars_after) - 1, direction, entry_price, gap_width)
+        _check_continuation(
+            r, bars_after, len(bars_after) - 1, direction, entry_price, gap_width
+        )
     return r
 
 
@@ -387,19 +529,32 @@ def _check_continuation(r, bars_after, from_idx, direction, entry_price, gap_wid
         fo = from_idx + win
         if fo < len(bars_after):
             fb = bars_after[fo]
-            r[key] = (direction == "bullish" and fb.high >= entry_price + gap_width) or \
-                     (direction == "bearish" and fb.low <= entry_price - gap_width)
+            r[key] = (
+                direction == "bullish" and fb.high >= entry_price + gap_width
+            ) or (direction == "bearish" and fb.low <= entry_price - gap_width)
 
 
 # ─── BOS/MSS ─────────────────────────────────────────────────
 def find_all_swing_points(b15):
     hi_idx, hi_pr, lo_idx, lo_pr = [], [], [], []
     for i in range(2, len(b15) - 2):
-        h, l = b15[i].high, b15[i].low
-        if h > b15[i - 2].high and h > b15[i - 1].high and h > b15[i + 1].high and h > b15[i + 2].high:
-            hi_idx.append(b15[i].index); hi_pr.append(h)
-        if l < b15[i - 2].low and l < b15[i - 1].low and l < b15[i + 1].low and l < b15[i + 2].low:
-            lo_idx.append(b15[i].index); lo_pr.append(l)
+        h, lp = b15[i].high, b15[i].low
+        if (
+            h > b15[i - 2].high
+            and h > b15[i - 1].high
+            and h > b15[i + 1].high
+            and h > b15[i + 2].high
+        ):
+            hi_idx.append(b15[i].index)
+            hi_pr.append(h)
+        if (
+            lp < b15[i - 2].low
+            and lp < b15[i - 1].low
+            and lp < b15[i + 1].low
+            and lp < b15[i + 2].low
+        ):
+            lo_idx.append(b15[i].index)
+            lo_pr.append(lp)
     return (hi_idx, hi_pr), (lo_idx, lo_pr)
 
 
@@ -410,10 +565,17 @@ def _filter_swings(c3_idx, hi, lo, hi_idx=None, lo_idx=None):
         sw_h = [(idx, pr) for idx, pr in hi_idx.items() if lo_i <= idx < c3_idx]
         sw_l = [(idx, pr) for idx, pr in lo_idx.items() if lo_i <= idx < c3_idx]
         return sw_h, sw_l
-    sw_h = [(hi[0][i], hi[1][i]) for i in range(len(hi[0])) if c3_idx - 50 <= hi[0][i] < c3_idx]
-    sw_l = [(lo[0][i], lo[1][i]) for i in range(len(lo[0])) if c3_idx - 50 <= lo[0][i] < c3_idx]
+    sw_h = [
+        (hi[0][i], hi[1][i])
+        for i in range(len(hi[0]))
+        if c3_idx - 50 <= hi[0][i] < c3_idx
+    ]
+    sw_l = [
+        (lo[0][i], lo[1][i])
+        for i in range(len(lo[0]))
+        if c3_idx - 50 <= lo[0][i] < c3_idx
+    ]
     return sw_h, sw_l
-
 
 
 def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
@@ -426,32 +588,34 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
         elif sw_h[-1][1] < sw_h[-2][1] and sw_l[-1][1] < sw_l[-2][1]:
             trend = "downtrend"
     pre_start = max(0, c3_idx - 20)
+
     # BUG 8 FIX: BOS = swing point'inden SONRA gelen bir bar'ın o seviyeyi KAPANIŞLA kırması
     # FIX: Daha önceden kırılmış eski swing'lerin yeni bir kırılım (BOS) gibi sayılmasını önlemek için already_broken kontrolü eklendi.
     def _has_bos(swings, bars_slice, break_above=True):
         if not bars_slice:
             return False
         slice_start_idx = bars_slice[0].index
-        
+
         # Sadece son 3 yakın swing noktasına bak (eski swing'leri boşuna tarama)
         for sw_idx, sw_pr in reversed(swings[-3:]):
             if sw_idx >= bars_slice[-1].index:
                 continue
-                
+
             already_broken = False
             # Swing oluştuktan sonra, incelediğimiz aralığa (bars_slice) kadar zaten kırılmış mı?
             for i in range(sw_idx + 1, slice_start_idx):
-                if i >= len(b15): break
+                if i >= len(b15):
+                    break
                 if break_above and b15[i].close > sw_pr:
                     already_broken = True
                     break
                 if not break_above and b15[i].close < sw_pr:
                     already_broken = True
                     break
-                    
+
             if already_broken:
-                continue # Bu swing önceden kırılmış, yeni bir yapı kırılımı sayılmaz
-                
+                continue  # Bu swing önceden kırılmış, yeni bir yapı kırılımı sayılmaz
+
             # Seçili aralıkta (bars_slice) İLK DEFA kırılıyor mu?
             for b in bars_slice:
                 if b.index <= sw_idx:
@@ -462,18 +626,26 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
                     return True
         return False
 
-    pre_bars = [b for b in b15[pre_start:c3_idx + 1] if b.index <= c3_idx]
+    pre_bars = [b for b in b15[pre_start : c3_idx + 1] if b.index <= c3_idx]
     post_end = min(c3_idx + 21, len(b15))
     post_bars = [b for b in b15[c3_idx:post_end] if b.index >= c3_idx]
 
     if trend == "uptrend":
-        pre_bos = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı)
-        pre_mss = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı = MSS)
+        pre_bos = _has_bos(
+            sw_h, pre_bars, break_above=True
+        )  # swing high kırıldı mı (yukarı)
+        pre_mss = _has_bos(
+            sw_l, pre_bars, break_above=False
+        )  # swing low kırıldı mı (aşağı = MSS)
         post_bos = _has_bos(sw_h, post_bars, break_above=True)
         post_mss = _has_bos(sw_l, post_bars, break_above=False)
     elif trend == "downtrend":
-        pre_bos = _has_bos(sw_l, pre_bars, break_above=False)  # swing low kırıldı mı (aşağı)
-        pre_mss = _has_bos(sw_h, pre_bars, break_above=True)   # swing high kırıldı mı (yukarı = MSS)
+        pre_bos = _has_bos(
+            sw_l, pre_bars, break_above=False
+        )  # swing low kırıldı mı (aşağı)
+        pre_mss = _has_bos(
+            sw_h, pre_bars, break_above=True
+        )  # swing high kırıldı mı (yukarı = MSS)
         post_bos = _has_bos(sw_l, post_bars, break_above=False)
         post_mss = _has_bos(sw_h, post_bars, break_above=True)
     else:  # ranging
@@ -481,20 +653,37 @@ def detect_bos_mss(fvg, b15, hi, lo, hi_idx=None, lo_idx=None):
         recent_sw_h = [(idx, pr) for idx, pr in sw_h if c3_idx - 10 <= idx < c3_idx]
         recent_sw_l = [(idx, pr) for idx, pr in sw_l if c3_idx - 10 <= idx < c3_idx]
         pre_bos = False
-        pre_mss = _has_bos(recent_sw_h, pre_bars, break_above=True) or _has_bos(recent_sw_l, pre_bars, break_above=False)
+        pre_mss = _has_bos(recent_sw_h, pre_bars, break_above=True) or _has_bos(
+            recent_sw_l, pre_bars, break_above=False
+        )
         post_bos = False
-        post_mss = _has_bos(recent_sw_h, post_bars, break_above=True) or _has_bos(recent_sw_l, post_bars, break_above=False)
+        post_mss = _has_bos(recent_sw_h, post_bars, break_above=True) or _has_bos(
+            recent_sw_l, post_bars, break_above=False
+        )
 
     pre_bos, pre_mss = bool(pre_bos), bool(pre_mss)
     post_bos, post_mss = bool(post_bos), bool(post_mss)
     group = "NONE"
     if pre_bos or pre_mss:
-        group = "BOS_ONLY" if (pre_bos and not pre_mss) else ("MSS_ONLY" if (pre_mss and not pre_bos) else "BOTH")
+        group = (
+            "BOS_ONLY"
+            if (pre_bos and not pre_mss)
+            else ("MSS_ONLY" if (pre_mss and not pre_bos) else "BOTH")
+        )
     elif post_bos or post_mss:
-        group = "BOS_ONLY" if (post_bos and not post_mss) else ("MSS_ONLY" if (post_mss and not post_bos) else "BOTH")
-    return {"pre_bos": pre_bos, "pre_mss": pre_mss, "post_bos": post_bos, "post_mss": post_mss,
-            "trend": trend, "group": group}
-
+        group = (
+            "BOS_ONLY"
+            if (post_bos and not post_mss)
+            else ("MSS_ONLY" if (post_mss and not post_bos) else "BOTH")
+        )
+    return {
+        "pre_bos": pre_bos,
+        "pre_mss": pre_mss,
+        "post_bos": post_bos,
+        "post_mss": post_mss,
+        "trend": trend,
+        "group": group,
+    }
 
 
 # ─── Istatistik ──────────────────────────────────────────────
@@ -506,8 +695,14 @@ def percentile_sorted(vals, p):
 
 
 def cumulative_mit_curve(fvgs, max_b=200):
-    mit_times = sorted([f["outcome"]["bars_to_mitigate"] for f in fvgs
-                        if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
+    mit_times = sorted(
+        [
+            f["outcome"]["bars_to_mitigate"]
+            for f in fvgs
+            if f["outcome"]["mitigated"]
+            and f["outcome"]["bars_to_mitigate"] is not None
+        ]
+    )
     total = len(mit_times)
     if total == 0:
         return [], 200
@@ -516,28 +711,47 @@ def cumulative_mit_curve(fvgs, max_b=200):
     prev_pct = 0
     # BUG 9 FIX: threshold sabit yüzde puan olmalı (pct - prev_pct ile aynı birim)
     # total * 0.05 = ham sayı, pct - prev_pct = yüzde → birim uyumsuzluğu
-    DR_THRESHOLD_PCT = 5.0  # art arda iki nokta arasında %5'ten az artış = azalan getiri
+    DR_THRESHOLD_PCT = (
+        5.0  # art arda iki nokta arasında %5'ten az artış = azalan getiri
+    )
     for n in [1, 2, 3, 5, 10, 20, 30, 50, 75, 100, 150, 200]:
         cnt = sum(1 for t in mit_times if t <= n) if mit_times else 0
         pct = cnt / total * 100
         curve.append((n, pct))
-        if n > 1 and prev_pct > 0 and (pct - prev_pct) < DR_THRESHOLD_PCT and dr == max_b:
+        if (
+            n > 1
+            and prev_pct > 0
+            and (pct - prev_pct) < DR_THRESHOLD_PCT
+            and dr == max_b
+        ):
             dr = n
         prev_pct = pct
     return curve, dr if dr != max_b else 200
 
 
-
 def conditional_cancel(fvgs, max_b=200):
-    mit = sorted([f["outcome"]["bars_to_mitigate"] for f in fvgs
-                  if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
+    mit = sorted(
+        [
+            f["outcome"]["bars_to_mitigate"]
+            for f in fvgs
+            if f["outcome"]["mitigated"]
+            and f["outcome"]["bars_to_mitigate"] is not None
+        ]
+    )
     total = len(fvgs)
     if total == 0:
         return []
     res = []
     for n in [5, 10, 20, 30, 50, 75, 100, 150, 200]:
-        still_open = sum(1 for f in fvgs if not f["outcome"]["mitigated"]
-                         or (f["outcome"]["bars_to_mitigate"] is not None and f["outcome"]["bars_to_mitigate"] >= n))
+        still_open = sum(
+            1
+            for f in fvgs
+            if not f["outcome"]["mitigated"]
+            or (
+                f["outcome"]["bars_to_mitigate"] is not None
+                and f["outcome"]["bars_to_mitigate"] >= n
+            )
+        )
         will_mit = sum(1 for t in mit if t >= n) if mit else 0
         prob = will_mit / still_open * 100 if still_open > 0 else 0
         res.append((n, prob, still_open))
@@ -563,8 +777,15 @@ def bootstrap_ci(vals, n_resamples=N_BOOTSTRAP, ci=95, seed=BOOTSTRAP_SEED):
 
 # ─── Volatilite Rejimi ───────────────────────────────────────
 def volatility_regime_analysis(fvgs, atr_vals, window=50):
-    regime_results = defaultdict(lambda: {"count": 0, "mitigated": 0, "bars": [],
-                                          "profits": [], "continuation_10": 0})
+    regime_results = defaultdict(
+        lambda: {
+            "count": 0,
+            "mitigated": 0,
+            "bars": [],
+            "profits": [],
+            "continuation_10": 0,
+        }
+    )
     for f in fvgs:
         idx = f["c3"].index
         lo_idx = max(0, idx - window)
@@ -602,6 +823,7 @@ def collect_fvg_profile(symbol: str):
         return _collect_fvg_profile_impl(symbol)
     except Exception as e:
         import traceback
+
         print(f"    [{symbol}] collect_fvg_profile CRASH: {e}")
         traceback.print_exc()
         return None, None, None, None, None, None, None
@@ -613,7 +835,9 @@ def _collect_fvg_profile_impl(symbol: str):
     expiry_used = _EXPIRY_MAP.get(symbol, 5)
     cfg.GLOBAL_FVG_EXPIRY_BARS = expiry_used
     # ---
-    csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv")
+    csv_path = os.path.join(
+        os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.csv"
+    )
     if not os.path.isfile(csv_path):
         return None, None, None, None, None, None, None
 
@@ -639,15 +863,15 @@ def _collect_fvg_profile_impl(symbol: str):
     _profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
     _sname = _profile.get("session", "DEFAULT")
     _sh_info = get_session_hours(symbol)
-    sh = _sh_info['start']
-    eh = _sh_info['end']
+    sh = _sh_info["start"]
+    eh = _sh_info["end"]
     spans_midnight = sh > eh
     ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
 
     day_cbdr = {}
     day_trades = defaultdict(list)
-    active = []
+    active: list = []
     wins = []
     losses = []
     trade_records = []
@@ -674,8 +898,10 @@ def _collect_fvg_profile_impl(symbol: str):
     for sb in range(500, total_bars):
         if (sb - 500) % 5000 == 0:
             pct = (sb - 500) / (total_bars - 500) * 100
-            print(f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True)
-        chunk = b15[sb - 500: sb + 1]
+            print(
+                f"\r    [{_sname}] %{pct:.0f} ({sb}/{total_bars})", end="", flush=True
+            )
+        chunk = b15[sb - 500 : sb + 1]
         cur = b15[sb]
         tr = calculate_true_range(cur, prev_close)
         atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
@@ -698,26 +924,30 @@ def _collect_fvg_profile_impl(symbol: str):
         if ss.sweep_confirmed and rsm.state_name == "IDLE":
             if ss.sweep_direction is None:
                 continue
-            rsm.on_sweep(direction=ss.sweep_direction,
-                         level=ss.sweep_level or 0.0, bar_index=None)
+            rsm.on_sweep(
+                direction=ss.sweep_direction,
+                level=ss.sweep_level or 0.0,
+                bar_index=None,
+            )
 
         if rsm.state_name == "SWEEP_DETECTED":
-            old_state = rsm.state_name
             rsm.on_sweep_confirmed(chunk, cur, atr)
             if rsm.state_name == "TRIGGER_READY":
-                pass # Triggered
+                pass  # Triggered
             # We can print if sweep is detected but no trigger
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
             db = ss.daily_bias
-            bias_reject = (sd == "bullish" and db == DailyBias.BEARISH) or \
-                          (sd == "bearish" and db == DailyBias.BULLISH) or \
-                          db == DailyBias.NEUTRAL
+            bias_reject = (
+                (sd == "bullish" and db == DailyBias.BEARISH)
+                or (sd == "bearish" and db == DailyBias.BULLISH)
+                or db == DailyBias.NEUTRAL
+            )
             if bias_reject:
                 rsm.reset()
                 continue
-            
+
             h = edt.hour
 
             # ── Capture FVG for profiling ──
@@ -748,7 +978,7 @@ def _collect_fvg_profile_impl(symbol: str):
                 classic_fvg["c3_pos"] = sb
                 classic_fvg["c2_anatomy"] = calc_c2_anatomy(c2_bar)
                 classic_fvg["sweep"] = detect_sweep(b15, sb, SWEEP_LOOKBACK)
-                bars_after = b15[sb + 1:min(sb + LOOKBACK_BARS, total_bars)]
+                bars_after = b15[sb + 1 : min(sb + LOOKBACK_BARS, total_bars)]
                 classic_fvg["outcome"] = track_fvg_outcome(classic_fvg, bars_after)
                 classic_fvg["rr"] = simulate_rr_new(classic_fvg, bars_after)
                 classic_fvg["v4_rejected"] = None  # marked later
@@ -761,7 +991,9 @@ def _collect_fvg_profile_impl(symbol: str):
                     "bar_index": sb,
                     "atr": atr,
                     "category": "UNKNOWN",
-                    "c1": c1_bar, "c2": c2_bar, "c3": c3_bar,
+                    "c1": c1_bar,
+                    "c2": c2_bar,
+                    "c3": c3_bar,
                     "c3_pos": sb,
                     "fvg_hour": h,
                     "month": edt.month,
@@ -770,7 +1002,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     "sweep": detect_sweep(b15, sb, SWEEP_LOOKBACK),
                     "v4_rejected": None,
                 }
-                bars_after = b15[sb + 1:min(sb + LOOKBACK_BARS, total_bars)]
+                bars_after = b15[sb + 1 : min(sb + LOOKBACK_BARS, total_bars)]
                 classic_fvg["outcome"] = track_fvg_outcome(classic_fvg, bars_after)
                 classic_fvg["rr"] = simulate_rr_new(classic_fvg, bars_after)
 
@@ -795,7 +1027,10 @@ def _collect_fvg_profile_impl(symbol: str):
                     if fh <= 0:
                         sl = ep - rp2 * 2
                     else:
-                        ab = max(fh * cfg.FVG_BUFFER_MIN_FACTOR, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
+                        ab = max(
+                            fh * cfg.FVG_BUFFER_MIN_FACTOR,
+                            max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)),
+                        )
                         sl = tf.bottom - ab
                 else:
                     sl = ep - rp2 * 2
@@ -810,7 +1045,10 @@ def _collect_fvg_profile_impl(symbol: str):
                     if fh <= 0:
                         sl = ep + rp2 * 2
                     else:
-                        ab = max(fh * cfg.FVG_BUFFER_MIN_FACTOR, max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)))
+                        ab = max(
+                            fh * cfg.FVG_BUFFER_MIN_FACTOR,
+                            max(rp2 * 0.1, min(fh * 0.25, rp2 * fbm)),
+                        )
                         sl = tf.top + ab
                 else:
                     sl = ep + rp2 * 2
@@ -841,8 +1079,12 @@ def _collect_fvg_profile_impl(symbol: str):
             # ── CBDR + should_trade ──
             cbdr_w = None
             if ss.cbdr_body_low > 0 and not math.isinf(ss.cbdr_body_low):
-                cbdr_w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
-            cbdr_mult = get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+                cbdr_w = (
+                    (ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low
+                ) * 100
+            cbdr_mult = (
+                get_cbdr_multiplier(symbol, cbdr_w) if cbdr_w is not None else 1.0
+            )
             if cbdr_mult == 0.0:
                 quality_mult = 0.0
                 if classic_fvg.get("v4_rejected") is None:
@@ -866,9 +1108,9 @@ def _collect_fvg_profile_impl(symbol: str):
             final_mult = el_mult * cbdr_mult * quality_mult
 
             qty = (ic * rpt * final_mult) / rd if rd > 0 else 0
-            
+
             # --- FIX: Only enter if quality/validity checks passed (qty > 0)
-            # Do NOT reset RSM if we just failed a quality filter, 
+            # Do NOT reset RSM if we just failed a quality filter,
             # allow RSM to continue hunting for the next FVG in this sweep.
             if qty > 0:
                 # ── ENTERED ──
@@ -887,11 +1129,23 @@ def _collect_fvg_profile_impl(symbol: str):
                 fvg_by_uid[trade_uid] = classic_fvg
 
                 entry_day = ss.cbdr_day
-                active.append({"entry_bar": sb, "entry_price": ep, "sl": sl, "tp": tp,
-                               "qty": qty, "side": side, "trigger_fvg": tf,
-                                "initial_sl": sl, "initial_tp": tp, "trailing_count": 0,
-                                "be_triggered": False,
-                                "day_key": entry_day, "trade_uid": trade_uid})
+                active.append(
+                    {
+                        "entry_bar": sb,
+                        "entry_price": ep,
+                        "sl": sl,
+                        "tp": tp,
+                        "qty": qty,
+                        "side": side,
+                        "trigger_fvg": tf,
+                        "initial_sl": sl,
+                        "initial_tp": tp,
+                        "trailing_count": 0,
+                        "be_triggered": False,
+                        "day_key": entry_day,
+                        "trade_uid": trade_uid,
+                    }
+                )
                 rsm.reset()
             else:
                 # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
@@ -923,7 +1177,12 @@ def _collect_fvg_profile_impl(symbol: str):
 
             tc = chunk[:-1]
             min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
-            cfvgs = detect_fvgs(tc, lookback=min(50, len(tc)), timeframe="15m", min_fvg_size=min_fvg_size)
+            cfvgs = detect_fvgs(
+                tc,
+                lookback=min(50, len(tc)),
+                timeframe="15m",
+                min_fvg_size=min_fvg_size,
+            )
             for t in active:
                 if t.get("closed"):
                     continue
@@ -969,20 +1228,36 @@ def _collect_fvg_profile_impl(symbol: str):
             ex = False
             if t["side"] == "long":
                 if cur.low <= t["sl"]:
-                    t["exit_price"] = t["sl"]; t["exit_bar"] = sb
-                    t["result"] = "SL"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["sl"]
+                    t["exit_bar"] = sb
+                    t["result"] = "SL"
+                    t["closed"] = True
+                    ex = True
                 elif cur.high >= t["tp"]:
-                    t["exit_price"] = t["tp"]; t["exit_bar"] = sb
-                    t["result"] = "TP"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["tp"]
+                    t["exit_bar"] = sb
+                    t["result"] = "TP"
+                    t["closed"] = True
+                    ex = True
             else:
                 if cur.high >= t["sl"]:
-                    t["exit_price"] = t["sl"]; t["exit_bar"] = sb
-                    t["result"] = "SL"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["sl"]
+                    t["exit_bar"] = sb
+                    t["result"] = "SL"
+                    t["closed"] = True
+                    ex = True
                 elif cur.low <= t["tp"]:
-                    t["exit_price"] = t["tp"]; t["exit_bar"] = sb
-                    t["result"] = "TP"; t["closed"] = True; ex = True
+                    t["exit_price"] = t["tp"]
+                    t["exit_bar"] = sb
+                    t["result"] = "TP"
+                    t["closed"] = True
+                    ex = True
             if ex:
-                diff = (t["exit_price"] - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - t["exit_price"])
+                diff = (
+                    (t["exit_price"] - t["entry_price"])
+                    if t["side"] == "long"
+                    else (t["entry_price"] - t["exit_price"])
+                )
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
                 trade_records.append({"result": t["result"], "pnl": t["pnl"]})
@@ -996,20 +1271,44 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_ = fvg_by_uid[uid]
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
-                    f_["v4_real_hit_target"] = (t["result"] == "TP")
-                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
+                    f_["v4_real_hit_target"] = t["result"] == "TP"
+                    f_["v4_real_hit_stop"] = t["result"] == "SL"
                 if _LOGGER is not None:
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
-                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
-                        "entry_time": edt, "entry_price": round(t["entry_price"], 6),
-                        "exit_price": round(t["exit_price"], 6), "result": t["result"],
-                        "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
-                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
-                        "trailing_count": t.get("trailing_count", 0),
-                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None, "atr": round(atr, 6),})
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
+                    fvg_sz = (
+                        (t["trigger_fvg"].top - t["trigger_fvg"].bottom)
+                        if t.get("trigger_fvg")
+                        else None
+                    )
+                    _LOGGER.log_trade(
+                        {
+                            "symbol": symbol,
+                            "session": _sname,
+                            "side": t["side"].upper(),
+                            "entry_time": edt,
+                            "entry_price": round(t["entry_price"], 6),
+                            "exit_price": round(t["exit_price"], 6),
+                            "result": t["result"],
+                            "final_pnl_usd": round(t["pnl"], 2),
+                            "risk_usd": round(risk_usd, 2),
+                            "r_multiple": round(t["pnl"] / risk_usd, 4)
+                            if risk_usd > 0
+                            else 0.0,
+                            "trailing_count": t.get("trailing_count", 0),
+                            "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                            "atr": round(atr, 6),
+                        }
+                    )
             else:
                 sa.append(t)
         active = sa
@@ -1023,7 +1322,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 t["exit_bar"] = len(b15) - 1
                 t["result"] = "OPEN"
                 t["closed"] = True
-                diff = (lp - t["entry_price"]) if t["side"] == "long" else (t["entry_price"] - lp)
+                diff = (
+                    (lp - t["entry_price"])
+                    if t["side"] == "long"
+                    else (t["entry_price"] - lp)
+                )
                 t["pnl"] = round(diff * t["qty"], 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
                 trade_records.append({"result": t["result"], "pnl": t["pnl"]})
@@ -1037,20 +1340,44 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_ = fvg_by_uid[uid]
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
-                    f_["v4_real_hit_target"] = (t["result"] == "TP")
-                    f_["v4_real_hit_stop"] = (t["result"] == "SL")
+                    f_["v4_real_hit_target"] = t["result"] == "TP"
+                    f_["v4_real_hit_stop"] = t["result"] == "SL"
                 if _LOGGER is not None:
-                    risk_usd = abs(t["initial_sl"] - t["entry_price"]) * t["qty"] if t["initial_sl"] else 0
-                    fvg_sz = (t["trigger_fvg"].top - t["trigger_fvg"].bottom) if t.get("trigger_fvg") else None
-                    _LOGGER.log_trade({"symbol": symbol, "session": _sname, "side": t["side"].upper(),
-                        "entry_time": edt, "entry_price": round(t["entry_price"], 6),
-                        "exit_price": round(t["exit_price"], 6), "result": "OPEN",
-                        "final_pnl_usd": round(t["pnl"], 2), "risk_usd": round(risk_usd, 2),
-                        "r_multiple": round(t["pnl"] / risk_usd, 4) if risk_usd > 0 else 0.0,
-                        "trailing_count": t.get("trailing_count", 0),
-                        "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None, "atr": round(atr, 6),})
+                    risk_usd = (
+                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        if t["initial_sl"]
+                        else 0
+                    )
+                    fvg_sz = (
+                        (t["trigger_fvg"].top - t["trigger_fvg"].bottom)
+                        if t.get("trigger_fvg")
+                        else None
+                    )
+                    _LOGGER.log_trade(
+                        {
+                            "symbol": symbol,
+                            "session": _sname,
+                            "side": t["side"].upper(),
+                            "entry_time": edt,
+                            "entry_price": round(t["entry_price"], 6),
+                            "exit_price": round(t["exit_price"], 6),
+                            "result": "OPEN",
+                            "final_pnl_usd": round(t["pnl"], 2),
+                            "risk_usd": round(risk_usd, 2),
+                            "r_multiple": round(t["pnl"] / risk_usd, 4)
+                            if risk_usd > 0
+                            else 0.0,
+                            "trailing_count": t.get("trailing_count", 0),
+                            "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
+                            "atr": round(atr, 6),
+                        }
+                    )
 
     print(f"\r    [{_sname}] %100 ({total_bars}/{total_bars})", flush=True)
 
@@ -1062,8 +1389,14 @@ def _collect_fvg_profile_impl(symbol: str):
         if f.get("c3") is not None:
             f["bos_mss"] = detect_bos_mss(f, b15, swing_hi, swing_lo, hi_idx, lo_idx)
         else:
-            f["bos_mss"] = {"pre_bos": False, "pre_mss": False, "post_bos": False,
-                            "post_mss": False, "trend": "ranging", "group": "NONE"}
+            f["bos_mss"] = {
+                "pre_bos": False,
+                "pre_mss": False,
+                "post_bos": False,
+                "post_mss": False,
+                "trend": "ranging",
+                "group": "NONE",
+            }
     print(f"    [{symbol}] BOS/MSS tamam", flush=True)
 
     # ── Daily rows ──
@@ -1081,10 +1414,17 @@ def _collect_fvg_profile_impl(symbol: str):
         n_trades = len(tlist)
         n_wins = sum(1 for p in tlist if p > 0)
         n_be = sum(1 for p in tlist if p == 0)
-        daily_rows.append({
-            "day_key": dk, "cbdr_pct": w, "trades": n_trades,
-            "wins": n_wins, "be": n_be, "losses": n_trades - n_wins - n_be, "pnl": total_pnl,
-        })
+        daily_rows.append(
+            {
+                "day_key": dk,
+                "cbdr_pct": w,
+                "trades": n_trades,
+                "wins": n_wins,
+                "be": n_be,
+                "losses": n_trades - n_wins - n_be,
+                "pnl": total_pnl,
+            }
+        )
     print(f"    [{symbol}] Daily rows tamam ({len(daily_rows)} row)", flush=True)
 
     day_cbdr_cnt = len(day_cbdr)
@@ -1092,14 +1432,19 @@ def _collect_fvg_profile_impl(symbol: str):
     trade_cnt = len(trade_records)
     fvg_cnt = len(captured_fvgs)
     atr_vals = [b.high - b.low for b in b15]
-    print(f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
-          f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row", flush=True)
+    print(
+        f"    [{symbol}] Tamam: {day_cbdr_cnt} gun CBDR, {day_trades_cnt} gun trade, "
+        f"{trade_cnt} islem, {fvg_cnt} FVG, {len(daily_rows)} daily_row",
+        flush=True,
+    )
     if day_cbdr_cnt < 3 and fvg_cnt > 0:
         rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
         print(f"    [{symbol}] CBDR AZ {rej_str}", flush=True)
     if len(daily_rows) < 3:
-        print(f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
-              f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}")
+        print(
+            f"    [{symbol}] daily_rows={len(daily_rows)} < 3, atlaniyor!"
+            f" day_cbdr={day_cbdr_cnt} day_trades={day_trades_cnt} trades={trade_cnt} fvgs={fvg_cnt}"
+        )
 
     return daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used
 
@@ -1115,8 +1460,10 @@ def build_report(all_coin_data, results_data, fileobj=None):
         _lines_for_size.append(s)
 
     L("# FVG Profile V5 — V5 Engine ile Kapsamli FVG Karakteristik Profili")
-    L("**Session:** MULTI_SESSION (her coin kendi session'inda — DEFAULT/REAL_CBDR/ASIA_RANGE)")
-    L(f"**Engine:** V4 (live-identical) — Sweep → RSM → Quality → Entry → Trailing")
+    L(
+        "**Session:** MULTI_SESSION (her coin kendi session'inda — DEFAULT/REAL_CBDR/ASIA_RANGE)"
+    )
+    L("**Engine:** V4 (live-identical) — Sweep → RSM → Quality → Entry → Trailing")
     L(f"**Coinler:** {', '.join(SYMBOLS_TO_TEST)}")
     L(f"**Tarih:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     L("")
@@ -1131,9 +1478,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("| Coin | Trades | WIN | BE | LOSS | WR% | BE+% | PF | MaxDD% | PnL |")
     L("|" + "|".join(["-" * 8] * 10) + "|")
     for sym, stats, _, _, _ in results_data:
-        L(f"| {sym:<8} | {stats['total_trades']:>6} | {stats['wins']:>4} | {stats['be']:>3} | {stats['losses']:>4} | "
-          f"{stats['win_pct']:>4.1f}% | {stats['be_plus_pct']:>4.1f}% | {stats['profit_factor']:>3.2f} | "
-          f"{stats['max_dd_pct']:>5.2f}% | {stats['total_pnl']:>+8.0f} |")
+        L(
+            f"| {sym:<8} | {stats['total_trades']:>6} | {stats['wins']:>4} | {stats['be']:>3} | {stats['losses']:>4} | "
+            f"{stats['win_pct']:>4.1f}% | {stats['be_plus_pct']:>4.1f}% | {stats['profit_factor']:>3.2f} | "
+            f"{stats['max_dd_pct']:>5.2f}% | {stats['total_pnl']:>+8.0f} |"
+        )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1143,8 +1492,20 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 1. Coin × Kategori Ana Tablo")
     L("")
-    H = ["Coin", "Kat", "N", "Mit%", "Inv%", "p50Bar", "p90Bar",
-         "Cont@10%", "Cont@40%", "RR_WR%", "NetExp", "n<30?"]
+    H = [
+        "Coin",
+        "Kat",
+        "N",
+        "Mit%",
+        "Inv%",
+        "p50Bar",
+        "p90Bar",
+        "Cont@10%",
+        "Cont@40%",
+        "RR_WR%",
+        "NetExp",
+        "n<30?",
+    ]
     L("| " + " | ".join(H) + " |")
     L("|" + "|".join(["-" * 6] * len(H)) + "|")
 
@@ -1162,23 +1523,38 @@ def build_report(all_coin_data, results_data, fileobj=None):
             inv = sum(1 for f in cf if f["outcome"]["invalidated"])
             mit_pct = mit / n * 100
             inv_pct = inv / n * 100
-            mtimes = sorted([f["outcome"]["bars_to_mitigate"] for f in cf
-                             if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
+            mtimes = sorted(
+                [
+                    f["outcome"]["bars_to_mitigate"]
+                    for f in cf
+                    if f["outcome"]["mitigated"]
+                    and f["outcome"]["bars_to_mitigate"] is not None
+                ]
+            )
             p50 = percentile_sorted(mtimes, 50) if mtimes else 0
             p90 = percentile_sorted(mtimes, 90) if mtimes else 0
-            cont10 = sum(1 for f in cf if f["outcome"].get("continuation_10")) / max(mit, 1) * 100
-            cont40 = sum(1 for f in cf if f["outcome"].get("continuation_40")) / max(mit, 1) * 100
+            cont10 = (
+                sum(1 for f in cf if f["outcome"].get("continuation_10"))
+                / max(mit, 1)
+                * 100
+            )
+            cont40 = (
+                sum(1 for f in cf if f["outcome"].get("continuation_40"))
+                / max(mit, 1)
+                * 100
+            )
             wins = sum(1 for f in cf if f.get("v4_real_hit_target", False))
             losses_rr = sum(1 for f in cf if f.get("v4_real_hit_stop", False))
             rt = wins + losses_rr
             wr = wins / rt * 100 if rt > 0 else 0
-            profits = [f.get("v4_real_pnl_R", 0.0) for f in cf
-                       if "v4_real_result" in f]
+            profits = [f.get("v4_real_pnl_R", 0.0) for f in cf if "v4_real_result" in f]
             net_exp = sum(profits) / len(profits) if profits else 0
             warn = "⚠️" if n < 30 else ""
-            L(f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {mit_pct:>5.1f} | {inv_pct:>5.1f} | "
-              f"{p50:>4d} | {p90:>4d} | {cont10:>5.1f} | {cont40:>5.1f} | "
-              f"{wr:>5.1f} | {net_exp:>+6.2f}R | {warn:>4s} |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {mit_pct:>5.1f} | {inv_pct:>5.1f} | "
+                f"{p50:>4d} | {p90:>4d} | {cont10:>5.1f} | {cont40:>5.1f} | "
+                f"{wr:>5.1f} | {net_exp:>+6.2f}R | {warn:>4s} |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1200,19 +1576,29 @@ def build_report(all_coin_data, results_data, fileobj=None):
             cats[f["category"]].append(f)
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = cats.get(cat, [])
-            mtimes = sorted([f["outcome"]["bars_to_mitigate"] for f in cf
-                             if f["outcome"]["mitigated"] and f["outcome"]["bars_to_mitigate"] is not None])
+            mtimes = sorted(
+                [
+                    f["outcome"]["bars_to_mitigate"]
+                    for f in cf
+                    if f["outcome"]["mitigated"]
+                    and f["outcome"]["bars_to_mitigate"] is not None
+                ]
+            )
             if not mtimes:
                 continue
-            L(f"| {sym:<8s} | {cat:<13s} | {len(mtimes):>5d} | "
-              f"{percentile_sorted(mtimes,25):>4d} | {percentile_sorted(mtimes,50):>4d} | "
-              f"{percentile_sorted(mtimes,75):>4d} | {percentile_sorted(mtimes,90):>4d} | "
-              f"{sum(mtimes)/len(mtimes):>6.1f} |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {len(mtimes):>5d} | "
+                f"{percentile_sorted(mtimes,25):>4d} | {percentile_sorted(mtimes,50):>4d} | "
+                f"{percentile_sorted(mtimes,75):>4d} | {percentile_sorted(mtimes,90):>4d} | "
+                f"{sum(mtimes)/len(mtimes):>6.1f} |"
+            )
     L("")
 
     L("### 2b. Kumulatif Mitigasyon Egrisi & Diminishing Returns")
     L("")
-    L("| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | 150b | 200b | DR_nok |")
+    L(
+        "| Coin | Kategori | 1b | 2b | 3b | 5b | 10b | 20b | 30b | 50b | 75b | 100b | 150b | 200b | DR_nok |"
+    )
     L("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1271,7 +1657,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
             else:
                 _, dr = cumulative_mit_curve(cf)
                 drs[cat] = f"{dr}b"
-        L(f"| {sym:<8s} | {drs.get('CONSOLIDATION','N/A'):>4s} | {drs.get('EXPANSION','N/A'):>4s} | {drs.get('REJECTION','N/A'):>4s} |")
+        L(
+            f"| {sym:<8s} | {drs.get('CONSOLIDATION','N/A'):>4s} | {drs.get('EXPANSION','N/A'):>4s} | {drs.get('REJECTION','N/A'):>4s} |"
+        )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1283,7 +1671,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("### 3a. gap/ATR dagilimi")
     L("")
-    L("| Coin | Kons. medyan | Kons. p75 | Exp. medyan | Exp. p75 | Rej. medyan | Rej. p75 |")
+    L(
+        "| Coin | Kons. medyan | Kons. p75 | Exp. medyan | Exp. p75 | Rej. medyan | Rej. p75 |"
+    )
     L("|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1307,9 +1697,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("| FVG Boyutu | CONS Mit% | EXP Mit% | REJ Mit% |")
     L("|---|---|---|---|")
-    for size_label, lo, hi in [("Kucuk (<0.5xATR)", 0, 0.5),
-                                ("Orta (0.5-1.5xATR)", 0.5, 1.5),
-                                ("Buyuk (>1.5xATR)", 1.5, 999)]:
+    for size_label, lo, hi in [
+        ("Kucuk (<0.5xATR)", 0, 0.5),
+        ("Orta (0.5-1.5xATR)", 0.5, 1.5),
+        ("Buyuk (>1.5xATR)", 1.5, 999),
+    ]:
         row = [size_label]
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             all_f = []
@@ -1332,7 +1724,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 4. Volatilite Rejimi Analizi")
     L("")
-    L("Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore LOW/MID/HIGH rejim.")
+    L(
+        "Her FVG'nin olustugu donemdeki ATR'nin son 50 bar icindeki percentile'ina gore LOW/MID/HIGH rejim."
+    )
     L("")
     L("| Coin | Kategori | Rejim | N | Mit% | MedBar | Cont@10% | NetExp |")
     L("|---|---|---|---|---|---|---|---|")
@@ -1359,8 +1753,10 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 cont_pct = cont / max(mit, 1) * 100
                 profs = rr.get("profits", [])
                 ne = sum(profs) / len(profs) if profs else 0
-                L(f"| {sym:<8s} | {cat:<13s} | {regime_name:>4s} | {n:>4d} | {mit_pct:>5.1f} | "
-                  f"{med_bar:>4d} | {cont_pct:>5.1f} | {ne:>+6.2f}R |")
+                L(
+                    f"| {sym:<8s} | {cat:<13s} | {regime_name:>4s} | {n:>4d} | {mit_pct:>5.1f} | "
+                    f"{med_bar:>4d} | {cont_pct:>5.1f} | {ne:>+6.2f}R |"
+                )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1370,7 +1766,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 5. Hafta Ici / Hafta Sonu Etkisi")
     L("")
-    L("| Coin | Kategori | Haftaici N | Hftici Mit% | Hftici NetExp | Haftasonu N | Hftsonu Mit% | Hftsonu NetExp |")
+    L(
+        "| Coin | Kategori | Haftaici N | Hftici Mit% | Hftici NetExp | Haftasonu N | Hftsonu Mit% | Hftsonu NetExp |"
+    )
     L("|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1387,15 +1785,18 @@ def build_report(all_coin_data, results_data, fileobj=None):
             def _stats(grp):
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp
-                         if "v4_real_result" in f]
+                profs = [
+                    f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f
+                ]
                 ne = sum(profs) / len(profs) if profs else 0
                 return n, mit, ne
 
             wn, wm, wexp = _stats(wd)
             wen, wem, weexp = _stats(we)
-            L(f"| {sym:<8s} | {cat:<13s} | {wn:>5d} | {wm:>5.1f} | {wexp:>+7.2f}R | "
-              f"{wen:>5d} | {wem:>5.1f} | {weexp:>+7.2f}R |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {wn:>5d} | {wm:>5.1f} | {wexp:>+7.2f}R | "
+                f"{wen:>5d} | {wem:>5.1f} | {weexp:>+7.2f}R |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1420,7 +1821,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 continue
             mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
             mit_count = sum(1 for f in grp if f["outcome"]["mitigated"])
-            cont10 = sum(1 for f in grp if f["outcome"].get("continuation_10")) / max(mit_count, 1) * 100
+            cont10 = (
+                sum(1 for f in grp if f["outcome"].get("continuation_10"))
+                / max(mit_count, 1)
+                * 100
+            )
             wins = sum(1 for f in grp if f.get("v4_real_hit_target", False))
             losses_rr = sum(1 for f in grp if f.get("v4_real_hit_stop", False))
             rt = wins + losses_rr
@@ -1428,8 +1833,10 @@ def build_report(all_coin_data, results_data, fileobj=None):
             profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
             warn = "⚠️" if n < 30 else ""
-            L(f"| {cat:<13s} | {grp_name:<9s} | {n:>4d} | {mit:>5.1f} | {cont10:>5.1f} | "
-              f"{wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |")
+            L(
+                f"| {cat:<13s} | {grp_name:<9s} | {n:>4d} | {mit:>5.1f} | {cont10:>5.1f} | "
+                f"{wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |"
+            )
     L("")
 
     L("### 6b. Coin Bazli BOS/MSS Dagitimi")
@@ -1456,7 +1863,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
             both_n = grp_counts.get("BOTH", 0)
             teyitli = bo_n + ms_n + both_n
             teyit_pct = teyitli / n * 100 if n > 0 else 0
-            L(f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {none_n:>4d} | {bo_n:>4d} | {ms_n:>4d} | {both_n:>4d} | {teyit_pct:>5.1f}% |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {n:>4d} | {none_n:>4d} | {bo_n:>4d} | {ms_n:>4d} | {both_n:>4d} | {teyit_pct:>5.1f}% |"
+            )
     L("")
 
     L("### 6c. Hipotez Testi: Teyitli (BOS/MSS) vs Teyitsiz (NONE)")
@@ -1467,14 +1876,22 @@ def build_report(all_coin_data, results_data, fileobj=None):
             for f in coin_data["fvgs"]:
                 if f["category"] == cat:
                     groups[f.get("bos_mss", {}).get("group", "NONE")].append(f)
-        none_profs = [f.get("v4_real_pnl_R", 0.0) for f in groups.get("NONE", [])
-                      if "v4_real_result" in f]
-        none_ci = bootstrap_ci(none_profs) if len(none_profs) >= 3 else (None, None, None)
+        none_profs = [
+            f.get("v4_real_pnl_R", 0.0)
+            for f in groups.get("NONE", [])
+            if "v4_real_result" in f
+        ]
+        none_ci = (
+            bootstrap_ci(none_profs) if len(none_profs) >= 3 else (None, None, None)
+        )
         for grp_name in ["BOS_ONLY", "MSS_ONLY", "BOTH"]:
             grp = groups.get(grp_name, [])
-            grp_profs = [f.get("v4_real_pnl_R", 0.0) for f in grp
-                         if "v4_real_result" in f]
-            grp_ci = bootstrap_ci(grp_profs) if len(grp_profs) >= 3 else (None, None, None)
+            grp_profs = [
+                f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f
+            ]
+            grp_ci = (
+                bootstrap_ci(grp_profs) if len(grp_profs) >= 3 else (None, None, None)
+            )
             if none_ci[0] is None or grp_ci[0] is None:
                 L(f"| {cat:<13s} | {grp_name:<9s} | YETERSIZ ORNEKLEM |")
                 continue
@@ -1483,9 +1900,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 verdict = "ANLAMLI FARK YOK"
             else:
                 verdict = f"FARK VAR - {grp_name} {'daha iyi' if grp_ci[2] > none_ci[2] else 'daha kotu'}"
-            L(f"| {cat:<13s} | {grp_name:<9s} | NONE(n={len(none_profs)}): {none_ci[2]:>+.2f}R "
-              f"[{none_ci[0]:>+.2f}, {none_ci[1]:>+.2f}] | {grp_name}(n={len(grp_profs)}): "
-              f"{grp_ci[2]:>+.2f}R [{grp_ci[0]:>+.2f}, {grp_ci[1]:>+.2f}] | {verdict} |")
+            L(
+                f"| {cat:<13s} | {grp_name:<9s} | NONE(n={len(none_profs)}): {none_ci[2]:>+.2f}R "
+                f"[{none_ci[0]:>+.2f}, {none_ci[1]:>+.2f}] | {grp_name}(n={len(grp_profs)}): "
+                f"{grp_ci[2]:>+.2f}R [{grp_ci[0]:>+.2f}, {grp_ci[1]:>+.2f}] | {verdict} |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1498,9 +1917,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("| Kategori | Sweep Tipi | N | Mit% | RR_WR% | NetExp | n<30? |")
     L("|---|---|---|---|---|---|---|")
     for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
-        for sweep_label, sweep_key in [("SWEPT_HIGH (SSL)", "swept_high"),
-                                         ("SWEPT_LOW (BSL)", "swept_low"),
-                                         ("NO_SWEEP", None)]:
+        for sweep_label, sweep_key in [
+            ("SWEPT_HIGH (SSL)", "swept_high"),
+            ("SWEPT_LOW (BSL)", "swept_low"),
+            ("NO_SWEEP", None),
+        ]:
             grp = []
             for coin_data in all_coin_data.values():
                 for f in coin_data["fvgs"]:
@@ -1523,7 +1944,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
             profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
             warn = "⚠️" if n < 30 else ""
-            L(f"| {cat:<13s} | {sweep_label:<16s} | {n:>4d} | {mit:>5.1f} | {wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |")
+            L(
+                f"| {cat:<13s} | {sweep_label:<16s} | {n:>4d} | {mit:>5.1f} | {wr:>5.1f} | {ne:>+6.2f}R | {warn:>4s} |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1585,11 +2008,17 @@ def build_report(all_coin_data, results_data, fileobj=None):
             if ci[0] is None:
                 L(f"- **{cat}:** n={n}, yetersiz orneklem")
             elif ci[1] < 0:
-                L(f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — **negatif expectancy, kacinilmali**")
+                L(
+                    f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — **negatif expectancy, kacinilmali**"
+                )
             elif ci[0] > 0:
-                L(f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — **olumlu edge**")
+                L(
+                    f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — **olumlu edge**"
+                )
             else:
-                L(f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — sifiri kapsiyor, belirsiz")
+                L(
+                    f"- **{cat}:** n={n}, exp={ci[2]:+.2f}R [{ci[0]:+.2f}, {ci[1]:+.2f}] — sifiri kapsiyor, belirsiz"
+                )
         L("")
     L("")
 
@@ -1604,7 +2033,13 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("| Metrik | p25 | p50 | p75 | Ortalama |")
     L("|---|---|---|---|---|")
-    for metrik in ["body_ratio", "upper_wick_ratio", "lower_wick_ratio", "clv", "gap_atr_ratio"]:
+    for metrik in [
+        "body_ratio",
+        "upper_wick_ratio",
+        "lower_wick_ratio",
+        "clv",
+        "gap_atr_ratio",
+    ]:
         vals = []
         for coin_data in all_coin_data.values():
             for f in coin_data["fvgs"]:
@@ -1615,15 +2050,23 @@ def build_report(all_coin_data, results_data, fileobj=None):
         if not vals:
             continue
         sv = sorted(vals)
-        L(f"| {metrik:<20s} | {percentile_sorted(sv,25):>+.4f} | {percentile_sorted(sv,50):>+.4f} | "
-          f"{percentile_sorted(sv,75):>+.4f} | {sum(vals)/len(vals):>+.4f} |")
+        L(
+            f"| {metrik:<20s} | {percentile_sorted(sv,25):>+.4f} | {percentile_sorted(sv,50):>+.4f} | "
+            f"{percentile_sorted(sv,75):>+.4f} | {sum(vals)/len(vals):>+.4f} |"
+        )
     L("")
 
     L("### 9b. Spearman Korelasyonu: C2 Metrikleri × Continuation")
     L("")
     L("| Metrik | Cont@10 rho | Cont@20 rho | Cont@40 rho |")
     L("|---|---|---|---|")
-    for metrik in ["body_ratio", "upper_wick_ratio", "lower_wick_ratio", "clv", "gap_atr_ratio"]:
+    for metrik in [
+        "body_ratio",
+        "upper_wick_ratio",
+        "lower_wick_ratio",
+        "clv",
+        "gap_atr_ratio",
+    ]:
         row = [f"{metrik:<20s}"]
         for win in CONT_WINDOWS:
             x, y = [], []
@@ -1641,12 +2084,14 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 row.append("N/A")
             else:
                 n = len(x)
+
                 def rank(vals):
                     sorted_idx = sorted(range(len(vals)), key=lambda i: vals[i])
                     ranks = [0] * len(vals)
                     for r, i in enumerate(sorted_idx):
                         ranks[i] = r + 1
                     return ranks
+
                 rx = rank(x)
                 ry = rank(y)
                 d2 = sum((rx[i] - ry[i]) ** 2 for i in range(n))
@@ -1677,10 +2122,16 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 continue
             mit = sum(1 for f in grp if f.get("rr", {}).get("touched")) / n * 100
             touched = sum(1 for f in grp if f.get("rr", {}).get("touched"))
-            cont = sum(1 for f in grp if f.get("rr", {}).get("continuation_10")) / max(touched, 1) * 100
+            cont = (
+                sum(1 for f in grp if f.get("rr", {}).get("continuation_10"))
+                / max(touched, 1)
+                * 100
+            )
             profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
             ne = sum(profs) / len(profs) if profs else 0
-            L(f"| {cat:<13s} | Q{qi+1}({lo:.2f}-{hi:.2f}) | {n:>4d} | {mit:>5.1f} | {cont:>5.1f} | {ne:>+6.2f}R |")
+            L(
+                f"| {cat:<13s} | Q{qi+1}({lo:.2f}-{hi:.2f}) | {n:>4d} | {mit:>5.1f} | {cont:>5.1f} | {ne:>+6.2f}R |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1690,9 +2141,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 10. Retracement Derinligi × Continuation")
     L("")
-    L("| Derinlik | WICK_ONLY N | WICK_ONLY Cont@10% | WICK_ONLY Cont@40% | "
-      "WICK_ONLY NetExp | BODY_CLOSE N | BODY_CLOSE Cont@10% | "
-      "BODY_CLOSE Cont@40% | BODY_CLOSE NetExp |")
+    L(
+        "| Derinlik | WICK_ONLY N | WICK_ONLY Cont@10% | WICK_ONLY Cont@40% | "
+        "WICK_ONLY NetExp | BODY_CLOSE N | BODY_CLOSE Cont@10% | "
+        "BODY_CLOSE Cont@40% | BODY_CLOSE NetExp |"
+    )
     L("|---|---|---|---|---|---|---|---|---|")
     for dlo, dhi, dlabel in DEPTH_BUCKETS:
         row = [dlabel]
@@ -1703,13 +2156,19 @@ def build_report(all_coin_data, results_data, fileobj=None):
                     rn = f.get("rr", {})
                     if not rn.get("touched"):
                         continue
-                    cls = rn.get("max_depth_class") or rn.get("first_touch_class", "WICK_ONLY")
+                    cls = rn.get("max_depth_class") or rn.get(
+                        "first_touch_class", "WICK_ONLY"
+                    )
                     dp = rn.get("max_depth_pct", 0)
                     if cls == touch_class and dlo <= dp < dhi:
                         grp.append(f)
             n = len(grp)
             if n < 3:
-                row.extend(["0", "N/A", "N/A", "N/A"] if n == 0 else [f"{n}", "N/A", "N/A", "N/A"])
+                row.extend(
+                    ["0", "N/A", "N/A", "N/A"]
+                    if n == 0
+                    else [f"{n}", "N/A", "N/A", "N/A"]
+                )
                 continue
             cont10 = sum(1 for f in grp if f["rr"].get("continuation_10")) / n * 100
             cont40 = sum(1 for f in grp if f["rr"].get("continuation_40")) / n * 100
@@ -1738,8 +2197,12 @@ def build_report(all_coin_data, results_data, fileobj=None):
             cats[f["category"]].append(f)
         for cat in ["CONSOLIDATION", "EXPANSION", "REJECTION"]:
             cf = cats.get(cat, [])
-            touched = [f["rr"]["entry_bar"] for f in cf
-                       if f.get("rr", {}).get("touched") and f["rr"].get("entry_bar") is not None]
+            touched = [
+                f["rr"]["entry_bar"]
+                for f in cf
+                if f.get("rr", {}).get("touched")
+                and f["rr"].get("entry_bar") is not None
+            ]
             if not touched:
                 continue
             n = len(touched)
@@ -1750,8 +2213,10 @@ def build_report(all_coin_data, results_data, fileobj=None):
             le5 = sum(1 for v in touched if v <= 5) / n * 100
             le10 = sum(1 for v in touched if v <= 10) / n * 100
             le20 = sum(1 for v in touched if v <= 20) / n * 100
-            L(f"| {sym:<8s} | {cat:<13s} | {n:>5d} | {p25:>3d} | {p50:>3d} | {p75:>3d} | "
-              f"{le5:>5.1f} | {le10:>5.1f} | {le20:>5.1f} |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {n:>5d} | {p25:>3d} | {p50:>3d} | {p75:>3d} | "
+                f"{le5:>5.1f} | {le10:>5.1f} | {le20:>5.1f} |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1763,7 +2228,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("V4 motorunda trigger-ready FVG'lerin hangi asamada elendigini gosterir.")
     L("")
-    L("| Coin | Toplam FVG | ENTERED | FVG_QUALITY | FVG_VALIDITY | DEPTH | MIN_RISK | CBDR/SHOULD_TRADE | QTY_ZERO |")
+    L(
+        "| Coin | Toplam FVG | ENTERED | FVG_QUALITY | FVG_VALIDITY | DEPTH | MIN_RISK | CBDR/SHOULD_TRADE | QTY_ZERO |"
+    )
     L("|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1771,11 +2238,20 @@ def build_report(all_coin_data, results_data, fileobj=None):
         entered = sum(1 for f in fvgs if f.get("v4_rejected") == "ENTERED")
         fvg_q = sum(1 for f in fvgs if f.get("v4_rejected") == "FVG_QUALITY")
         fvg_v = sum(1 for f in fvgs if f.get("v4_rejected") == "FVG_VALIDITY")
-        depth_r = sum(1 for f in fvgs if f.get("v4_rejected") in ("DEPTH_WICK", "DEPTH_BODY"))
+        depth_r = sum(
+            1 for f in fvgs if f.get("v4_rejected") in ("DEPTH_WICK", "DEPTH_BODY")
+        )
         min_r = sum(1 for f in fvgs if f.get("v4_rejected") == "MIN_RISK_DIST")
-        cbdr_r = sum(1 for f in fvgs if f.get("v4_rejected", "").startswith("SHOULD_TRADE") or f.get("v4_rejected") == "CBDR_MULT_ZERO")
+        cbdr_r = sum(
+            1
+            for f in fvgs
+            if f.get("v4_rejected", "").startswith("SHOULD_TRADE")
+            or f.get("v4_rejected") == "CBDR_MULT_ZERO"
+        )
         qty_z = sum(1 for f in fvgs if f.get("v4_rejected") == "QTY_ZERO")
-        L(f"| {sym:<8s} | {total:>6d} | {entered:>6d} | {fvg_q:>6d} | {fvg_v:>6d} | {depth_r:>5d} | {min_r:>6d} | {cbdr_r:>6d} | {qty_z:>6d} |")
+        L(
+            f"| {sym:<8s} | {total:>6d} | {entered:>6d} | {fvg_q:>6d} | {fvg_v:>6d} | {depth_r:>5d} | {min_r:>6d} | {cbdr_r:>6d} | {qty_z:>6d} |"
+        )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1785,9 +2261,14 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 13. Hipotez Testi: Derinlik × Continuation Iliskisi")
     L("")
-    for cls_label, cls_filter in [("TUM FVG'ler", lambda f: True),
-                                    ("WICK_ONLY", lambda f: f.get("rr", {}).get("max_depth_class") == "WICK_ONLY"),
-                                    ("BODY_CLOSE", lambda f: f.get("rr", {}).get("max_depth_class") == "BODY_CLOSE")]:
+    for cls_label, cls_filter in [
+        ("TUM FVG'ler", lambda f: True),
+        ("WICK_ONLY", lambda f: f.get("rr", {}).get("max_depth_class") == "WICK_ONLY"),
+        (
+            "BODY_CLOSE",
+            lambda f: f.get("rr", {}).get("max_depth_class") == "BODY_CLOSE",
+        ),
+    ]:
         shallow, deep = [], []
         for coin_data in all_coin_data.values():
             for f in coin_data["fvgs"]:
@@ -1808,10 +2289,14 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 verdict = "ANLAMLI FARK YOK"
             else:
                 verdict = f"{'Derin > Sig (yuksek depth daha iyi)' if dci[2] > sci[2] else 'Sig > Derin (dusuk depth daha iyi)'}"
-            L(f"- **{cls_label}** — Sig(<=50%, n={len(shallow)}): {sci[2]:.3f} [{sci[0]:.3f},{sci[1]:.3f}] | "
-              f"Derin(>50%, n={len(deep)}): {dci[2]:.3f} [{dci[0]:.3f},{dci[1]:.3f}] | {verdict}")
+            L(
+                f"- **{cls_label}** — Sig(<=50%, n={len(shallow)}): {sci[2]:.3f} [{sci[0]:.3f},{sci[1]:.3f}] | "
+                f"Derin(>50%, n={len(deep)}): {dci[2]:.3f} [{dci[0]:.3f},{dci[1]:.3f}] | {verdict}"
+            )
         else:
-            L(f"- **{cls_label}** — YETERSIZ ORNEKLEM (sig={len(shallow)}, derin={len(deep)})")
+            L(
+                f"- **{cls_label}** — YETERSIZ ORNEKLEM (sig={len(shallow)}, derin={len(deep)})"
+            )
     L("")
     # ═══════════════════════════════════════════════════
     # BOLUM 14: Early London (02:00-08:00 UTC) Performansi
@@ -1820,7 +2305,9 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 14. Early London (02:00-08:00 UTC) Performansi")
     L("")
-    L("| Coin | Kategori | EL_N | EL_Mit% | EL_NetExp | Normal_N | Normal_Mit% | Normal_NetExp | Delta_Mit | Delta_Exp |")
+    L(
+        "| Coin | Kategori | EL_N | EL_Mit% | EL_NetExp | Normal_N | Normal_Mit% | Normal_NetExp | Delta_Mit | Delta_Exp |"
+    )
     L("|---|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1835,18 +2322,24 @@ def build_report(all_coin_data, results_data, fileobj=None):
             norm = [f for f in cf if not (2 <= f.get("fvg_hour", 0) < 8)]
             if not el and not norm:
                 continue
+
             def _fvg_stats(grp):
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
+                profs = [
+                    f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f
+                ]
                 ne = sum(profs) / len(profs) if profs else 0
                 return n, mit, ne
+
             en, em, ee = _fvg_stats(el)
             nn, nm, ne = _fvg_stats(norm)
             dm = em - nm
             de = ee - ne
-            L(f"| {sym:<8s} | {cat:<13s} | {en:>4d} | {em:>5.1f} | {ee:>+7.2f}R | "
-              f"{nn:>4d} | {nm:>5.1f} | {ne:>+7.2f}R | {dm:>+5.1f} | {de:>+7.2f}R |")
+            L(
+                f"| {sym:<8s} | {cat:<13s} | {en:>4d} | {em:>5.1f} | {ee:>+7.2f}R | "
+                f"{nn:>4d} | {nm:>5.1f} | {ne:>+7.2f}R | {dm:>+5.1f} | {de:>+7.2f}R |"
+            )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1876,9 +2369,13 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 grp = by_month[month]
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
+                profs = [
+                    f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f
+                ]
                 ne = sum(profs) / len(profs) if profs else 0
-                L(f"| {sym:<8s} | {cat:<13s} | {month:>2d} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
+                L(
+                    f"| {sym:<8s} | {cat:<13s} | {month:>2d} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |"
+                )
     L("")
 
     L("### 15b. Coin × Uc Aylik (Quarterly)")
@@ -1903,9 +2400,13 @@ def build_report(all_coin_data, results_data, fileobj=None):
                 grp = by_q[q]
                 n = len(grp)
                 mit = sum(1 for f in grp if f["outcome"]["mitigated"]) / max(n, 1) * 100
-                profs = [f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f]
+                profs = [
+                    f.get("v4_real_pnl_R", 0.0) for f in grp if "v4_real_result" in f
+                ]
                 ne = sum(profs) / len(profs) if profs else 0
-                L(f"| {sym:<8s} | {cat:<13s} | Q{q} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |")
+                L(
+                    f"| {sym:<8s} | {cat:<13s} | Q{q} | {n:>4d} | {mit:>5.1f} | {ne:>+6.2f}R |"
+                )
     L("")
 
     # ═══════════════════════════════════════════════════
@@ -1915,9 +2416,13 @@ def build_report(all_coin_data, results_data, fileobj=None):
     L("")
     L("## 16. Coin Bazli Esik Onerileri")
     L("")
-    L("Per-coin: optimal iptal bar (DR noktasi), FVG expiry, seans, ve en iyi kategori.")
+    L(
+        "Per-coin: optimal iptal bar (DR noktasi), FVG expiry, seans, ve en iyi kategori."
+    )
     L("")
-    L("| Coin | Session | BestCat | Expiry (bar) | CONS_DR | EXP_DR | REJ_DR | BestMonth | WorstMonth |")
+    L(
+        "| Coin | Session | BestCat | Expiry (bar) | CONS_DR | EXP_DR | REJ_DR | BestMonth | WorstMonth |"
+    )
     L("|---|---|---|---|---|---|---|---|---|")
     for sym, coin_data in all_coin_data.items():
         fvgs = coin_data["fvgs"]
@@ -1965,9 +2470,11 @@ def build_report(all_coin_data, results_data, fileobj=None):
         worst_m = min(month_means, key=month_means.get) if month_means else 0
 
         expiry_bars = coin_data.get("expiry_bars", cfg.GLOBAL_FVG_EXPIRY_BARS)
-        L(f"| {sym:<8s} | {session_label:<10s} | {best_cat:<12s} | {expiry_bars:>3d}b | "
-          f"{drs.get('CONSOLIDATION','N/A'):>5s} | {drs.get('EXPANSION','N/A'):>5s} | {drs.get('REJECTION','N/A'):>5s} | "
-          f"{best_m:>4d} | {worst_m:>4d} |")
+        L(
+            f"| {sym:<8s} | {session_label:<10s} | {best_cat:<12s} | {expiry_bars:>3d}b | "
+            f"{drs.get('CONSOLIDATION','N/A'):>5s} | {drs.get('EXPANSION','N/A'):>5s} | {drs.get('REJECTION','N/A'):>5s} | "
+            f"{best_m:>4d} | {worst_m:>4d} |"
+        )
     L("")
     L("---")
     L("*Auto-generated by fvg_profile_v5.py*")
@@ -1979,7 +2486,18 @@ def build_report(all_coin_data, results_data, fileobj=None):
 def compute_session_stats(trade_records, initial_balance):
     n = len(trade_records)
     if n == 0:
-        return {'total_trades': 0, 'wins': 0, 'be': 0, 'losses': 0, 'win_pct': 0, 'be_plus_pct': 0, 'profit_factor': 0, 'max_dd_pct': 0, 'avg_mae': 0, 'total_pnl': 0}
+        return {
+            "total_trades": 0,
+            "wins": 0,
+            "be": 0,
+            "losses": 0,
+            "win_pct": 0,
+            "be_plus_pct": 0,
+            "profit_factor": 0,
+            "max_dd_pct": 0,
+            "avg_mae": 0,
+            "total_pnl": 0,
+        }
     wins = sum(1 for r in trade_records if r["pnl"] > 0)
     be = sum(1 for r in trade_records if r["pnl"] == 0)
     losses = n - wins - be
@@ -2004,10 +2522,16 @@ def compute_session_stats(trade_records, initial_balance):
     avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r["pnl"] for r in trade_records)
     return {
-        'total_trades': n, 'win_pct': win_pct, 'be_plus_pct': be_plus_pct,
-        'wins': wins, 'be': be, 'losses': losses,
-        'profit_factor': profit_factor, 'max_dd_pct': max_dd_pct,
-        'avg_mae': avg_mae, 'total_pnl': total_pnl,
+        "total_trades": n,
+        "win_pct": win_pct,
+        "be_plus_pct": be_plus_pct,
+        "wins": wins,
+        "be": be,
+        "losses": losses,
+        "profit_factor": profit_factor,
+        "max_dd_pct": max_dd_pct,
+        "avg_mae": avg_mae,
+        "total_pnl": total_pnl,
     }
 
 
@@ -2018,7 +2542,9 @@ def main():
 
     # ── Load from pickle if --report-only ──
     if report_only:
-        dump_path = os.path.join(os.path.dirname(__file__), "..", "reports", "_v5_dump.pkl")
+        dump_path = os.path.join(
+            os.path.dirname(__file__), "..", "reports", "_v5_dump.pkl"
+        )
         if not os.path.exists(dump_path):
             print(f"  [HATA] {dump_path} bulunamadi, once simule et")
             return
@@ -2026,7 +2552,9 @@ def main():
             data = pickle.load(f)
         all_coin_data = data["all_coin_data"]
         results_data = data["results_data"]
-        print(f"  [DUMP] Yuklendi: {len(all_coin_data)} coin, {len(results_data)} result")
+        print(
+            f"  [DUMP] Yuklendi: {len(all_coin_data)} coin, {len(results_data)} result"
+        )
         _build_and_save_report(all_coin_data, results_data)
         print(f"  Total: {time.time()-t0:.0f}s")
         return
@@ -2034,12 +2562,16 @@ def main():
     print("=" * 100)
     print("  FVG PROFILE V5 — V5 Engine (derinlik+weekend+eşik testi)")
     print("  Session: MULTI_SESSION (her coin kendi optimal session'inda)")
-    print("  Engine: V4 (live-identical) — Sweep -> RSM -> Quality -> Entry -> Trailing")
+    print(
+        "  Engine: V4 (live-identical) — Sweep -> RSM -> Quality -> Entry -> Trailing"
+    )
     print(f"  Coinler: {', '.join(SYMBOLS_TO_TEST)}")
     print("=" * 100)
 
     # QuantLogger (same as analyzer_v4)
-    parquet_path = os.path.join(os.path.dirname(__file__), "..", "reports", "trades_multi_session.parquet")
+    parquet_path = os.path.join(
+        os.path.dirname(__file__), "..", "reports", "trades_multi_session.parquet"
+    )
     global _LOGGER
     _LOGGER = QuantLogger(parquet_path)
 
@@ -2051,27 +2583,49 @@ def main():
             profile = cfg.CBDR_RISK_MATRIX.get(sym, {})
             sname = profile.get("session", "DEFAULT")
             sh_info = get_session_hours(sym)
-            print(f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...", flush=True)
+            print(
+                f"\n  [{sym}] Session={sname} [{sh_info['start']:02d}:00-{sh_info['end']:02d}:00] Profil basliyor...",
+                flush=True,
+            )
             result = collect_fvg_profile(sym)
             # BUG 15 FIX: result her zaman 7-tuple döndürmeli (BUG 1 ile sağlandı)
             # Tuple check'i ile sağlamlaştırıldı.
             if result is None or (isinstance(result, tuple) and result[0] is None):
                 print(f"    [{sym}] VERI DOSYASI YOK VEYA ERKEN CIKIS", flush=True)
                 continue
-            daily_rows, wins, losses, trade_records, captured_fvgs, atr_vals, expiry_used = result
+            (
+                daily_rows,
+                wins,
+                losses,
+                trade_records,
+                captured_fvgs,
+                atr_vals,
+                expiry_used,
+            ) = result
             if len(daily_rows) < 1:
-                print(f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})", flush=True)
+                print(
+                    f"    [{sym}] YETERSIZ VERI (daily_rows={len(daily_rows)})",
+                    flush=True,
+                )
                 continue
 
             stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
             results_data.append((sym, stats, None, daily_rows, captured_fvgs))
-            all_coin_data[sym] = {"fvgs": captured_fvgs, "atr_vals": atr_vals, "total": len(captured_fvgs), "expiry_bars": expiry_used}
+            all_coin_data[sym] = {
+                "fvgs": captured_fvgs,
+                "atr_vals": atr_vals,
+                "total": len(captured_fvgs),
+                "expiry_bars": expiry_used,
+            }
 
-            print(f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
-                  f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                  f"WR={stats['win_pct']:.1f}%")
+            print(
+                f"    [{sym}] {stats['total_trades']} islem, {len(captured_fvgs)} FVG | "
+                f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
+                f"WR={stats['win_pct']:.1f}%"
+            )
         except Exception as e:
             import traceback
+
             print(f"    [{sym}] HATA: {e}")
             traceback.print_exc()
             continue
@@ -2083,20 +2637,26 @@ def main():
 
     # ── Summary ──
     print(f"\n{'='*100}")
-    print(f"  SUMMARY — MULTI_SESSION (per-coin optimal session)")
+    print("  SUMMARY — MULTI_SESSION (per-coin optimal session)")
     print(f"{'='*100}")
-    print(f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'FVG':>6}")
+    print(
+        f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'PnL':>10} {'FVG':>6}"
+    )
     print(f"  {'-'*70}")
     for sym, stats, _, _, fvgs in results_data:
-        print(f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
-              f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {len(fvgs):>6d}")
+        print(
+            f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
+            f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['total_pnl']:>+9.0f} {len(fvgs):>6d}"
+        )
     print(f"\n  Total time: {time.time()-t0:.0f}s")
 
     # ── Emergency dump (pickle) ──
     dump_path = os.path.join(os.path.dirname(__file__), "..", "reports", "_v5_dump.pkl")
     try:
         with open(dump_path, "wb") as f:
-            pickle.dump({"all_coin_data": all_coin_data, "results_data": results_data}, f)
+            pickle.dump(
+                {"all_coin_data": all_coin_data, "results_data": results_data}, f
+            )
         print(f"  [DUMP] {dump_path}")
     except Exception as e:
         print(f"  [DUMP] HATA: {e}")
@@ -2110,7 +2670,7 @@ def _build_and_save_report(all_coin_data, results_data):
     os.makedirs(report_dir, exist_ok=True)
     md_path = os.path.join(report_dir, "fvg_profile_v5.md")
 
-    print(f"  [RAPOR] build_report basliyor...", flush=True)
+    print("  [RAPOR] build_report basliyor...", flush=True)
     try:
         with open(md_path, "w", encoding="utf-8") as f:
             build_report(all_coin_data, results_data, f)
@@ -2121,6 +2681,7 @@ def _build_and_save_report(all_coin_data, results_data):
             print(f"\n  RAPOR YAZILAMADI: {md_path} mevcut degil")
     except Exception as e:
         import traceback
+
         print(f"\n  RAPOR YAZILAMADI: {e}")
         traceback.print_exc()
 

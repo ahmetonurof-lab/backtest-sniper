@@ -22,10 +22,6 @@ if _SNIPER_SRC not in sys.path:
 
 import config as cfg
 
-# --- V5 overrides ---
-cfg.MIN_REL_FVG_THRESHOLD = 0.40  # gap/ATR eşiği 0.50→0.40 (fee drag koruması)
-# Coin bazli expiry, _collect_fvg_profile_impl icinde set edilecek
-# ---
 from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
 from models import Bar
@@ -274,7 +270,7 @@ def _collect_fvg_profile_impl(symbol: str):
             rsm.on_sweep(
                 direction=ss.sweep_direction or "bullish",
                 level=ss.sweep_level or 0.0,
-                bar_index=sb,
+                bar_index=None,
             )
 
         if rsm.state_name == "SWEEP_DETECTED":
@@ -298,7 +294,7 @@ def _collect_fvg_profile_impl(symbol: str):
                 "top": v4_fvg.top if v4_fvg else 0,
                 "bottom": v4_fvg.bottom if v4_fvg else 0,
                 "size": (v4_fvg.top - v4_fvg.bottom) if v4_fvg else 0,
-                "bar_index": sb,
+                "bar_index": None,
                 "atr": atr,
                 "v4_rejected": None,
             }
@@ -518,7 +514,10 @@ def _collect_fvg_profile_impl(symbol: str):
                 if cur.low <= t["sl"]:
                     t["exit_price"] = t["sl"]
                     t["exit_bar"] = sb
-                    t["result"] = "SL"
+                    if t.get("trailing_count", 0) > 0 and t["sl"] > t["entry_price"]:
+                        t["result"] = "PROFIT_TRAIL"
+                    else:
+                        t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
                 elif cur.high >= t["tp"]:
@@ -531,7 +530,10 @@ def _collect_fvg_profile_impl(symbol: str):
                 if cur.high >= t["sl"]:
                     t["exit_price"] = t["sl"]
                     t["exit_bar"] = sb
-                    t["result"] = "SL"
+                    if t.get("trailing_count", 0) > 0 and t["sl"] < t["entry_price"]:
+                        t["result"] = "PROFIT_TRAIL"
+                    else:
+                        t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
                 elif cur.low <= t["tp"]:
@@ -554,12 +556,18 @@ def _collect_fvg_profile_impl(symbol: str):
                 t["fee"] = round(total_fee, 2)
                 t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
+                risk_usd_rec = (
+                    abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                    if t["initial_sl"]
+                    else 0
+                )
                 trade_records.append(
                     {
                         "result": t["result"],
                         "pnl": t["pnl"],
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
+                        "risk_usd": risk_usd_rec,
                     }
                 )
                 if t["pnl"] > 0:
@@ -579,7 +587,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
                     f_["v4_real_hit_target"] = t["result"] == "TP"
-                    f_["v4_real_hit_stop"] = t["result"] == "SL"
+                    f_["v4_real_hit_stop"] = t["result"] in ("LOSS", "PROFIT_TRAIL")
                 if _LOGGER is not None:
                     risk_usd = (
                         abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
@@ -636,12 +644,18 @@ def _collect_fvg_profile_impl(symbol: str):
                 t["fee"] = round(total_fee, 2)
                 t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
+                risk_usd_rec = (
+                    abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                    if t["initial_sl"]
+                    else 0
+                )
                 trade_records.append(
                     {
                         "result": t["result"],
                         "pnl": t["pnl"],
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
+                        "risk_usd": risk_usd_rec,
                     }
                 )
                 if t["pnl"] > 0:
@@ -661,7 +675,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     )
                     f_["v4_real_pnl_R"] = (t["pnl"] / risk_usd) if risk_usd > 0 else 0.0
                     f_["v4_real_hit_target"] = t["result"] == "TP"
-                    f_["v4_real_hit_stop"] = t["result"] == "SL"
+                    f_["v4_real_hit_stop"] = t["result"] in ("LOSS", "PROFIT_TRAIL")
                 if _LOGGER is not None:
                     risk_usd = (
                         abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
@@ -739,28 +753,29 @@ def _collect_fvg_profile_impl(symbol: str):
 
 # ─── Istatistik Hesaplama ────────────────────────────────────
 def compute_session_stats(trade_records, initial_balance, daily_rows=None):
-    from collections import defaultdict
-
     n = len(trade_records)
     if n == 0:
         return {
             "total_trades": 0,
-            "wins": 0,
-            "be": 0,
-            "losses": 0,
-            "win_pct": 0,
-            "be_plus_pct": 0,
+            "tp_pct": 0,
+            "profit_trail_pct": 0,
+            "loss_pct": 0,
+            "positive_exit_pct": 0,
             "profit_factor": 0,
-            "max_dd_pct": 0,
             "sharpe": 0,
-            "avg_mae": 0,
+            "max_dd_pct": 0,
             "total_pnl": 0,
+            "total_fee": 0,
+            "pnl_per_fee": 0,
+            "score": 0,
         }
-    wins = sum(1 for r in trade_records if r["pnl"] > 0)
-    be = sum(1 for r in trade_records if r["pnl"] == 0)
-    losses = n - wins - be
-    win_pct = wins / n * 100 if n > 0 else 0
-    be_plus_pct = (wins + be) / n * 100 if n > 0 else 0
+    tp = sum(1 for r in trade_records if r["result"] == "TP")
+    profit_trail = sum(1 for r in trade_records if r["result"] == "PROFIT_TRAIL")
+    loss = sum(1 for r in trade_records if r["result"] in ("LOSS", "OPEN"))
+    tp_pct = tp / n * 100
+    profit_trail_pct = profit_trail / n * 100
+    loss_pct = loss / n * 100
+    positive_exit_pct = tp_pct + profit_trail_pct
     gross_profit = sum(r["pnl"] for r in trade_records if r["pnl"] > 0) or 0
     gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0))
     profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
@@ -776,39 +791,41 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
             max_dd = dd
     peak_balance = initial_balance + peak
     max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
-    # Sharpe: gunluk PnL bazli yilliklis (trade olmayan gunler 0)
-    daily_pnl = defaultdict(float)
+    # Trade-return based Sharpe (non-annualized, RFR=0)
+    trade_returns = []
     for r in trade_records:
-        daily_pnl[r.get("day_key", "")] += r["pnl"]
-    if daily_rows is not None:
-        for d in daily_rows:
-            dk = d["day_key"] if isinstance(d, dict) else d
-            if dk not in daily_pnl:
-                daily_pnl[dk] = 0.0
-    dly = list(daily_pnl.values())
-    if len(dly) > 1:
-        dly_mean = sum(dly) / len(dly)
-        daily_std = (sum((x - dly_mean) ** 2 for x in dly) / len(dly)) ** 0.5
-        sharpe = (dly_mean / daily_std) * (365**0.5) if daily_std > 0 else 0
+        ru = r.get("risk_usd", 0)
+        if ru > 0:
+            trade_returns.append(r["pnl"] / ru)
+    if len(trade_returns) > 1:
+        tr_mean = sum(trade_returns) / len(trade_returns)
+        tr_std = (
+            sum((x - tr_mean) ** 2 for x in trade_returns) / len(trade_returns)
+        ) ** 0.5
+        sharpe = tr_mean / tr_std if tr_std > 0 else 0
     else:
         sharpe = 0
-    losses_list = [r["pnl"] for r in trade_records if r["pnl"] < 0]
-    avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
     total_pnl = sum(r["pnl"] for r in trade_records)
     total_fee = sum(r.get("fee", 0) for r in trade_records)
+    pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
+    score = (
+        (sharpe * profit_factor * positive_exit_pct) / (1 + max_dd_pct)
+        if max_dd_pct >= 0
+        else 0
+    )
     return {
         "total_trades": n,
-        "win_pct": win_pct,
-        "be_plus_pct": be_plus_pct,
-        "wins": wins,
-        "be": be,
-        "losses": losses,
+        "tp_pct": tp_pct,
+        "profit_trail_pct": profit_trail_pct,
+        "loss_pct": loss_pct,
+        "positive_exit_pct": positive_exit_pct,
         "profit_factor": profit_factor,
         "max_dd_pct": max_dd_pct,
         "sharpe": sharpe,
-        "avg_mae": avg_mae,
         "total_pnl": total_pnl,
         "total_fee": total_fee,
+        "pnl_per_fee": pnl_per_fee,
+        "score": score,
     }
 
 
@@ -833,7 +850,7 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
 
     import config as cfg
 
-    cfg.MIN_REL_FVG_THRESHOLD = 0.40
+    cfg.MIN_REL_FVG_THRESHOLD = 0.50
 
     # Import engine from same module
     from analyzer_v5 import collect_fvg_profile, compute_session_stats
@@ -910,10 +927,13 @@ def main():
                     trade_records, cfg.INITIAL_BALANCE, daily_rows
                 )
                 results_data.append((sym, stats, daily_rows, rejection_counts))
+                tp_c = int(stats["tp_pct"] * stats["total_trades"] / 100)
+                pt_c = int(stats["profit_trail_pct"] * stats["total_trades"] / 100)
+                ls_c = int(stats["loss_pct"] * stats["total_trades"] / 100)
                 print(
                     f"    [{sym}] {stats['total_trades']} islem | "
-                    f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                    f"WR={stats['win_pct']:.1f}%"
+                    f"TP:{tp_c} PTrail:{pt_c} LOSS:{ls_c} | "
+                    f"PE={stats['positive_exit_pct']:.1f}%"
                 )
             except Exception as e:
                 import traceback
@@ -944,10 +964,13 @@ def main():
                 results_data.append(
                     (sym, stats, res["daily_rows"], res["rejection_counts"])
                 )
+                tp_c = int(stats["tp_pct"] * stats["total_trades"] / 100)
+                pt_c = int(stats["profit_trail_pct"] * stats["total_trades"] / 100)
+                ls_c = int(stats["loss_pct"] * stats["total_trades"] / 100)
                 print(
                     f"  {sym}: {stats['total_trades']} islem | "
-                    f"WIN:{stats['wins']} BE:{stats['be']} LOSS:{stats['losses']} | "
-                    f"WR={stats['win_pct']:.1f}% net PnL={stats['total_pnl']:+0f}",
+                    f"TP:{tp_c} PTrail:{pt_c} LOSS:{ls_c} | "
+                    f"PE={stats['positive_exit_pct']:.1f}% net PnL={stats['total_pnl']:+0f}",
                     flush=True,
                 )
 
@@ -961,33 +984,23 @@ def main():
     print("  SUMMARY")
     print(f"{'=' * 100}")
 
-    # Collect all unique rejection keys across symbols, aggregate SHOULD_TRADE_*
-    all_keys = set()
-    for _, _, _, rej in results_data:
-        for k in rej:
-            if k.startswith("SHOULD_TRADE_"):
-                all_keys.add("SHOULD_TRADE")
-            elif k not in ("ENTERED",):
-                all_keys.add(k)
-    all_reasons = sorted(all_keys)
+    def fvg_created(rej):
+        total = 0
+        for k, v in rej.items():
+            if not k.startswith("SHOULD_TRADE_"):
+                total += v
+        return total
 
-    hdr = f"  {'Symbol':<10} {'Trades':>7} {'WIN':>6} {'BE':>5} {'LOSS':>6} {'WR%':>6} {'BE+%':>6} {'PF':>6} {'MaxDD%':>7} {'Sharpe':>7} {'Fee':>10} {'net PnL':>10} {'ENTERED':>7}"
-    for r in all_reasons:
-        hdr += f" {r[:10]:>10}"
+    hdr = f"  {'Symbol':<10} {'Trades':>7} {'TP%':>6} {'PTrail%':>8} {'Loss%':>7} {'PF':>6} {'Sharpe':>7} {'MaxDD%':>7} {'Fee':>10} {'NetPnL':>10} {'PnL/Fee':>8} {'FVGCr':>6} {'FVGEnt':>6} {'MinRisk':>7} {'Score':>7}"
     print(hdr)
     print(f"  {'-' * len(hdr)}")
 
-    def get_rej(rej, key):
-        if key == "SHOULD_TRADE":
-            return sum(v for k, v in rej.items() if k.startswith("SHOULD_TRADE_"))
-        return rej.get(key, 0)
-
     for sym, stats, _, rej in results_data:
         entered = rej.get("ENTERED", 0)
-        row = f"  {sym:<10} {stats['total_trades']:>7} {stats['wins']:>6} {stats['be']:>5} {stats['losses']:>6} "
-        row += f"{stats['win_pct']:>5.1f}% {stats['be_plus_pct']:>5.1f}% {stats['profit_factor']:>5.2f} {stats['max_dd_pct']:>6.1f}% {stats['sharpe']:>6.2f} {stats['total_fee']:>+9.0f} {stats['total_pnl']:>+9.0f} {entered:>7}"
-        for r in all_reasons:
-            row += f" {get_rej(rej, r):>10}"
+        fvg_c = fvg_created(rej)
+        min_risk = rej.get("MIN_RISK_DIST", 0)
+        row = f"  {sym:<10} {stats['total_trades']:>7} {stats['tp_pct']:>5.1f}% {stats['profit_trail_pct']:>7.1f}% {stats['loss_pct']:>6.1f}% "
+        row += f"{stats['profit_factor']:>5.2f} {stats['sharpe']:>6.3f} {stats['max_dd_pct']:>6.1f}% {stats['total_fee']:>+9.0f} {stats['total_pnl']:>+9.0f} {stats['pnl_per_fee']:>7.2f} {fvg_c:>6} {entered:>6} {min_risk:>7} {stats['score']:>6.1f}"
         print(row)
 
     total_trades = sum(s["total_trades"] for _, s, _, _ in results_data)
@@ -1004,18 +1017,16 @@ def main():
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     with open(rpt_path, "a") as f:
         f.write(f"\n---\n# analyzer_v5 Summary — {ts}\n\n")
-        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'WIN':>6} | {'BE':>5} | {'LOSS':>6} | {'WR%':>6} | {'BE+%':>6} | {'PF':>6} | {'MaxDD%':>7} | {'Sharpe':>7} | {'Fee':>10} | {'net PnL':>10} | {'ENTERED':>7} |"
-        for r in all_reasons:
-            hdr2 += f" {r:<10} |"
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'TP%':>6} | {'PTrail%':>8} | {'Loss%':>7} | {'PF':>6} | {'Sharpe':>7} | {'MaxDD%':>7} | {'Fee':>10} | {'NetPnL':>10} | {'PnL/Fee':>8} | {'FVGCr':>6} | {'FVGEnt':>6} | {'MinRisk':>7} | {'Score':>7} |"
         f.write(hdr2 + "\n")
-        sep = "|" + "---|" * hdr2.count("|")
+        sep = "|" + "---|" * (hdr2.count("|") - 1)
         f.write(sep + "\n")
         for sym, stats, _, rej in results_data:
             entered = rej.get("ENTERED", 0)
-            line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['wins']:>6} | {stats['be']:>5} | {stats['losses']:>6} | "
-            line += f"{stats['win_pct']:>5.1f}% | {stats['be_plus_pct']:>5.1f}% | {stats['profit_factor']:>5.2f} | {stats['max_dd_pct']:>6.1f}% | {stats['sharpe']:>6.2f} | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {entered:>7} |"
-            for r in all_reasons:
-                line += f" {get_rej(rej, r):>10} |"
+            fvg_c = fvg_created(rej)
+            min_risk = rej.get("MIN_RISK_DIST", 0)
+            line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['tp_pct']:>5.1f}% | {stats['profit_trail_pct']:>7.1f}% | {stats['loss_pct']:>6.1f}% | "
+            line += f"{stats['profit_factor']:>5.2f} | {stats['sharpe']:>6.3f} | {stats['max_dd_pct']:>6.1f}% | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {stats['pnl_per_fee']:>7.2f} | {fvg_c:>6} | {entered:>6} | {min_risk:>7} | {stats['score']:>6.1f} |"
             f.write(line + "\n")
         f.write(
             f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}\n"

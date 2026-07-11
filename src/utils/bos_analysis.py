@@ -1,6 +1,9 @@
 import sys
 import os
 
+import config as cfg
+from analyzer_v5 import _collect_fvg_profile_impl as run
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(
     0,
@@ -11,11 +14,9 @@ sys.path.insert(
 os.environ["SNIPER_OUTPUT_DIR"] = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "output"
 )
-import config as cfg
 
-cfg.MIN_REL_FVG_THRESHOLD = 0.40
+cfg.MIN_REL_FVG_THRESHOLD = 0.50
 
-from analyzer_v5 import _collect_fvg_profile_impl as run
 
 print("BTCUSDT calisiyor...", flush=True)
 result = run("BTCUSDT")
@@ -30,7 +31,7 @@ entered = [f for f in captured_fvgs if f.get("v4_rejected") == "ENTERED"]
 print(f"Entered trades: {len(entered)}", flush=True)
 
 # Debug: check v4_real_result values
-results = {}
+results: dict = {}
 for f in entered:
     r = f.get("v4_real_result", "MISSING")
     results[r] = results.get(r, 0) + 1
@@ -49,7 +50,7 @@ sl_wins = sum(
 )
 print(f"TP ile win: {tp_wins}, SL (trailing) ile win: {sl_wins}", flush=True)
 
-groups = {"BOS_ONLY": [], "MSS_ONLY": [], "BOTH": [], "NONE": []}
+groups: dict = {"BOS_ONLY": [], "MSS_ONLY": [], "BOTH": [], "NONE": []}
 for f in entered:
     g = f.get("bos_mss", {}).get("group", "NONE")
     groups[g].append(f)

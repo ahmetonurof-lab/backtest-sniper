@@ -1,5 +1,5 @@
 """
-quant_logger.py — Parquet tabanli trade logger.
+quant_logger.py â€” Parquet tabanli trade logger.
 Buffer (bellek) mantigiyla calisir: her islemde diske yazmaz,
 test bitince tek seferde yuksek sikistirmayla .parquet dosyasina gomer.
 
@@ -8,17 +8,17 @@ Kullanim:
   logger.log_trade({...})   # her trade kapanisinda
   logger.save_and_clear()    # test sonunda
 """
+
 import os
 import pandas as pd
-from datetime import datetime
 
 
 class QuantLogger:
-    """Buffer'li Parquet logger — backtest trade'lerini toplu kaydeder."""
+    """Buffer'li Parquet logger â€” backtest trade'lerini toplu kaydeder."""
 
     def __init__(self, filepath: str):
         self.filepath = filepath
-        self.buffer = []
+        self.buffer: list = []
 
     def log_trade(self, trade_data: dict):
         """Backtest motoru her trade kapandiginda cagirir."""
@@ -33,9 +33,17 @@ class QuantLogger:
         df = pd.DataFrame(self.buffer)
 
         # Zorunlu alanlari kontrol et
-        required_cols = ["symbol", "session", "side", "entry_time",
-                         "entry_price", "exit_price", "result",
-                         "final_pnl_usd", "risk_usd"]
+        required_cols = [
+            "symbol",
+            "session",
+            "side",
+            "entry_time",
+            "entry_price",
+            "exit_price",
+            "result",
+            "final_pnl_usd",
+            "risk_usd",
+        ]
         for col in required_cols:
             if col not in df.columns:
                 df[col] = None
@@ -47,7 +55,11 @@ class QuantLogger:
             df["is_cashflow_positive"] = df["final_pnl_usd"] > 0.0
 
         # 2. R-Multiple (motor hesaplamadiysa)
-        if "r_multiple" not in df.columns and "final_pnl_usd" in df.columns and "risk_usd" in df.columns:
+        if (
+            "r_multiple" not in df.columns
+            and "final_pnl_usd" in df.columns
+            and "risk_usd" in df.columns
+        ):
             df["r_multiple"] = df.apply(
                 lambda row: row["final_pnl_usd"] / row["risk_usd"]
                 if row["risk_usd"] not in (0, None) and pd.notna(row["risk_usd"])
@@ -66,7 +78,11 @@ class QuantLogger:
             existing_df = pd.read_parquet(self.filepath)
             df = pd.concat([existing_df, df], ignore_index=True)
 
-        df.to_parquet(self.filepath, engine="pyarrow", compression="snappy", index=False)
+        df.to_parquet(
+            self.filepath, engine="pyarrow", compression="snappy", index=False
+        )
         n = len(self.buffer)
-        print(f"  [QuantLogger] {n} islem -> '{self.filepath}' (toplam {len(df)} satir)")
+        print(
+            f"  [QuantLogger] {n} islem -> '{self.filepath}' (toplam {len(df)} satir)"
+        )
         self.buffer.clear()
