@@ -357,7 +357,7 @@ def _collect_fvg_profile_impl(symbol: str):
             # ── FVG quality filter ──
             quality_mult = 1.0
             if tf is not None:
-                if not is_high_quality_fvg(tf.top - tf.bottom, atr):
+                if not is_high_quality_fvg(tf.top - tf.bottom, atr, symbol):
                     quality_mult = 0.0
                     classic_fvg["v4_rejected"] = "FVG_QUALITY"
                 else:
