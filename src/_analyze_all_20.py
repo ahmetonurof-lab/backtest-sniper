@@ -11,7 +11,11 @@ Paralel mod: coin'leri ayri sureclerde isler. Varsayilan: worker=4.
   python _analyze_all_20.py --workers 4
   python _analyze_all_20.py --serial   (paralelsiz, eski davranis)
 """
-import os, sys, math, time
+
+import os
+import sys
+import time
+import concurrent.futures
 from collections import defaultdict
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,15 +24,35 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── 20 coin ──
 ALL_SYMBOLS = [
-    "BTCUSDT", "BNBUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT",
-    "XRPUSDT", "ATOMUSDT", "ADAUSDT", "APTUSDT", "DOTUSDT",
-    "NEARUSDT", "ETHUSDT", "SUIUSDT",
-    "OPUSDT", "ARBUSDT", "INJUSDT", "ALGOUSDT",
-    "AAVEUSDT", "UNIUSDT", "DOGEUSDT",
+    "BTCUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "XRPUSDT",
+    "ATOMUSDT",
+    "ADAUSDT",
+    "APTUSDT",
+    "DOTUSDT",
+    "NEARUSDT",
+    "ETHUSDT",
+    "SUIUSDT",
+    "OPUSDT",
+    "ARBUSDT",
+    "INJUSDT",
+    "ALGOUSDT",
+    "AAVEUSDT",
+    "UNIUSDT",
+    "DOGEUSDT",
 ]
 
 DEFAULT_BUCKET_BOUNDS = [
-    (0.0, 1.0), (1.0, 1.5), (1.5, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 999.0)
+    (0.0, 1.0),
+    (1.0, 1.5),
+    (1.5, 2.0),
+    (2.0, 3.0),
+    (3.0, 5.0),
+    (5.0, 999.0),
 ]
 
 
@@ -37,12 +61,15 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
     """Bir sembol icin Adim 1 (session fit) + Adim 2 (bucket) calistirir.
     Ayri bir ProcessPoolExecutor worker'inda calisacagi icin
     tum import/config kendi icinde kurar."""
-    import os, sys, math, time
+    import os
+    import sys
     from collections import defaultdict
+
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    print(f"  [{sym}] worker started", flush=True)
 
     _dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, _dir)
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     class _cfg:
         INITIAL_BALANCE = 10000.0
@@ -65,17 +92,23 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         ASIA_DEAD_THRESHOLD_PCT = 0.3
         CBDR_SWEEP_ATR_TOLERANCE_MULT = 0.5
         CBDR_SWEEP_DEFAULT_TOLERANCE = 10.0
-        CBDR_RISK_MATRIX = {}
+        CBDR_RISK_MATRIX: dict[str, dict] = {}
+
     sys.modules["config"] = _cfg
 
     from analyze_cbdr_thresholds import (
-        collect_daily_data, compute_session_stats,
-        analyze_bucket_scaling, wilson_lower, wilson_upper,
-        auto_multiplier, SESSION_CONFIGS
+        collect_daily_data,
+        compute_session_stats,
+        wilson_lower,
+        wilson_upper,
+        auto_multiplier,
+        SESSION_CONFIGS,
     )
 
-    csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv")
-    if not os.path.isfile(csv_path):
+    feather_path = os.path.join(
+        os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.feather"
+    )
+    if not os.path.isfile(feather_path):
         return None
 
     # ── Adim 1: Session fit ──
@@ -89,7 +122,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         daily_rows, wins, losses, trade_records, rejection_counts = r
         stats = compute_session_stats(
             [(t["trade_id"], sname, t["pnl"], t["result"]) for t in trade_records],
-            _cfg.INITIAL_BALANCE
+            _cfg.INITIAL_BALANCE,
         )
         stats["trades"] = len(trade_records)
         stats["rejections"] = dict(rejection_counts)
@@ -118,7 +151,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         # bucket scaling
         valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
         if valid:
-            bucket_data = defaultdict(lambda: {"trades": 0, "wins": 0})
+            bucket_data: dict[tuple[float, float], dict[str, int]] = defaultdict(lambda: {"trades": 0, "wins": 0})
             for d in valid:
                 cbdr_w = d["cbdr_pct"]
                 for lo, hi in DEFAULT_BUCKET_BOUNDS:
@@ -135,14 +168,19 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
                 wl = wilson_lower(w, n) * 100
                 wh = wilson_upper(w, n) * 100
                 mult = auto_multiplier(wr * 100, wl, n)
-                bucket_stats.append({
-                    "lo": lo, "hi": hi, "mult": mult,
-                    "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
-                    "trades": n, "wins": w,
-                    "wr": round(wr * 100, 1),
-                    "wilson_lower": round(wl, 1),
-                    "wilson_upper": round(wh, 1),
-                })
+                bucket_stats.append(
+                    {
+                        "lo": lo,
+                        "hi": hi,
+                        "mult": mult,
+                        "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
+                        "trades": n,
+                        "wins": w,
+                        "wr": round(wr * 100, 1),
+                        "wilson_lower": round(wl, 1),
+                        "wilson_upper": round(wh, 1),
+                    }
+                )
             bucket_result = bucket_stats
 
     return {
@@ -159,16 +197,22 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
 def _run_serial(workers: int):
     """Coin'leri sirayla isle (eski davranis)."""
     from analyze_cbdr_thresholds import (
-        collect_daily_data, compute_session_stats,
-        analyze_bucket_scaling, wilson_lower, wilson_upper,
-        auto_multiplier, SESSION_CONFIGS
+        collect_daily_data,
+        compute_session_stats,
+        wilson_lower,
+        wilson_upper,
+        auto_multiplier,
+        SESSION_CONFIGS,
     )
+
     session_best = {}
     bucket_results = {}
     all_session_stats = {}
 
     for sym in ALL_SYMBOLS:
-        csv_path = os.path.join(os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv")
+        csv_path = os.path.join(
+            os.path.dirname(__file__), "data", "daily", f"{sym}_1m_raw.csv"
+        )
         if not os.path.isfile(csv_path):
             print(f"  {sym}: VERI YOK, atlaniyor", flush=True)
             continue
@@ -184,7 +228,7 @@ def _run_serial(workers: int):
             daily_rows, wins, losses, trade_records, rejection_counts = r
             stats = compute_session_stats(
                 [(t["trade_id"], sname, t["pnl"], t["result"]) for t in trade_records],
-                10000.0
+                10000.0,
             )
             stats["trades"] = len(trade_records)
             stats["rejections"] = dict(rejection_counts)
@@ -194,11 +238,13 @@ def _run_serial(workers: int):
             pnl = abs(stats["total_pnl"])
             dd = stats["max_dd_pct"] if stats["max_dd_pct"] > 0 else 1
             skor = (bep * pf * pnl) / dd
-            print(f"    {sname}: {stats['total_trades']} trade | "
-                  f"WR={stats['win_pct']:.1f}% BE+={bep:.1f}% "
-                  f"PF={pf:.2f} DD={stats['max_dd_pct']:.1f}% "
-                  f"Skor={skor:.0f} PnL={stats['total_pnl']:+.0f}",
-                  flush=True)
+            print(
+                f"    {sname}: {stats['total_trades']} trade | "
+                f"WR={stats['win_pct']:.1f}% BE+={bep:.1f}% "
+                f"PF={pf:.2f} DD={stats['max_dd_pct']:.1f}% "
+                f"Skor={skor:.0f} PnL={stats['total_pnl']:+.0f}",
+                flush=True,
+            )
 
         if not results:
             continue
@@ -216,10 +262,13 @@ def _run_serial(workers: int):
         best_score, best_sname, best_st = ranked[0]
 
         note = " (YENI)" if sym not in ["DEFAULT"] else " (AYNI)"
-        print(f"  => {sym}: BEST={best_sname} "
-              f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
-              f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
-              f"Skor={best_score:.0f}{note}", flush=True)
+        print(
+            f"  => {sym}: BEST={best_sname} "
+            f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
+            f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
+            f"Skor={best_score:.0f}{note}",
+            flush=True,
+        )
         session_best[sym] = best_sname
 
         # Adim 2 (cache'den)
@@ -228,7 +277,9 @@ def _run_serial(workers: int):
             daily_rows, wins, losses, trade_records, _ = cached
             valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
             if valid:
-                bucket_data = defaultdict(lambda: {"trades": 0, "wins": 0})
+                bucket_data: dict[tuple[float, float], dict[str, int]] = defaultdict(
+                    lambda: {"trades": 0, "wins": 0}
+                )
                 for d in valid:
                     cbdr_w = d["cbdr_pct"]
                     for lo, hi in DEFAULT_BUCKET_BOUNDS:
@@ -245,26 +296,37 @@ def _run_serial(workers: int):
                     wl = wilson_lower(w, n) * 100
                     wh = wilson_upper(w, n) * 100
                     mult = auto_multiplier(wr * 100, wl, n)
-                    bucket_stats.append({
-                        "lo": lo, "hi": hi, "mult": mult,
-                        "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
-                        "trades": n, "wins": w,
-                        "wr": round(wr * 100, 1),
-                        "wilson_lower": round(wl, 1),
-                        "wilson_upper": round(wh, 1),
-                    })
+                    bucket_stats.append(
+                        {
+                            "lo": lo,
+                            "hi": hi,
+                            "mult": mult,
+                            "label": f"({lo:.1f}, {hi:.1f}, {mult:.1f})",
+                            "trades": n,
+                            "wins": w,
+                            "wr": round(wr * 100, 1),
+                            "wilson_lower": round(wl, 1),
+                            "wilson_upper": round(wh, 1),
+                        }
+                    )
                 bucket_results[sym] = bucket_stats
                 print(f"  {sym} ({best_sname}): {len(bucket_stats)} bucket", flush=True)
                 for b in bucket_stats:
-                    mult_str = f"{b['mult']:.1f}x" if b['mult'] > 0 else "ZEHIRLI"
-                    print(f"    {b['label']:<25} n={b['trades']:>4} WR={b['wr']:>5.1f}% "
-                          f"CI=[{b['wilson_lower']:>5.1f}%,{b['wilson_upper']:>5.1f}%] -> {mult_str}", flush=True)
+                    mult = float(b["mult"])
+                    mult_str = f"{mult:.1f}x" if mult > 0 else "ZEHIRLI"
+                    print(
+                        f"    {b['label']:<25} n={b['trades']:>4} WR={b['wr']:>5.1f}% "
+                        f"CI=[{b['wilson_lower']:>5.1f}%,{b['wilson_upper']:>5.1f}%] -> {mult_str}",
+                        flush=True,
+                    )
 
     return session_best, bucket_results, all_session_stats
 
 
 # ─── Config ciktisi (Adim 3) ────────────────────────────────
-def _print_config(session_best: dict, bucket_results: dict, all_session_stats: dict, elapsed: float):
+def _print_config(
+    session_best: dict, bucket_results: dict, all_session_stats: dict, elapsed: float
+):
     """Adim 3: Konsola config ciktisini basar."""
     print("\n[ADIM 3] Config ciktisi", flush=True)
     print("=" * 100)
@@ -275,11 +337,11 @@ def _print_config(session_best: dict, bucket_results: dict, all_session_stats: d
         print(f'    "{sym}",')
     print("]")
 
-    print(f"\n# SESSION DAGILIMI")
+    print("\n# SESSION DAGILIMI")
     for sym, sname in sorted(session_best.items(), key=lambda x: x[1]):
         print(f"# {sym}: {sname}")
 
-    print(f"\n# CBDR_RISK_MATRIX")
+    print("\n# CBDR_RISK_MATRIX")
     print("CBDR_RISK_MATRIX: dict[str, dict] = {")
     for sym in ALL_SYMBOLS:
         if sym not in session_best:
@@ -288,20 +350,22 @@ def _print_config(session_best: dict, bucket_results: dict, all_session_stats: d
         bs = bucket_results.get(sym)
         print(f'    "{sym}": {{')
         print(f'        "session": "{sname}",')
-        print(f'        "weekend_bonus": False,')
-        print(f'        "weekend_mult": 1.0,')
-        print(f'        "buckets": [')
+        print('        "weekend_bonus": False,')
+        print('        "weekend_mult": 1.0,')
+        print('        "buckets": [')
         if bs:
             for b in bs:
-                print(f'            {b["label"]},  # n={b["trades"]} WR={b["wr"]:.1f}% CI=[{b["wilson_lower"]:.1f}%,{b["wilson_upper"]:.1f}%]')
+                print(
+                    f'            {b["label"]},  # n={b["trades"]} WR={b["wr"]:.1f}% CI=[{b["wilson_lower"]:.1f}%,{b["wilson_upper"]:.1f}%]'
+                )
         else:
-            print(f'            (0.0, 1.0, 1.0),')
-            print(f'            (1.0, 999.0, 1.0),')
-        print(f'        ],')
-        print(f'    }},')
+            print("            (0.0, 1.0, 1.0),")
+            print("            (1.0, 999.0, 1.0),")
+        print("        ],")
+        print("    },")
     print("}")
 
-    print(f"\n# FVG_SIZE_MAP")
+    print("\n# FVG_SIZE_MAP")
     print("FVG_SIZE_MAP: dict[str, float] = {")
     for sym in ALL_SYMBOLS:
         print(f'    "{sym}": 0.0,  # TODO: futures ATR bazli hesapla')
@@ -315,10 +379,13 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="20 coin futures analizi")
-    parser.add_argument("--workers", type=int, default=4,
-                        help="Paralel worker sayisi (0=serial, default=4)")
-    parser.add_argument("--serial", action="store_true",
-                        help="Serial mod (paralelsiz)")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Paralel worker sayisi (0=serial, default=4)",
+    )
+    parser.add_argument("--serial", action="store_true", help="Serial mod (paralelsiz)")
     args = parser.parse_args()
 
     use_serial = args.serial or args.workers == 0
@@ -333,7 +400,7 @@ def main():
     if not use_serial:
         print(f"  Mod: PARALEL ({n_workers} worker)")
     else:
-        print(f"  Mod: SERIAL")
+        print("  Mod: SERIAL")
     print("=" * 100)
 
     if use_serial:
@@ -341,10 +408,9 @@ def main():
         _print_config(session_best, bucket_results, None, time.time() - t_start)
         return
 
-    # ─── Paralel mod ──────────────────────────────────────────
-    import concurrent.futures
-
-    print(f"\n{len(ALL_SYMBOLS)} coin {n_workers} worker ile isleniyor...\n", flush=True)
+    print(
+        f"\n{len(ALL_SYMBOLS)} coin {n_workers} worker ile isleniyor...\n", flush=True
+    )
 
     session_best = {}
     bucket_results = {}
@@ -352,7 +418,14 @@ def main():
     errors = 0
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-        fut_map = {executor.submit(_analyze_one_symbol, sym, n_workers): sym for sym in ALL_SYMBOLS}
+        print(
+            f"  {len(ALL_SYMBOLS)} worker(s) submitted, waiting for first result...",
+            flush=True,
+        )
+        fut_map = {
+            executor.submit(_analyze_one_symbol, sym, n_workers): sym
+            for sym in ALL_SYMBOLS
+        }
         for future in concurrent.futures.as_completed(fut_map):
             sym = fut_map[future]
             try:
@@ -382,28 +455,40 @@ def main():
                 pnl = abs(st["total_pnl"])
                 dd = st["max_dd_pct"] if st["max_dd_pct"] > 0 else 1
                 skor = (bep * pf * pnl) / dd
-                print(f"  {sym:>8} {sname:<12} {st['total_trades']:>5} trade | "
-                      f"WR={st['win_pct']:>4.1f}% BE+={bep:.1f}% "
-                      f"PF={pf:.2f} DD={st['max_dd_pct']:.1f}% "
-                      f"Skor={skor:.0f} PnL={st['total_pnl']:+.0f}",
-                      flush=True)
+                print(
+                    f"  {sym:>8} {sname:<12} {st['total_trades']:>5} trade | "
+                    f"WR={st['win_pct']:>4.1f}% BE+={bep:.1f}% "
+                    f"PF={pf:.2f} DD={st['max_dd_pct']:.1f}% "
+                    f"Skor={skor:.0f} PnL={st['total_pnl']:+.0f}",
+                    flush=True,
+                )
 
-            print(f"  => {sym}: BEST={best_sname} "
-                  f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
-                  f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
-                  f"Skor={best_score:.0f}", flush=True)
+            print(
+                f"  => {sym}: BEST={best_sname} "
+                f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
+                f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
+                f"Skor={best_score:.0f}",
+                flush=True,
+            )
 
             # Bucket detaylari
             bs = result.get("bucket_stats")
             if bs:
                 for b in bs:
-                    mult_str = f"{b['mult']:.1f}x" if b['mult'] > 0 else "ZEHIRLI"
-                    print(f"         {b['label']:<25} n={b['trades']:>4} WR={b['wr']:>5.1f}% "
-                          f"CI=[{b['wilson_lower']:>5.1f}%,{b['wilson_upper']:>5.1f}%] -> {mult_str}", flush=True)
+                    mult = float(b["mult"])
+                    mult_str = f"{mult:.1f}x" if mult > 0 else "ZEHIRLI"
+                    print(
+                        f"         {b['label']:<25} n={b['trades']:>4} WR={b['wr']:>5.1f}% "
+                        f"CI=[{b['wilson_lower']:>5.1f}%,{b['wilson_upper']:>5.1f}%] -> {mult_str}",
+                        flush=True,
+                    )
 
             completed += 1
             done_ok = completed - errors
-            print(f"  --- {done_ok}/{len(ALL_SYMBOLS)} basarili ({errors} hata) ---\n", flush=True)
+            print(
+                f"  --- {done_ok}/{len(ALL_SYMBOLS)} basarili ({errors} hata) ---\n",
+                flush=True,
+            )
 
     _print_config(session_best, bucket_results, None, time.time() - t_start)
 

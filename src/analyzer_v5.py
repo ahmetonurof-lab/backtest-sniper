@@ -803,13 +803,16 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
             sum((x - tr_mean) ** 2 for x in trade_returns) / len(trade_returns)
         ) ** 0.5
         sharpe = tr_mean / tr_std if tr_std > 0 else 0
+
     else:
         sharpe = 0
     total_pnl = sum(r["pnl"] for r in trade_records)
     total_fee = sum(r.get("fee", 0) for r in trade_records)
     pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
     score = (
-        (sharpe * profit_factor * positive_exit_pct) / (1 + max_dd_pct)
+        (profit_factor * positive_exit_pct / 100 * pnl_per_fee)
+        / (1 + max_dd_pct / 100)
+        * 100
         if max_dd_pct >= 0
         else 0
     )
@@ -825,7 +828,7 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         "total_pnl": total_pnl,
         "total_fee": total_fee,
         "pnl_per_fee": pnl_per_fee,
-        "score": score,
+        "score": round(score),
     }
 
 
@@ -850,7 +853,7 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
 
     import config as cfg
 
-    cfg.MIN_REL_FVG_THRESHOLD = 0.50
+    cfg.MIN_REL_FVG_THRESHOLD = 0.5
 
     # Import engine from same module
     from analyzer_v5 import collect_fvg_profile, compute_session_stats
