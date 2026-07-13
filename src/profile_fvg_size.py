@@ -1,6 +1,11 @@
 """
-profile_fvg_size.py — Coin bazinda optimum FVG_SIZE bulma.
-Sweep 0.20 - 0.60 step 0.01, motor analyzer_v5.
+profile_fvg_size.py — Coin bazinda optimum FVG_MIN_SIZE_ATR_MULT bulma.
+Sweep 0.02 - 0.20 step 0.01, motor analyzer_v5.
+
+Degisiklik (2026-07-13):
+- fvg_close_confirmed = OFF (retrace_state.py'de devre disi)
+- MIN_REL_FVG_THRESHOLD = 0.40 (sabit)
+- Sadece FVG_MIN_SIZE_ATR_MULT taranir
 
 Tum detay log'u reports/profile_fvg_size.log dosyasina yazilir.
 Sonucta sadece ozet terminale basilir.
@@ -43,9 +48,10 @@ SYMBOLS_20 = [
     "XRPUSDT",
     "UNIUSDT",
 ]
-SWEEP_START = 0.20
-SWEEP_END = 0.60
+SWEEP_START = 0.02
+SWEEP_END = 0.20
 SWEEP_STEP = 0.01
+FIXED_CBDR_THRESHOLD = 0.40
 
 
 def _log_line(msg: str):
@@ -57,7 +63,7 @@ def _log_line(msg: str):
 
 # ─── Worker: tek coin profilleme ─────────────────────────────
 def _profile_one(sym: str) -> dict | None:
-    """Tek coin icin tum FVG_SIZE degerlerini dene, en iyisini bul.
+    """Tek coin icin tum FVG_MIN_SIZE_ATR_MULT degerlerini dene, en iyisini bul.
     Ayri ProcessPoolExecutor worker'inda calisir."""
     import os
     import sys
@@ -76,21 +82,24 @@ def _profile_one(sym: str) -> dict | None:
         return None
 
     values = [
-        round(x * SWEEP_STEP, 2)
-        for x in range(int(SWEEP_START / SWEEP_STEP), int(SWEEP_END / SWEEP_STEP) + 1)
+        round(SWEEP_START + i * SWEEP_STEP, 3)
+        for i in range(int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1)
     ]
     results = []
 
+    # Sabit: CBDR threshold
+    cfg.MIN_REL_FVG_THRESHOLD = FIXED_CBDR_THRESHOLD
+
     for idx, size in enumerate(values):
-        cfg.MIN_REL_FVG_THRESHOLD = size
+        cfg.FVG_MIN_SIZE_ATR_MULT = size
         try:
             r = collect_fvg_profile(sym)
         except Exception as e:
-            _log_line(f"  [{sym}] size={size:.2f} CRASH: {e}")
+            _log_line(f"  [{sym}] mult={size:.3f} CRASH: {e}")
             continue
 
         if r is None or (isinstance(r, tuple) and r[0] is None):
-            _log_line(f"  [{sym}] size={size:.2f} VERI YOK")
+            _log_line(f"  [{sym}] mult={size:.3f} VERI YOK")
             continue
 
         daily_rows, wins, losses, trade_records, rejection_counts = r
@@ -132,14 +141,14 @@ def _profile_one(sym: str) -> dict | None:
 
         entered = rejection_counts.get("ENTERED", 0)
         _log_line(
-            f"  [{sym}] {idx+1:>2}/{len(values)} size={size:.2f} score={round(score)} trades={n} entered={entered}"
+            f"  [{sym}] {idx + 1:>2}/{len(values)} mult={size:.3f} score={round(score)} trades={n} entered={entered}"
         )
 
     if not results:
         _log_line(f"  [{sym}] HICBIR SONUC YOK")
         return None
     best = max(results, key=lambda x: x[1])
-    _log_line(f"  [{sym}] BEST: size={best[0]:.2f} score={best[1]}")
+    _log_line(f"  [{sym}] BEST: mult={best[0]:.3f} score={best[1]}")
     return {
         "sym": sym,
         "best_size": best[0],
@@ -152,18 +161,25 @@ def _print_fvg_map(results: dict):
     lines = []
     lines.append("")
     lines.append("=" * 80)
-    lines.append("  BEST FVG_SIZE PER COIN")
+    lines.append("  BEST FVG_MIN_SIZE_ATR_MULT PER COIN")
+    lines.append(f"  (MIN_REL_FVG_THRESHOLD={FIXED_CBDR_THRESHOLD} sabit)")
     lines.append("=" * 80)
-    lines.append(f"  {'Coin':<12} {'Best Size':>10} {'Score':>8}")
+    lines.append(f"  {'Coin':<12} {'Best Mult':>10} {'Score':>8}")
     lines.append(f"  {'-' * 34}")
     for sym in sorted(results):
         r = results[sym]
-        lines.append(f"  {sym:<12} {r['best_size']:>10.2f} {r['best_score']:>8}")
+        lines.append(f"  {sym:<12} {r['best_size']:>10.3f} {r['best_score']:>8}")
     lines.append("")
+    lines.append("# Config'de guncellemek icin:")
+    lines.append(
+        f"FVG_MIN_SIZE_ATR_MULT = {results[sorted(results)[0]]['best_size']:.3f}  # ortalama"
+    )
+    lines.append("")
+    lines.append("# Coin bazli cozum (opsiyonel):")
     lines.append("FVG_SIZE_MAP: dict[str, float] = {")
     for sym in sorted(results):
         r = results[sym]
-        lines.append(f'    "{sym}": {r["best_size"]:.2f},  # score={r["best_score"]}')
+        lines.append(f'    "{sym}": {r["best_size"]:.3f},  # score={r["best_score"]}')
     lines.append("}")
 
     result = "\n".join(lines)
@@ -189,7 +205,7 @@ def main():
         f.write("FVG SIZE PROFILER\n")
         f.write(f"Sweep: {SWEEP_START}-{SWEEP_END} step {SWEEP_STEP}\n")
         f.write(
-            f"Coins: {len(SYMBOLS_20)}, values/coin: {int((SWEEP_END-SWEEP_START)/SWEEP_STEP)+1}\n"
+            f"Coins: {len(SYMBOLS_20)}, values/coin: {int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1}\n"
         )
         f.write(
             f"Mod: {'PARALEL' if not use_serial else 'SERIAL'} ({n_workers} worker)\n"
@@ -200,7 +216,7 @@ def main():
     t0 = time.time()
     print(f"[LOG] Detaylar -> {LOG_FILE}", flush=True)
     print(
-        f"[BASLADI] {len(SYMBOLS_20)} coin, {int((SWEEP_END-SWEEP_START)/SWEEP_STEP)+1} deger/coin, {n_workers} worker",
+        f"[BASLADI] {len(SYMBOLS_20)} coin, {int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1} deger/coin, {n_workers} worker",
         flush=True,
     )
 
