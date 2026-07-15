@@ -22,36 +22,10 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _THIS_DIR)
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# ── 20 coin ──
+# ── 10 yeni coin (dl_newcoins.py ALL_SYMS ile ayni) ──
 ALL_SYMBOLS = [
-    "AAVEUSDT",
-    "ADAUSDT",
-    "ALGOUSDT",
-    "APTUSDT",
-    "ARBUSDT",
-    "ATOMUSDT",
-    "AVAXUSDT",
-    "BNBUSDT",
-    "DOGEUSDT",
-    "DOTUSDT",
-    "DYDXUSDT",
-    "ENAUSDT",
-    "GMXUSDT",
-    "INJUSDT",
-    "LDOUSDT",
-    "LINKUSDT",
-    "NEARUSDT",
-    "ONDOUSDT",
-    "OPUSDT",
-    "PYTHUSDT",
-    "RENDERUSDT",
-    "SEIUSDT",
-    "SOLUSDT",
-    "STRKUSDT",
-    "SUIUSDT",
-    "TIAUSDT",
-    "UNIUSDT",
-    "XRPUSDT",
+    "TIAUSDT", "SEIUSDT", "ONDOUSDT", "PYTHUSDT", "RENDERUSDT",
+    "ENAUSDT", "STRKUSDT", "GMXUSDT", "DYDXUSDT", "LDOUSDT",
 ]
 
 DEFAULT_BUCKET_BOUNDS = [
@@ -94,6 +68,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         BE_RISK_MULT = 1.0
         BE_SPREAD_PTS = 0.0
         FVG_MIN_SIZE_ATR_MULT = 0.06
+        FVG_SIZE_MAP: dict[str, float] = {}
         GLOBAL_FVG_EXPIRY_BARS = 45
         MIN_RISK_DIST_ATR_MULT = 0.1
         CBDR_DEAD_THRESHOLD_PCT = 0.5
