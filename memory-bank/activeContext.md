@@ -17,7 +17,9 @@
 - **Logic Drift Fixes (2026-07-11):** bar_index=sb, MIN_REL_FVG_THRESHOLD=0.50 her yerde, CBDR_RISK_MATRIX canliya aktarildi, BE canlidan kaldirildi.
 
 ## Next Actions
-1. **config2+0.50 run** (Run D) — 2x2 matrisi tamamla
+1. **15m Feather Ön-Hesaplama:** `*_15m.feather` yaz, run'larda direkt yükle (cache sorununu çöz)
+2. **CBDR Threshold Results:** yeni 10 coin sonuçlarını değerlendir
+3. **config2+0.50 run** (Run D) — 2x2 matrisi tamamla
 2. **Canli bot testi:** guncel config + BE'siz trailing ile paper trade baslat
 3. **ETH duzelt:** ya tamamen cikar ya FVG tetikleme sartlarini zorlastir
 4. **VIP List build:** Score/Sharpe bazli coin siralamasi

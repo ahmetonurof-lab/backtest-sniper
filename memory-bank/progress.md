@@ -23,6 +23,7 @@
 - CBDR görselleştirme (matplotlib)
 
 ## 🔧 Pending / In Progress
+- **15m Feather Ön-Hesaplama:** `data/daily/` altına `*_15m.feather` yaz. Her run'da 1m→Bar→resample yerine direkt 15m yükle. ~5-10sn/coin kazancı, ProcessPoolExecutor worker'larında cache sorununu çözer.
 - V5 parametre izole testi (depth filter / weekend mult tek tek)
 - BTC WR=%32.2 analizi (Section 12: FVG_SWEPT red sayısı)
 - V5 vs V4 bypass WR karşılaştırması
