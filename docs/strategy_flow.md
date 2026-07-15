@@ -1,4 +1,121 @@
-# Sniper Backtest Stratejisi — Veri Akışı ve Mimari
+# Sniper — PaperTrader Strateji Akışı
+> CBDR tabanlı likidite modeli üzerine inşa edilmiş, ICT giriş mantığını kullanan bir execution engine.
+
+## Güncel Mimari (2026-07-14)
+
+### Bot Start → Exit Full Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  START                                                         │
+├─────────────────────────────────────────────────────────────────┤
+│  1. cfg.SYMBOLS'den sembolleri yükle                            │
+│  2. Her sembol için: SessionState, RetraceStateMachine,         │
+│     SignalEngine, cfgs oluştur                                  │
+│  3. History yükle (trades_history.jsonl)                        │
+│  4. Binance balance çek (API key varsa)                        │
+│  5. Leverage set et                                             │
+│  6. Recovery: aktif pozisyonları geri yükle                     │
+│  7. WS callback'leri register et (15m + 1m)                     │
+│  8. WS stream'i başlat → bar geldikçe on_15m / on_1m tetiklenir │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 🔵 Her 15m Bar Kapanışı (on_15m_close)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. ATR güncelle (Wilder's ATR)                                │
+│  2. SessionState.update() → CBDR takip + sweep tespiti          │
+│  3. Sweep tespit edildiyse:                                     │
+│       rsm.on_sweep(direction, level) → SWEEP_DETECTED           │
+│  4. SWEEP_DETECTED state'inde:                                  │
+│       rsm.on_sweep_confirmed(bars_15m, current, atr, symbol)    │
+│         ├── FVG_SIZE_MAP[symbol]'den threshold al                │
+│         ├── min_fvg_size = atr × threshold                       │
+│         ├── detect_fvgs(bars, min_fvg_size) → FVG var mı?       │
+│         ├── Bulundu → wick rejection kontrolü                    │
+│         └── Başarılı → TRIGGER_READY                             │
+│  5. TRIGGER_READY + bias kontrolü:                               │
+│       ├── DailyBias filtre (bullish/bearish uyumu)               │
+│       ├── Session filtre (sadece LONDON/NEWYORK)                 │
+│       └── Geçti → TRIGGER kararı                                 │
+│  6. TRIGGER alındı:                                              │
+│       ├── is_fvg_valid() → FVG zaman aşımı kontrolü              │
+│       ├── should_trade() → CBDR zehirli bölge kontrolü           │
+│       ├── EntryManager.calculate_sl_tp() → SL/TP hesapla         │
+│       │   (FVG varsa adaptive buffer, yoksa risk_pts × 2)        │
+│       ├── EntryManager.calculate_qty() → pozisyon büyüklüğü      │
+│       ├── EntryManager.execute_live_entry() → Binance emir       │
+│       └── Başarılı → active_trades'e ekle, state yaz              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 🟢 Her 1m Bar Kapanışı (on_1m_close)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Sadece active_trades[sym] varsa çalışır:                      │
+│                                                                  │
+│  1. Trailing:                                                   │
+│       ├── bars_15m = hub.get_bars(sym, "15m")                   │
+│       ├── min_fvg = atr × FVG_SIZE_MAP.get(sym, fallback)       │
+│       ├── TrailingManager.evaluate_trail(bars, trade, atr,      │
+│       │                                   min_fvg)               │
+│       │   └── detect_fvgs(chunk, min_fvg_size) → FVG ara        │
+│       │   └── FVG varsa: new_sl = fvg.bottom - buffer           │
+│       │   └── SL iyileşme → update_trail_orders()               │
+│       │   └── exit_now → hemen çıkış                            │
+│                                                                  │
+│  2. Exit check:                                                 │
+│       └── TrailingManager.check_exit(current, trade)             │
+│           ├── low <= SL → LOSS / PROFIT_TRAIL                    │
+│           ├── high >= TP → TP                                    │
+│           └── Tetiklendiyse → _exit_trade()                      │
+│               ├── PnL hesapla                                   │
+│               ├── trades listesine ekle                          │
+│               ├── trades_history.jsonl'ye yaz                    │
+│               └── UPNL + state writer güncelle                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 🔴 Exit Türleri
+
+| result | Açıklama |
+|--------|----------|
+| `TP` | Take profit hedefine ulaştı |
+| `LOSS` | SL vuruldu (trailing yoktu) |
+| `PROFIT_TRAIL` | Trailing sonrası SL vuruldu (kârda kapandı) |
+| `OPEN` | Bot durduğunda hâlâ açık |
+
+### 🧠 State Machine (RetraceStateMachine)
+
+```
+IDLE ──on_sweep()──→ SWEEP_DETECTED ──on_sweep_confirmed()──→ TRIGGER_READY
+  ▲                       │                                        │
+  └──────reset()──────────┘              └─────trigger entry───────┘
+                                                     │
+                                                     ▼
+                                                   reset() → IDLE
+```
+
+### 📦 FVG Eşik Sistemi (Tek Kaynak)
+
+```
+threshold = FVG_SIZE_MAP.get(symbol, FVG_MIN_SIZE_ATR_MULT)
+min_fvg_size = atr × threshold
+
+FVG.size < min_fvg_size → atla (hem tespit hem trailing)
+```
+
+- `FVG_SIZE_MAP` = coin bazlı threshold
+- `FVG_MIN_SIZE_ATR_MULT` = global fallback (0.08)
+- `FVG_MIN_MULT_MAP` silindi
+- `is_high_quality_fvg()` silindi
+
+---
+
+# Sniper Backtest Stratejisi — Veri Akışı ve Mimari (Tarihsel)
 
 ## Genel Bakış
 
@@ -23,11 +140,11 @@ flowchart TD
     K --> L["NY Seans Filtresi<br/>13:00-22:00 UTC"]
     L --> M["SL/TP Hesapla<br/>SL=FVG edge + buffer<br/>TP=London High/Low veya 2R"]
     M --> N["1. Entry Aç<br/>trades_today=1"]
-    
+
     N --> O["Trailing SL/TP<br/>Yeni FVG oluşunca<br/>SL ve TP birlikte kayar"]
     O --> P{"TP/SL Hit?"}
     P -->|SL veya TP| Q["1. Entry Kapandı<br/>trades_today=1"]
-    
+
     Q --> R{"is_retrade=False<br/>&& trades_today==1<br/>&& retrade_armed=False"}
     R -->|Evet| S["Retrade Arm Et"]
     S --> T["Son 5 Bar'ın<br/>Highest High / Lowest Low'unu Hesapla"]

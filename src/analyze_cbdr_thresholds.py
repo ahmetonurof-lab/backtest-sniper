@@ -57,26 +57,16 @@ class _cfg:
     CBDR_SWEEP_DEFAULT_TOLERANCE = 10.0
     CBDR_RISK_MATRIX: dict[str, dict] = {}  # sıfırdan test: ön tanımlı eşik/sezon yok
     SYMBOLS = [
-        "BTCUSDT",
-        "BNBUSDT",
-        "SOLUSDT",
-        "AVAXUSDT",
-        "LINKUSDT",
-        "XRPUSDT",
-        "ATOMUSDT",
-        "ADAUSDT",
-        "APTUSDT",
-        "DOTUSDT",
-        "NEARUSDT",
-        "ETHUSDT",
-        "SUIUSDT",
-        "OPUSDT",
-        "ARBUSDT",
-        "INJUSDT",
-        "ALGOUSDT",
-        "AAVEUSDT",
-        "UNIUSDT",
-        "DOGEUSDT",
+        "TIAUSDT",
+        "SEIUSDT",
+        "ONDOUSDT",
+        "PYTHUSDT",
+        "RENDERUSDT",
+        "ENAUSDT",
+        "STRKUSDT",
+        "GMXUSDT",
+        "DYDXUSDT",
+        "LDOUSDT",
     ]
 
 

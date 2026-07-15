@@ -1,0 +1,461 @@
+FVG SIZE PROFILER
+Sweep: 0.02-0.2 step 0.01
+Coins: 20, values/coin: 19
+Mod: SERIAL (1 worker)
+================================================================================
+
+[AAVEUSDT] basliyor...
+  [AAVEUSDT]  4/19 mult=0.050 score=490 trades=3170 entered=3170
+  [ADAUSDT]  4/19 mult=0.050 score=230 trades=2778 entered=2778
+  [ALGOUSDT]  5/19 mult=0.060 score=514 trades=2214 entered=2214
+  [ATOMUSDT]  5/19 mult=0.060 score=241 trades=1849 entered=1849
+  [APTUSDT]  5/19 mult=0.060 score=430 trades=2904 entered=2904
+  [ARBUSDT]  5/19 mult=0.060 score=525 trades=2680 entered=2680
+  [AAVEUSDT]  5/19 mult=0.060 score=496 trades=3187 entered=3187
+  [ADAUSDT]  5/19 mult=0.060 score=226 trades=2811 entered=2811
+  [ALGOUSDT]  6/19 mult=0.070 score=515 trades=2230 entered=2230
+  [ATOMUSDT]  6/19 mult=0.070 score=253 trades=1878 entered=1878
+  [APTUSDT]  6/19 mult=0.070 score=437 trades=2919 entered=2919
+  [ARBUSDT]  6/19 mult=0.070 score=523 trades=2697 entered=2697
+  [AAVEUSDT]  6/19 mult=0.070 score=506 trades=3197 entered=3197
+  [ADAUSDT]  6/19 mult=0.070 score=222 trades=2838 entered=2838
+  [ALGOUSDT]  7/19 mult=0.080 score=518 trades=2244 entered=2244
+  [ATOMUSDT]  7/19 mult=0.080 score=266 trades=1905 entered=1905
+  [APTUSDT]  7/19 mult=0.080 score=448 trades=2943 entered=2943
+  [ARBUSDT]  7/19 mult=0.080 score=498 trades=2732 entered=2732
+  [AAVEUSDT]  7/19 mult=0.080 score=503 trades=3225 entered=3225
+  [ADAUSDT]  7/19 mult=0.080 score=226 trades=2871 entered=2871
+  [ATOMUSDT]  8/19 mult=0.090 score=255 trades=1929 entered=1929
+  [ALGOUSDT]  8/19 mult=0.090 score=522 trades=2264 entered=2264
+  [APTUSDT]  8/19 mult=0.090 score=447 trades=2956 entered=2956
+  [ARBUSDT]  8/19 mult=0.090 score=495 trades=2748 entered=2748
+  [ATOMUSDT]  9/19 mult=0.100 score=240 trades=1947 entered=1947
+  [ALGOUSDT]  9/19 mult=0.100 score=548 trades=2273 entered=2273
+  [ADAUSDT]  8/19 mult=0.090 score=230 trades=2890 entered=2890
+  [AAVEUSDT]  8/19 mult=0.090 score=473 trades=3251 entered=3251
+  [APTUSDT]  9/19 mult=0.100 score=446 trades=2969 entered=2969
+  [ARBUSDT]  9/19 mult=0.100 score=475 trades=2774 entered=2774
+  [ATOMUSDT] 10/19 mult=0.110 score=224 trades=1957 entered=1957
+  [ALGOUSDT] 10/19 mult=0.110 score=540 trades=2292 entered=2292
+  [ADAUSDT]  9/19 mult=0.100 score=221 trades=2911 entered=2911
+  [AAVEUSDT]  9/19 mult=0.100 score=480 trades=3289 entered=3289
+  [APTUSDT] 10/19 mult=0.110 score=447 trades=2981 entered=2981
+  [ARBUSDT] 10/19 mult=0.110 score=447 trades=2794 entered=2794
+  [ATOMUSDT] 11/19 mult=0.120 score=201 trades=1972 entered=1972
+  [ALGOUSDT] 11/19 mult=0.120 score=525 trades=2323 entered=2323
+  [ADAUSDT] 10/19 mult=0.110 score=223 trades=2928 entered=2928
+  [AAVEUSDT] 10/19 mult=0.110 score=468 trades=3302 entered=3302
+  [APTUSDT] 11/19 mult=0.120 score=462 trades=2993 entered=2993
+  [ARBUSDT] 11/19 mult=0.120 score=425 trades=2817 entered=2817
+  [ATOMUSDT] 12/19 mult=0.130 score=184 trades=1996 entered=1996
+  [ALGOUSDT] 12/19 mult=0.130 score=511 trades=2342 entered=2342
+  [AAVEUSDT] 11/19 mult=0.120 score=481 trades=3316 entered=3316
+  [ADAUSDT] 11/19 mult=0.120 score=221 trades=2958 entered=2958
+  [APTUSDT] 12/19 mult=0.130 score=472 trades=3007 entered=3007
+  [ATOMUSDT] 13/19 mult=0.140 score=174 trades=2012 entered=2012
+  [ALGOUSDT] 13/19 mult=0.140 score=494 trades=2361 entered=2361
+  [ARBUSDT] 12/19 mult=0.130 score=399 trades=2841 entered=2841
+  [AAVEUSDT] 12/19 mult=0.130 score=481 trades=3339 entered=3339
+  [ADAUSDT] 12/19 mult=0.130 score=207 trades=2952 entered=2952
+  [APTUSDT] 13/19 mult=0.140 score=464 trades=3028 entered=3028
+  [ATOMUSDT] 14/19 mult=0.150 score=170 trades=2027 entered=2027
+  [ALGOUSDT] 14/19 mult=0.150 score=475 trades=2378 entered=2378
+  [ARBUSDT] 13/19 mult=0.140 score=385 trades=2857 entered=2857
+  [AAVEUSDT] 13/19 mult=0.140 score=501 trades=3365 entered=3365
+  [ADAUSDT] 13/19 mult=0.140 score=203 trades=2963 entered=2963
+  [ATOMUSDT] 15/19 mult=0.160 score=164 trades=2048 entered=2048
+  [APTUSDT] 14/19 mult=0.150 score=449 trades=3043 entered=3043
+  [ALGOUSDT] 15/19 mult=0.160 score=459 trades=2379 entered=2379
+  [ARBUSDT] 14/19 mult=0.150 score=384 trades=2864 entered=2864
+  [ADAUSDT] 14/19 mult=0.150 score=195 trades=2976 entered=2976
+  [AAVEUSDT] 14/19 mult=0.150 score=465 trades=3380 entered=3380
+  [ATOMUSDT] 16/19 mult=0.170 score=164 trades=2065 entered=2065
+  [ALGOUSDT] 16/19 mult=0.170 score=429 trades=2394 entered=2394
+  [APTUSDT] 15/19 mult=0.160 score=451 trades=3056 entered=3056
+  [ARBUSDT] 15/19 mult=0.160 score=372 trades=2865 entered=2865
+  [AAVEUSDT] 15/19 mult=0.160 score=434 trades=3387 entered=3387
+  [ADAUSDT] 15/19 mult=0.160 score=192 trades=3001 entered=3001
+  [ATOMUSDT] 17/19 mult=0.180 score=162 trades=2082 entered=2082
+  [ALGOUSDT] 17/19 mult=0.180 score=408 trades=2407 entered=2407
+  [APTUSDT] 16/19 mult=0.170 score=459 trades=3081 entered=3081
+  [ARBUSDT] 16/19 mult=0.170 score=364 trades=2877 entered=2877
+  [ATOMUSDT] 18/19 mult=0.190 score=158 trades=2100 entered=2100
+  [AAVEUSDT] 16/19 mult=0.170 score=435 trades=3401 entered=3401
+  [ADAUSDT] 16/19 mult=0.170 score=192 trades=3027 entered=3027
+  [ALGOUSDT] 18/19 mult=0.190 score=390 trades=2426 entered=2426
+  [APTUSDT] 17/19 mult=0.180 score=440 trades=3104 entered=3104
+  [ARBUSDT] 17/19 mult=0.180 score=348 trades=2893 entered=2893
+  [ATOMUSDT] 19/19 mult=0.200 score=164 trades=2124 entered=2124
+  [ATOMUSDT] BEST: mult=0.080 score=266
+[ATOMUSDT] BEST: size=0.08 score=266
+  [ALGOUSDT] 19/19 mult=0.200 score=390 trades=2444 entered=2444
+  [ALGOUSDT] BEST: mult=0.100 score=548
+[ALGOUSDT] BEST: size=0.10 score=548
+  [AAVEUSDT] 17/19 mult=0.180 score=427 trades=3418 entered=3418
+  [ADAUSDT] 17/19 mult=0.180 score=186 trades=3039 entered=3039
+  [APTUSDT] 18/19 mult=0.190 score=414 trades=3108 entered=3108
+  [ARBUSDT] 18/19 mult=0.190 score=331 trades=2909 entered=2909
+  [ADAUSDT] 18/19 mult=0.190 score=183 trades=3048 entered=3048
+  [AAVEUSDT] 18/19 mult=0.190 score=434 trades=3439 entered=3439
+  [APTUSDT] 19/19 mult=0.200 score=385 trades=3128 entered=3128
+  [APTUSDT] BEST: mult=0.130 score=472
+[APTUSDT] BEST: size=0.13 score=472
+  [ARBUSDT] 19/19 mult=0.200 score=319 trades=2925 entered=2925
+  [ARBUSDT] BEST: mult=0.040 score=545
+[ARBUSDT] BEST: size=0.04 score=545
+  [AVAXUSDT]  1/19 mult=0.020 score=218 trades=1562 entered=1562
+  [BNBUSDT]  1/19 mult=0.020 score=318 trades=1942 entered=1942
+  [ADAUSDT] 19/19 mult=0.200 score=167 trades=3052 entered=3052
+  [ADAUSDT] BEST: mult=0.050 score=230
+[ADAUSDT] BEST: size=0.05 score=230
+  [AAVEUSDT] 19/19 mult=0.200 score=415 trades=3460 entered=3460
+  [AAVEUSDT] BEST: mult=0.030 score=511
+[AAVEUSDT] BEST: size=0.03 score=511
+  [AVAXUSDT]  2/19 mult=0.030 score=218 trades=1570 entered=1570
+  [BNBUSDT]  2/19 mult=0.030 score=325 trades=1976 entered=1976
+  [BTCUSDT]  1/19 mult=0.020 score=129 trades=700 entered=700
+  [DOGEUSDT]  1/19 mult=0.020 score=389 trades=1692 entered=1692
+  [AVAXUSDT]  3/19 mult=0.040 score=234 trades=1587 entered=1587
+  [BNBUSDT]  3/19 mult=0.040 score=344 trades=1993 entered=1993
+  [BTCUSDT]  2/19 mult=0.030 score=129 trades=706 entered=706
+  [ETHUSDT]  1/19 mult=0.020 score=126 trades=1240 entered=1240
+  [DOTUSDT]  1/19 mult=0.020 score=239 trades=1879 entered=1879
+  [DOGEUSDT]  2/19 mult=0.030 score=417 trades=1719 entered=1719
+  [AVAXUSDT]  4/19 mult=0.050 score=233 trades=1607 entered=1607
+  [BNBUSDT]  4/19 mult=0.050 score=328 trades=2001 entered=2001
+  [BTCUSDT]  3/19 mult=0.040 score=135 trades=712 entered=712
+  [ETHUSDT]  2/19 mult=0.030 score=140 trades=1258 entered=1258
+  [DOTUSDT]  2/19 mult=0.030 score=237 trades=1895 entered=1895
+  [DOGEUSDT]  3/19 mult=0.040 score=433 trades=1733 entered=1733
+  [BNBUSDT]  5/19 mult=0.060 score=319 trades=2015 entered=2015
+  [AVAXUSDT]  5/19 mult=0.060 score=237 trades=1625 entered=1625
+  [BTCUSDT]  4/19 mult=0.050 score=125 trades=719 entered=719
+  [ETHUSDT]  3/19 mult=0.040 score=147 trades=1271 entered=1271
+  [DOGEUSDT]  4/19 mult=0.050 score=432 trades=1743 entered=1743
+  [DOTUSDT]  3/19 mult=0.040 score=233 trades=1896 entered=1896
+  [BNBUSDT]  6/19 mult=0.070 score=337 trades=2053 entered=2053
+  [AVAXUSDT]  6/19 mult=0.070 score=242 trades=1650 entered=1650
+  [BTCUSDT]  5/19 mult=0.060 score=125 trades=726 entered=726
+  [ETHUSDT]  4/19 mult=0.050 score=147 trades=1288 entered=1288
+  [DOGEUSDT]  5/19 mult=0.060 score=430 trades=1766 entered=1766
+  [DOTUSDT]  4/19 mult=0.050 score=228 trades=1910 entered=1910
+  [BNBUSDT]  7/19 mult=0.080 score=343 trades=2066 entered=2066
+  [AVAXUSDT]  7/19 mult=0.080 score=256 trades=1672 entered=1672
+  [ETHUSDT]  5/19 mult=0.060 score=152 trades=1306 entered=1306
+  [BTCUSDT]  6/19 mult=0.070 score=114 trades=731 entered=731
+  [DOGEUSDT]  6/19 mult=0.070 score=426 trades=1781 entered=1781
+  [DOTUSDT]  5/19 mult=0.060 score=225 trades=1926 entered=1926
+  [BNBUSDT]  8/19 mult=0.090 score=338 trades=2088 entered=2088
+  [AVAXUSDT]  8/19 mult=0.090 score=245 trades=1674 entered=1674
+  [DOGEUSDT]  7/19 mult=0.080 score=419 trades=1802 entered=1802
+  [BTCUSDT]  7/19 mult=0.080 score=106 trades=733 entered=733
+  [ETHUSDT]  6/19 mult=0.070 score=148 trades=1321 entered=1321
+  [DOTUSDT]  6/19 mult=0.070 score=219 trades=1949 entered=1949
+  [BNBUSDT]  9/19 mult=0.100 score=333 trades=2112 entered=2112
+  [AVAXUSDT]  9/19 mult=0.100 score=236 trades=1682 entered=1682
+  [DOGEUSDT]  8/19 mult=0.090 score=433 trades=1827 entered=1827
+  [BTCUSDT]  8/19 mult=0.090 score=106 trades=741 entered=741
+  [ETHUSDT]  7/19 mult=0.080 score=147 trades=1329 entered=1329
+  [DOTUSDT]  7/19 mult=0.080 score=213 trades=1955 entered=1955
+  [BNBUSDT] 10/19 mult=0.110 score=335 trades=2130 entered=2130
+  [AVAXUSDT] 10/19 mult=0.110 score=232 trades=1692 entered=1692
+  [DOGEUSDT]  9/19 mult=0.100 score=443 trades=1841 entered=1841
+  [BTCUSDT]  9/19 mult=0.100 score=104 trades=745 entered=745
+  [ETHUSDT]  8/19 mult=0.090 score=150 trades=1347 entered=1347
+  [BNBUSDT] 11/19 mult=0.120 score=342 trades=2141 entered=2141
+  [DOTUSDT]  8/19 mult=0.090 score=212 trades=1980 entered=1980
+  [AVAXUSDT] 11/19 mult=0.120 score=227 trades=1702 entered=1702
+  [DOGEUSDT] 10/19 mult=0.110 score=440 trades=1866 entered=1866
+  [ETHUSDT]  9/19 mult=0.100 score=150 trades=1349 entered=1349
+  [BTCUSDT] 10/19 mult=0.110 score=98 trades=749 entered=749
+  [BNBUSDT] 12/19 mult=0.130 score=350 trades=2161 entered=2161
+  [DOTUSDT]  9/19 mult=0.100 score=209 trades=1999 entered=1999
+  [AVAXUSDT] 12/19 mult=0.130 score=222 trades=1717 entered=1717
+  [DOGEUSDT] 11/19 mult=0.120 score=427 trades=1890 entered=1890
+  [ETHUSDT] 10/19 mult=0.110 score=162 trades=1364 entered=1364
+  [BTCUSDT] 11/19 mult=0.120 score=123 trades=752 entered=752
+  [BNBUSDT] 13/19 mult=0.140 score=353 trades=2182 entered=2182
+  [AVAXUSDT] 13/19 mult=0.140 score=227 trades=1726 entered=1726
+  [DOTUSDT] 10/19 mult=0.110 score=208 trades=2024 entered=2024
+  [DOGEUSDT] 12/19 mult=0.130 score=400 trades=1908 entered=1908
+  [ETHUSDT] 11/19 mult=0.120 score=155 trades=1380 entered=1380
+  [BTCUSDT] 12/19 mult=0.130 score=122 trades=755 entered=755
+  [BNBUSDT] 14/19 mult=0.150 score=344 trades=2199 entered=2199
+  [AVAXUSDT] 14/19 mult=0.150 score=231 trades=1742 entered=1742
+  [DOGEUSDT] 13/19 mult=0.140 score=394 trades=1926 entered=1926
+  [DOTUSDT] 11/19 mult=0.120 score=206 trades=2037 entered=2037
+  [ETHUSDT] 12/19 mult=0.130 score=147 trades=1397 entered=1397
+  [BTCUSDT] 13/19 mult=0.140 score=123 trades=759 entered=759
+  [BNBUSDT] 15/19 mult=0.160 score=341 trades=2212 entered=2212
+  [AVAXUSDT] 15/19 mult=0.160 score=226 trades=1751 entered=1751
+  [DOGEUSDT] 14/19 mult=0.150 score=378 trades=1932 entered=1932
+  [DOTUSDT] 12/19 mult=0.130 score=194 trades=2057 entered=2057
+  [ETHUSDT] 13/19 mult=0.140 score=144 trades=1406 entered=1406
+  [BTCUSDT] 14/19 mult=0.150 score=122 trades=763 entered=763
+  [BNBUSDT] 16/19 mult=0.170 score=351 trades=2236 entered=2236
+  [DOGEUSDT] 15/19 mult=0.160 score=365 trades=1947 entered=1947
+  [AVAXUSDT] 16/19 mult=0.170 score=240 trades=1772 entered=1772
+  [DOTUSDT] 13/19 mult=0.140 score=192 trades=2076 entered=2076
+  [ETHUSDT] 14/19 mult=0.150 score=136 trades=1404 entered=1404
+  [BTCUSDT] 15/19 mult=0.160 score=157 trades=769 entered=769
+  [BNBUSDT] 17/19 mult=0.180 score=350 trades=2241 entered=2241
+  [DOGEUSDT] 16/19 mult=0.170 score=348 trades=1954 entered=1954
+  [AVAXUSDT] 17/19 mult=0.180 score=243 trades=1783 entered=1783
+  [ETHUSDT] 15/19 mult=0.160 score=126 trades=1412 entered=1412
+  [DOTUSDT] 14/19 mult=0.150 score=191 trades=2100 entered=2100
+  [BTCUSDT] 16/19 mult=0.170 score=149 trades=772 entered=772
+  [BNBUSDT] 18/19 mult=0.190 score=356 trades=2248 entered=2248
+  [DOGEUSDT] 17/19 mult=0.180 score=320 trades=1953 entered=1953
+  [AVAXUSDT] 18/19 mult=0.190 score=233 trades=1789 entered=1789
+  [ETHUSDT] 16/19 mult=0.170 score=112 trades=1402 entered=1402
+  [DOTUSDT] 15/19 mult=0.160 score=182 trades=2120 entered=2120
+  [BTCUSDT] 17/19 mult=0.180 score=150 trades=778 entered=778
+  [BNBUSDT] 19/19 mult=0.200 score=352 trades=2254 entered=2254
+  [BNBUSDT] BEST: mult=0.190 score=356
+[BNBUSDT] BEST: size=0.19 score=356
+  [DOGEUSDT] 18/19 mult=0.190 score=313 trades=1950 entered=1950
+  [AVAXUSDT] 19/19 mult=0.200 score=226 trades=1792 entered=1792
+  [AVAXUSDT] BEST: mult=0.080 score=256
+[AVAXUSDT] BEST: size=0.08 score=256
+  [ETHUSDT] 17/19 mult=0.180 score=109 trades=1402 entered=1402
+  [DOTUSDT] 16/19 mult=0.170 score=175 trades=2133 entered=2133
+  [BTCUSDT] 18/19 mult=0.190 score=145 trades=784 entered=784
+  [DOGEUSDT] 19/19 mult=0.200 score=270 trades=1958 entered=1958
+  [DOGEUSDT] BEST: mult=0.100 score=443
+[DOGEUSDT] BEST: size=0.10 score=443
+  [ETHUSDT] 18/19 mult=0.190 score=110 trades=1406 entered=1406
+  [BTCUSDT] 19/19 mult=0.200 score=122 trades=794 entered=794
+  [BTCUSDT] BEST: mult=0.160 score=157
+[BTCUSDT] BEST: size=0.16 score=157
+  [DOTUSDT] 17/19 mult=0.180 score=169 trades=2131 entered=2131
+  [INJUSDT]  1/19 mult=0.020 score=362 trades=1728 entered=1728
+  [LINKUSDT]  1/19 mult=0.020 score=281 trades=1767 entered=1767
+  [ETHUSDT] 19/19 mult=0.200 score=100 trades=1411 entered=1411
+  [ETHUSDT] BEST: mult=0.110 score=162
+[ETHUSDT] BEST: size=0.11 score=162
+  [INJUSDT]  2/19 mult=0.030 score=362 trades=1750 entered=1750
+  [DOTUSDT] 18/19 mult=0.190 score=163 trades=2136 entered=2136
+  [NEARUSDT]  1/19 mult=0.020 score=412 trades=2364 entered=2364
+  [LINKUSDT]  2/19 mult=0.030 score=267 trades=1795 entered=1795
+  [INJUSDT]  3/19 mult=0.040 score=351 trades=1776 entered=1776
+  [OPUSDT]  1/19 mult=0.020 score=257 trades=1764 entered=1764
+  [DOTUSDT] 19/19 mult=0.200 score=160 trades=2137 entered=2137
+  [DOTUSDT] BEST: mult=0.020 score=239
+[DOTUSDT] BEST: size=0.02 score=239
+  [NEARUSDT]  2/19 mult=0.030 score=402 trades=2373 entered=2373
+  [LINKUSDT]  3/19 mult=0.040 score=271 trades=1816 entered=1816
+  [SOLUSDT]  1/19 mult=0.020 score=299 trades=1356 entered=1356
+  [INJUSDT]  4/19 mult=0.050 score=357 trades=1796 entered=1796
+  [OPUSDT]  2/19 mult=0.030 score=271 trades=1780 entered=1780
+  [NEARUSDT]  3/19 mult=0.040 score=405 trades=2392 entered=2392
+  [LINKUSDT]  4/19 mult=0.050 score=278 trades=1833 entered=1833
+  [SOLUSDT]  2/19 mult=0.030 score=312 trades=1393 entered=1393
+  [INJUSDT]  5/19 mult=0.060 score=347 trades=1816 entered=1816
+  [OPUSDT]  3/19 mult=0.040 score=274 trades=1787 entered=1787
+  [SUIUSDT]  1/19 mult=0.020 score=342 trades=2714 entered=2714
+  [NEARUSDT]  4/19 mult=0.050 score=423 trades=2409 entered=2409
+  [LINKUSDT]  5/19 mult=0.060 score=278 trades=1838 entered=1838
+  [SOLUSDT]  3/19 mult=0.040 score=330 trades=1419 entered=1419
+  [OPUSDT]  4/19 mult=0.050 score=279 trades=1797 entered=1797
+  [SUIUSDT]  2/19 mult=0.030 score=350 trades=2734 entered=2734
+  [NEARUSDT]  5/19 mult=0.060 score=435 trades=2435 entered=2435
+  [INJUSDT]  6/19 mult=0.070 score=350 trades=1823 entered=1823
+  [SOLUSDT]  4/19 mult=0.050 score=326 trades=1429 entered=1429
+  [LINKUSDT]  6/19 mult=0.070 score=275 trades=1846 entered=1846
+  [OPUSDT]  5/19 mult=0.060 score=290 trades=1826 entered=1826
+  [SUIUSDT]  3/19 mult=0.040 score=361 trades=2754 entered=2754
+  [INJUSDT]  7/19 mult=0.080 score=353 trades=1847 entered=1847
+  [SOLUSDT]  5/19 mult=0.060 score=295 trades=1447 entered=1447
+  [NEARUSDT]  6/19 mult=0.070 score=434 trades=2451 entered=2451
+  [LINKUSDT]  7/19 mult=0.080 score=268 trades=1869 entered=1869
+  [SUIUSDT]  4/19 mult=0.050 score=389 trades=2782 entered=2782
+  [INJUSDT]  8/19 mult=0.090 score=339 trades=1878 entered=1878
+  [OPUSDT]  6/19 mult=0.070 score=295 trades=1841 entered=1841
+  [NEARUSDT]  7/19 mult=0.080 score=432 trades=2464 entered=2464
+  [SOLUSDT]  6/19 mult=0.070 score=285 trades=1450 entered=1450
+  [LINKUSDT]  8/19 mult=0.090 score=254 trades=1877 entered=1877
+  [SUIUSDT]  5/19 mult=0.060 score=380 trades=2792 entered=2792
+  [INJUSDT]  9/19 mult=0.100 score=333 trades=1882 entered=1882
+  [OPUSDT]  7/19 mult=0.080 score=296 trades=1857 entered=1857
+  [SOLUSDT]  7/19 mult=0.080 score=290 trades=1464 entered=1464
+  [NEARUSDT]  8/19 mult=0.090 score=418 trades=2480 entered=2480
+  [LINKUSDT]  9/19 mult=0.100 score=241 trades=1909 entered=1909
+  [INJUSDT] 10/19 mult=0.110 score=348 trades=1891 entered=1891
+  [OPUSDT]  8/19 mult=0.090 score=290 trades=1867 entered=1867
+  [SUIUSDT]  6/19 mult=0.070 score=378 trades=2823 entered=2823
+  [SOLUSDT]  8/19 mult=0.090 score=282 trades=1488 entered=1488
+  [NEARUSDT]  9/19 mult=0.100 score=415 trades=2489 entered=2489
+  [LINKUSDT] 10/19 mult=0.110 score=240 trades=1935 entered=1935
+  [INJUSDT] 11/19 mult=0.120 score=354 trades=1897 entered=1897
+  [SOLUSDT]  9/19 mult=0.100 score=283 trades=1507 entered=1507
+  [OPUSDT]  9/19 mult=0.100 score=286 trades=1895 entered=1895
+  [SUIUSDT]  7/19 mult=0.080 score=374 trades=2844 entered=2844
+  [NEARUSDT] 10/19 mult=0.110 score=395 trades=2505 entered=2505
+  [LINKUSDT] 11/19 mult=0.120 score=249 trades=1954 entered=1954
+  [SOLUSDT] 10/19 mult=0.110 score=289 trades=1523 entered=1523
+  [NEARUSDT] 11/19 mult=0.120 score=386 trades=2505 entered=2505
+  [OPUSDT] 10/19 mult=0.110 score=282 trades=1918 entered=1918
+  [SUIUSDT]  8/19 mult=0.090 score=358 trades=2880 entered=2880
+  [INJUSDT] 12/19 mult=0.130 score=336 trades=1917 entered=1917
+  [SOLUSDT] 11/19 mult=0.120 score=286 trades=1535 entered=1535
+  [LINKUSDT] 12/19 mult=0.130 score=252 trades=1985 entered=1985
+  [INJUSDT] 13/19 mult=0.140 score=362 trades=1931 entered=1931
+  [OPUSDT] 11/19 mult=0.120 score=276 trades=1935 entered=1935
+  [SUIUSDT]  9/19 mult=0.100 score=364 trades=2922 entered=2922
+  [NEARUSDT] 12/19 mult=0.130 score=364 trades=2528 entered=2528
+  [LINKUSDT] 13/19 mult=0.140 score=241 trades=2005 entered=2005
+  [SOLUSDT] 12/19 mult=0.130 score=291 trades=1549 entered=1549
+  [INJUSDT] 14/19 mult=0.150 score=374 trades=1957 entered=1957
+  [SUIUSDT] 10/19 mult=0.110 score=370 trades=2953 entered=2953
+  [NEARUSDT] 13/19 mult=0.140 score=352 trades=2528 entered=2528
+  [OPUSDT] 12/19 mult=0.130 score=286 trades=1945 entered=1945
+  [LINKUSDT] 14/19 mult=0.150 score=231 trades=2015 entered=2015
+  [SOLUSDT] 13/19 mult=0.140 score=276 trades=1564 entered=1564
+  [INJUSDT] 15/19 mult=0.160 score=382 trades=1986 entered=1986
+  [SUIUSDT] 11/19 mult=0.120 score=364 trades=2976 entered=2976
+  [NEARUSDT] 14/19 mult=0.150 score=346 trades=2531 entered=2531
+  [OPUSDT] 13/19 mult=0.140 score=285 trades=1965 entered=1965
+  [SOLUSDT] 14/19 mult=0.150 score=275 trades=1573 entered=1573
+  [LINKUSDT] 15/19 mult=0.160 score=229 trades=2039 entered=2039
+  [INJUSDT] 16/19 mult=0.170 score=370 trades=1994 entered=1994
+  [NEARUSDT] 15/19 mult=0.160 score=327 trades=2543 entered=2543
+  [SUIUSDT] 12/19 mult=0.130 score=351 trades=2998 entered=2998
+  [OPUSDT] 14/19 mult=0.150 score=275 trades=1971 entered=1971
+  [SOLUSDT] 15/19 mult=0.160 score=264 trades=1578 entered=1578
+  [LINKUSDT] 16/19 mult=0.170 score=228 trades=2049 entered=2049
+  [INJUSDT] 17/19 mult=0.180 score=382 trades=2004 entered=2004
+  [NEARUSDT] 16/19 mult=0.170 score=309 trades=2554 entered=2554
+  [SUIUSDT] 13/19 mult=0.140 score=346 trades=3016 entered=3016
+  [OPUSDT] 15/19 mult=0.160 score=269 trades=1994 entered=1994
+  [SOLUSDT] 16/19 mult=0.170 score=250 trades=1591 entered=1591
+  [LINKUSDT] 17/19 mult=0.180 score=224 trades=2062 entered=2062
+  [INJUSDT] 18/19 mult=0.190 score=376 trades=2015 entered=2015
+  [SOLUSDT] 17/19 mult=0.180 score=235 trades=1594 entered=1594
+  [NEARUSDT] 17/19 mult=0.180 score=309 trades=2564 entered=2564
+  [SUIUSDT] 14/19 mult=0.150 score=336 trades=3031 entered=3031
+  [OPUSDT] 16/19 mult=0.170 score=256 trades=1990 entered=1990
+  [LINKUSDT] 18/19 mult=0.190 score=211 trades=2068 entered=2068
+  [INJUSDT] 19/19 mult=0.200 score=366 trades=2031 entered=2031
+  [INJUSDT] BEST: mult=0.160 score=382
+[INJUSDT] BEST: size=0.16 score=382
+  [NEARUSDT] 18/19 mult=0.190 score=311 trades=2574 entered=2574
+  [SUIUSDT] 15/19 mult=0.160 score=346 trades=3037 entered=3037
+  [OPUSDT] 17/19 mult=0.180 score=247 trades=1994 entered=1994
+  [LINKUSDT] 19/19 mult=0.200 score=210 trades=2082 entered=2082
+  [LINKUSDT] BEST: mult=0.020 score=281
+[LINKUSDT] BEST: size=0.02 score=281
+  [SOLUSDT] 18/19 mult=0.190 score=216 trades=1599 entered=1599
+  [NEARUSDT] 19/19 mult=0.200 score=302 trades=2584 entered=2584
+  [NEARUSDT] BEST: mult=0.060 score=435
+[NEARUSDT] BEST: size=0.06 score=435
+  [SUIUSDT] 16/19 mult=0.170 score=332 trades=3053 entered=3053
+  [SOLUSDT] 19/19 mult=0.200 score=189 trades=1593 entered=1593
+  [SOLUSDT] BEST: mult=0.040 score=330
+[SOLUSDT] BEST: size=0.04 score=330
+  [UNIUSDT]  1/19 mult=0.020 score=330 trades=2738 entered=2738
+  [OPUSDT] 18/19 mult=0.190 score=225 trades=2006 entered=2006
+  [SUIUSDT] 17/19 mult=0.180 score=339 trades=3065 entered=3065
+  [XRPUSDT]  1/19 mult=0.020 score=223 trades=2118 entered=2118
+  [UNIUSDT]  2/19 mult=0.030 score=335 trades=2758 entered=2758
+  [OPUSDT] 19/19 mult=0.200 score=219 trades=2004 entered=2004
+  [OPUSDT] BEST: mult=0.080 score=296
+[OPUSDT] BEST: size=0.08 score=296
+  [XRPUSDT]  2/19 mult=0.030 score=227 trades=2142 entered=2142
+  [SUIUSDT] 18/19 mult=0.190 score=332 trades=3070 entered=3070
+  [UNIUSDT]  3/19 mult=0.040 score=340 trades=2792 entered=2792
+  [XRPUSDT]  3/19 mult=0.040 score=223 trades=2163 entered=2163
+  [SUIUSDT] 19/19 mult=0.200 score=329 trades=3074 entered=3074
+  [SUIUSDT] BEST: mult=0.050 score=389
+[SUIUSDT] BEST: size=0.05 score=389
+  [XRPUSDT]  4/19 mult=0.050 score=239 trades=2190 entered=2190
+  [XRPUSDT]  5/19 mult=0.060 score=264 trades=2214 entered=2214
+  [UNIUSDT]  4/19 mult=0.050 score=336 trades=2802 entered=2802
+  [XRPUSDT]  6/19 mult=0.070 score=258 trades=2241 entered=2241
+  [UNIUSDT]  5/19 mult=0.060 score=352 trades=2838 entered=2838
+  [XRPUSDT]  7/19 mult=0.080 score=257 trades=2248 entered=2248
+  [UNIUSDT]  6/19 mult=0.070 score=333 trades=2869 entered=2869
+  [XRPUSDT]  8/19 mult=0.090 score=247 trades=2255 entered=2255
+  [UNIUSDT]  7/19 mult=0.080 score=339 trades=2907 entered=2907
+  [XRPUSDT]  9/19 mult=0.100 score=244 trades=2275 entered=2275
+  [UNIUSDT]  8/19 mult=0.090 score=328 trades=2931 entered=2931
+  [XRPUSDT] 10/19 mult=0.110 score=247 trades=2294 entered=2294
+  [UNIUSDT]  9/19 mult=0.100 score=321 trades=2973 entered=2973
+  [XRPUSDT] 11/19 mult=0.120 score=245 trades=2308 entered=2308
+  [UNIUSDT] 10/19 mult=0.110 score=313 trades=3005 entered=3005
+  [XRPUSDT] 12/19 mult=0.130 score=239 trades=2309 entered=2309
+  [XRPUSDT] 13/19 mult=0.140 score=238 trades=2315 entered=2315
+  [UNIUSDT] 11/19 mult=0.120 score=308 trades=3031 entered=3031
+  [XRPUSDT] 14/19 mult=0.150 score=245 trades=2319 entered=2319
+  [UNIUSDT] 12/19 mult=0.130 score=312 trades=3054 entered=3054
+  [XRPUSDT] 15/19 mult=0.160 score=234 trades=2313 entered=2313
+  [UNIUSDT] 13/19 mult=0.140 score=317 trades=3064 entered=3064
+  [XRPUSDT] 16/19 mult=0.170 score=228 trades=2321 entered=2321
+  [UNIUSDT] 14/19 mult=0.150 score=310 trades=3080 entered=3080
+  [XRPUSDT] 17/19 mult=0.180 score=223 trades=2336 entered=2336
+  [UNIUSDT] 15/19 mult=0.160 score=293 trades=3107 entered=3107
+  [XRPUSDT] 18/19 mult=0.190 score=212 trades=2347 entered=2347
+  [UNIUSDT] 16/19 mult=0.170 score=282 trades=3136 entered=3136
+  [XRPUSDT] 19/19 mult=0.200 score=197 trades=2341 entered=2341
+  [XRPUSDT] BEST: mult=0.060 score=264
+[XRPUSDT] BEST: size=0.06 score=264
+  [UNIUSDT] 17/19 mult=0.180 score=269 trades=3148 entered=3148
+  [UNIUSDT] 18/19 mult=0.190 score=247 trades=3170 entered=3170
+  [UNIUSDT] 19/19 mult=0.200 score=240 trades=3179 entered=3179
+  [UNIUSDT] BEST: mult=0.060 score=352
+[UNIUSDT] BEST: size=0.06 score=352
+
+Toplam sure: 2084s
+
+================================================================================
+  BEST FVG_MIN_SIZE_ATR_MULT PER COIN
+  (MIN_REL_FVG_THRESHOLD=0.4 sabit)
+================================================================================
+  Coin          Best Mult    Score
+  ----------------------------------
+  AAVEUSDT          0.030      511
+  ADAUSDT           0.050      230
+  ALGOUSDT          0.100      548
+  APTUSDT           0.130      472
+  ARBUSDT           0.040      545
+  ATOMUSDT          0.080      266
+  AVAXUSDT          0.080      256
+  BNBUSDT           0.190      356
+  BTCUSDT           0.160      157
+  DOGEUSDT          0.100      443
+  DOTUSDT           0.020      239
+  ETHUSDT           0.110      162
+  INJUSDT           0.160      382
+  LINKUSDT          0.020      281
+  NEARUSDT          0.060      435
+  OPUSDT            0.080      296
+  SOLUSDT           0.040      330
+  SUIUSDT           0.050      389
+  UNIUSDT           0.060      352
+  XRPUSDT           0.060      264
+
+# Config'de guncellemek icin:
+FVG_MIN_SIZE_ATR_MULT = 0.030  # ortalama
+
+# Coin bazli cozum (opsiyonel):
+FVG_SIZE_MAP: dict[str, float] = {
+    "AAVEUSDT": 0.030,  # score=511
+    "ADAUSDT": 0.050,  # score=230
+    "ALGOUSDT": 0.100,  # score=548
+    "APTUSDT": 0.130,  # score=472
+    "ARBUSDT": 0.040,  # score=545
+    "ATOMUSDT": 0.080,  # score=266
+    "AVAXUSDT": 0.080,  # score=256
+    "BNBUSDT": 0.190,  # score=356
+    "BTCUSDT": 0.160,  # score=157
+    "DOGEUSDT": 0.100,  # score=443
+    "DOTUSDT": 0.020,  # score=239
+    "ETHUSDT": 0.110,  # score=162
+    "INJUSDT": 0.160,  # score=382
+    "LINKUSDT": 0.020,  # score=281
+    "NEARUSDT": 0.060,  # score=435
+    "OPUSDT": 0.080,  # score=296
+    "SOLUSDT": 0.040,  # score=330
+    "SUIUSDT": 0.050,  # score=389
+    "UNIUSDT": 0.060,  # score=352
+    "XRPUSDT": 0.060,  # score=264
+}

@@ -4,6 +4,8 @@
 2026-07-11: Production reporting upgrade completed. Exit tracking: SL→LOSS/PROFIT_TRAIL. Sharpe: trade-return based (non-annualized). New summary columns: TP%, PTrail%, Loss%, Score, PnL/Fee, FVGCr. Score = (Sharpe × PF × PositiveExit%) / (1 + MaxDD%). Removed obsolete: WIN/BE/LOSS/WR%/BE+%.
 
 ## Recently Completed
+- **New Coin Data Download (2026-07-15):** 10 new coins downloaded via `dl_newcoins.py`: TIA, SEI, ONDO, PYTH, RENDER, ENA, STRK, GMX, DYDX, LDO. All feather files in `src/data/daily/`. GMX/DYDX/LDO were the last 3, completed 2026-07-15.
+- **CBDR Threshold Analysis — New Coins Only (2026-07-15):** `analyze_cbdr_thresholds.py` SYMBOLS list trimmed to only the 10 new coins (removed all existing 18 coins). Ready for best CBDR range testing.
 - **Production Reporting (2026-07-11):** `analyzer_v5.py` reporting system updated per NEXUS specs:
   - Exit tracking: `SL` → `LOSS` / `PROFIT_TRAIL` (trailing_count > 0 & SL past entry = profitable trail)
   - Sharpe: daily-PnL annualized → trade-return based (`pnl / risk_usd`), non-annualized, RFR=0

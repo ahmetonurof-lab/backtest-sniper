@@ -1,14 +1,10 @@
 """
-profile_fvg_size.py — Coin bazinda optimum FVG_MIN_SIZE_ATR_MULT bulma.
+profile_fvg_size.py — Coin bazinda optimum FVG_SIZE_MAP bulma.
 Sweep 0.02 - 0.20 step 0.01, motor analyzer_v5.
 
-Degisiklik (2026-07-13):
-- fvg_close_confirmed = OFF (retrace_state.py'de devre disi)
-- MIN_REL_FVG_THRESHOLD = 0.40 (sabit)
-- Sadece FVG_MIN_SIZE_ATR_MULT taranir
-
-Tum detay log'u reports/profile_fvg_size.log dosyasina yazilir.
-Sonucta sadece ozet terminale basilir.
+Tek eşik: FVG_SIZE_MAP (FVG.size / ATR orani).
+is_high_quality_fvg kaldirildi. FVG_MIN_MULT_MAP kaldirildi.
+on_sweep_confirmed + trailing ayni eşigi kullaniyor.
 
 Kullanim:
   python profile_fvg_size.py                     # paralel (default 4 worker)
@@ -27,44 +23,85 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 LOG_FILE = os.path.join(_THIS_DIR, "..", "reports", "profile_fvg_size.log")
 
 SYMBOLS_20 = [
+    "AAVEUSDT",
+    "ADAUSDT",
     "ALGOUSDT",
     "APTUSDT",
     "ARBUSDT",
     "ATOMUSDT",
-    "AAVEUSDT",
-    "ADAUSDT",
     "AVAXUSDT",
     "BNBUSDT",
     "DOGEUSDT",
-    "BTCUSDT",
-    "ETHUSDT",
     "DOTUSDT",
+    "DYDXUSDT",
+    "ENAUSDT",
+    "GMXUSDT",
     "INJUSDT",
+    "LDOUSDT",
     "LINKUSDT",
     "NEARUSDT",
+    "ONDOUSDT",
     "OPUSDT",
+    "PYTHUSDT",
+    "RENDERUSDT",
+    "SEIUSDT",
     "SOLUSDT",
+    "STRKUSDT",
     "SUIUSDT",
-    "XRPUSDT",
+    "TIAUSDT",
     "UNIUSDT",
+    "XRPUSDT",
 ]
 SWEEP_START = 0.02
 SWEEP_END = 0.20
 SWEEP_STEP = 0.01
-FIXED_CBDR_THRESHOLD = 0.40
 
 
 def _log_line(msg: str):
-    """Append to log file."""
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(msg + "\n")
         f.flush()
 
 
+def _compute_score(trade_records) -> tuple[float, int]:
+    n = len(trade_records)
+    if n == 0:
+        return 0.0, 0
+    tp = sum(1 for t in trade_records if t["result"] == "TP")
+    ptrail = sum(1 for t in trade_records if t["result"] == "PROFIT_TRAIL")
+    pe = tp + ptrail
+    pe_pct = pe / n * 100
+
+    gp = sum(t["pnl"] for t in trade_records if t["pnl"] > 0) or 0
+    gl = abs(sum(t["pnl"] for t in trade_records if t["pnl"] < 0))
+    pf = 999.0 if gl == 0 else gp / gl
+
+    total_pnl = sum(t["pnl"] for t in trade_records)
+    total_fee = sum(t.get("fee", 0) for t in trade_records)
+    pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
+
+    cum = 0
+    peak = 0
+    mdd = 0
+    for t in trade_records:
+        cum += t["pnl"]
+        if cum > peak:
+            peak = cum
+        dd = peak - cum
+        if dd > mdd:
+            mdd = dd
+
+    import config as _c
+
+    peak_bal = _c.INITIAL_BALANCE + peak
+    mdd_pct = (mdd / peak_bal) * 100 if peak_bal > 0 else 0
+
+    score = (pf * (pe_pct / 100) * pnl_per_fee) / (1 + mdd_pct / 100) * 100
+    return round(score), n
+
+
 # ─── Worker: tek coin profilleme ─────────────────────────────
 def _profile_one(sym: str) -> dict | None:
-    """Tek coin icin tum FVG_MIN_SIZE_ATR_MULT degerlerini dene, en iyisini bul.
-    Ayri ProcessPoolExecutor worker'inda calisir."""
     import os
     import sys
 
@@ -78,7 +115,6 @@ def _profile_one(sym: str) -> dict | None:
 
     feather_path = os.path.join(_dir, "data", "daily", f"{sym}_1m_raw.feather")
     if not os.path.isfile(feather_path):
-        _log_line(f"[{sym}] VERI YOK: {feather_path}")
         return None
 
     values = [
@@ -87,95 +123,50 @@ def _profile_one(sym: str) -> dict | None:
     ]
     results = []
 
-    # Sabit: CBDR threshold
-    cfg.MIN_REL_FVG_THRESHOLD = FIXED_CBDR_THRESHOLD
-
     for idx, size in enumerate(values):
-        cfg.FVG_MIN_SIZE_ATR_MULT = size
+        cfg.FVG_SIZE_MAP[sym] = size
         try:
             r = collect_fvg_profile(sym)
         except Exception as e:
-            _log_line(f"  [{sym}] mult={size:.3f} CRASH: {e}")
+            _log_line(f"  [{sym}] size={size:.3f} CRASH: {e}")
             continue
 
         if r is None or (isinstance(r, tuple) and r[0] is None):
-            _log_line(f"  [{sym}] mult={size:.3f} VERI YOK")
             continue
 
-        daily_rows, wins, losses, trade_records, rejection_counts = r
+        _, _, _, trade_records, rejection_counts = r
         if not trade_records:
-            results.append((size, 0))
+            results.append((size, 0, 0))
             continue
 
-        n = len(trade_records)
-        tp = sum(1 for t in trade_records if t["result"] == "TP")
-        ptrail = sum(1 for t in trade_records if t["result"] == "PROFIT_TRAIL")
-        tp_pct = tp / n * 100
-        ptrail_pct = ptrail / n * 100
-        positive_exit_pct = tp_pct + ptrail_pct
-
-        gross_profit = sum(t["pnl"] for t in trade_records if t["pnl"] > 0) or 0
-        gross_loss = abs(sum(t["pnl"] for t in trade_records if t["pnl"] < 0))
-        pf = 999.0 if gross_loss == 0 else gross_profit / gross_loss
-
-        total_pnl = sum(t["pnl"] for t in trade_records)
-        total_fee = sum(t.get("fee", 0) for t in trade_records)
-        pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
-
-        cumulative = 0
-        peak = 0
-        max_dd = 0
-        for t in trade_records:
-            cumulative += t["pnl"]
-            if cumulative > peak:
-                peak = cumulative
-            dd = peak - cumulative
-            if dd > max_dd:
-                max_dd = dd
-        peak_balance = cfg.INITIAL_BALANCE + peak
-        max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
-
-        pe_dec = positive_exit_pct / 100.0
-        score = (pf * pe_dec * pnl_per_fee) / (1 + max_dd_pct / 100) * 100
-        results.append((size, round(score)))
-
+        score, n = _compute_score(trade_records)
         entered = rejection_counts.get("ENTERED", 0)
+        results.append((size, score, n))
         _log_line(
-            f"  [{sym}] {idx + 1:>2}/{len(values)} mult={size:.3f} score={round(score)} trades={n} entered={entered}"
+            f"  [{sym}] {idx + 1:>2}/{len(values)} size={size:.3f} "
+            f"score={score} trades={n} entered={entered}"
         )
 
     if not results:
-        _log_line(f"  [{sym}] HICBIR SONUC YOK")
         return None
     best = max(results, key=lambda x: x[1])
-    _log_line(f"  [{sym}] BEST: mult={best[0]:.3f} score={best[1]}")
-    return {
-        "sym": sym,
-        "best_size": best[0],
-        "best_score": best[1],
-        "total_values": len(results),
-    }
+    _log_line(f"  [{sym}] BEST: size={best[0]:.3f} score={best[1]} trades={best[2]}")
+    return {"sym": sym, "best_size": best[0], "best_score": best[1]}
 
 
-def _print_fvg_map(results: dict):
+def _print_map(results: dict):
     lines = []
     lines.append("")
     lines.append("=" * 80)
-    lines.append("  BEST FVG_MIN_SIZE_ATR_MULT PER COIN")
-    lines.append(f"  (MIN_REL_FVG_THRESHOLD={FIXED_CBDR_THRESHOLD} sabit)")
+    lines.append("  BEST FVG_SIZE_MAP PER COIN")
     lines.append("=" * 80)
-    lines.append(f"  {'Coin':<12} {'Best Mult':>10} {'Score':>8}")
+    lines.append(f"  {'Coin':<12} {'Best':>10} {'Score':>8}")
     lines.append(f"  {'-' * 34}")
     for sym in sorted(results):
         r = results[sym]
         lines.append(f"  {sym:<12} {r['best_size']:>10.3f} {r['best_score']:>8}")
     lines.append("")
     lines.append("# Config'de guncellemek icin:")
-    lines.append(
-        f"FVG_MIN_SIZE_ATR_MULT = {results[sorted(results)[0]]['best_size']:.3f}  # ortalama"
-    )
-    lines.append("")
-    lines.append("# Coin bazli cozum (opsiyonel):")
     lines.append("FVG_SIZE_MAP: dict[str, float] = {")
     for sym in sorted(results):
         r = results[sym]
@@ -191,24 +182,24 @@ def _print_fvg_map(results: dict):
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="FVG_SIZE profiler")
-    parser.add_argument("--workers", type=int, default=4, help="Worker sayisi")
-    parser.add_argument("--serial", action="store_true", help="Sirali mod")
+    parser = argparse.ArgumentParser(description="FVG_SIZE_MAP profiler")
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--serial", action="store_true")
     args = parser.parse_args()
 
     use_serial = args.serial or args.workers <= 1
     n_workers = 1 if use_serial else args.workers
 
-    # Log dosyasini temizle
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "w", encoding="utf-8") as f:
-        f.write("FVG SIZE PROFILER\n")
-        f.write(f"Sweep: {SWEEP_START}-{SWEEP_END} step {SWEEP_STEP}\n")
+        f.write("=" * 80 + "\n")
+        f.write("  FVG SIZE PROFILER — TEK ASAMA (FVG_SIZE_MAP)\n")
+        f.write(f"  Sweep: {SWEEP_START}-{SWEEP_END} step {SWEEP_STEP}\n")
         f.write(
-            f"Coins: {len(SYMBOLS_20)}, values/coin: {int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1}\n"
+            f"  Coins: {len(SYMBOLS_20)}, values/coin: {int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1}\n"
         )
         f.write(
-            f"Mod: {'PARALEL' if not use_serial else 'SERIAL'} ({n_workers} worker)\n"
+            f"  Mod: {'PARALEL' if not use_serial else 'SERIAL'} ({n_workers} worker)\n"
         )
         f.write("=" * 80 + "\n")
         f.flush()
@@ -261,7 +252,7 @@ def main():
     _log_line(f"\nToplam sure: {time.time() - t0:.0f}s")
 
     if results:
-        _print_fvg_map(results)
+        _print_map(results)
 
     print(f"[BITTI] {time.time() - t0:.0f}s — Log: {LOG_FILE}", flush=True)
 

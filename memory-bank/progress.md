@@ -7,8 +7,9 @@
 - V4 bypass A/B test (fvg_profile_v4_bypass.py) — quality/validity/should_trade devre dışı
 - V3 engine (sweep_full_v3.py) + analyzer_v3
 - 3 session bazlı CBDR script (cbdr_default/real/asia)
-- CBDR threshold analysis (analyze_cbdr_thresholds.py)
+- CBDR threshold analysis (analyze_cbdr_thresholds.py) — **10 yeni coin'e daraltildi (2026-07-15)**
 - CBDR bucket scaling analizi (analyze_cbdr_thresholds.py — pairwise Wilson CI overlap, CBDR_RISK_MATRIX gerçek bucket sınırları)
+- Coin data download (dl_newcoins.py) — **10 coin feather dosyasi tamamlandi (2026-07-15)**
 - FVG lifecycle analyzer (fvg_lifecycle_analyzer.py)
 - FVG coin profile (fvg_coin_profile.py — 13 coin)
 - MULT parametre taraması (mult_scan.py — 15 değer x 13 coin)

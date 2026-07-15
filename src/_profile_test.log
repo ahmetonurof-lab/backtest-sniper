@@ -1,0 +1,5 @@
+0.0s: import config
+0.3s: import analyzer
+4.5s: calling collect_fvg_profile(BTCUSDT)
+39.2s: done
+daily_rows=907 wins=838 losses=1136 trade_records=1974

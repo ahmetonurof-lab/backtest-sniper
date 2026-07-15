@@ -24,26 +24,34 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── 20 coin ──
 ALL_SYMBOLS = [
-    "BTCUSDT",
-    "BNBUSDT",
-    "SOLUSDT",
-    "AVAXUSDT",
-    "LINKUSDT",
-    "XRPUSDT",
-    "ATOMUSDT",
-    "ADAUSDT",
-    "APTUSDT",
-    "DOTUSDT",
-    "NEARUSDT",
-    "ETHUSDT",
-    "SUIUSDT",
-    "OPUSDT",
-    "ARBUSDT",
-    "INJUSDT",
-    "ALGOUSDT",
     "AAVEUSDT",
-    "UNIUSDT",
+    "ADAUSDT",
+    "ALGOUSDT",
+    "APTUSDT",
+    "ARBUSDT",
+    "ATOMUSDT",
+    "AVAXUSDT",
+    "BNBUSDT",
     "DOGEUSDT",
+    "DOTUSDT",
+    "DYDXUSDT",
+    "ENAUSDT",
+    "GMXUSDT",
+    "INJUSDT",
+    "LDOUSDT",
+    "LINKUSDT",
+    "NEARUSDT",
+    "ONDOUSDT",
+    "OPUSDT",
+    "PYTHUSDT",
+    "RENDERUSDT",
+    "SEIUSDT",
+    "SOLUSDT",
+    "STRKUSDT",
+    "SUIUSDT",
+    "TIAUSDT",
+    "UNIUSDT",
+    "XRPUSDT",
 ]
 
 DEFAULT_BUCKET_BOUNDS = [
@@ -151,7 +159,9 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         # bucket scaling
         valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
         if valid:
-            bucket_data: dict[tuple[float, float], dict[str, int]] = defaultdict(lambda: {"trades": 0, "wins": 0})
+            bucket_data: dict[tuple[float, float], dict[str, int]] = defaultdict(
+                lambda: {"trades": 0, "wins": 0}
+            )
             for d in valid:
                 cbdr_w = d["cbdr_pct"]
                 for lo, hi in DEFAULT_BUCKET_BOUNDS:

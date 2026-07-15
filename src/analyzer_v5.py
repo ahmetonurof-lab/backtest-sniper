@@ -30,7 +30,6 @@ from session import DailyBias, SessionState
 from session_router import (
     get_cbdr_multiplier,
     should_trade,
-    is_high_quality_fvg,
     get_session_hours,
 )
 
@@ -42,7 +41,6 @@ SESSION_NAME = "MULTI_SESSION"
 SESSION_HOURS = {"start": 22, "end": 2}
 
 SYMBOLS_TO_TEST = [
-    "BTCUSDT",
     "BNBUSDT",
     "SOLUSDT",
     "AVAXUSDT",
@@ -53,7 +51,6 @@ SYMBOLS_TO_TEST = [
     "APTUSDT",
     "DOTUSDT",
     "NEARUSDT",
-    "ETHUSDT",
     "SUIUSDT",
 ]
 
@@ -274,7 +271,7 @@ def _collect_fvg_profile_impl(symbol: str):
             )
 
         if rsm.state_name == "SWEEP_DETECTED":
-            rsm.on_sweep_confirmed(chunk, cur, atr)
+            rsm.on_sweep_confirmed(chunk, cur, atr, symbol)
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
@@ -354,19 +351,14 @@ def _collect_fvg_profile_impl(symbol: str):
                     rd = abs(sl - ep)
                 tp = ep - rd * tpr
 
-            # ── FVG quality filter ──
             quality_mult = 1.0
             if tf is not None:
-                if not is_high_quality_fvg(tf.top - tf.bottom, atr, symbol):
+                fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
+                if fvg_status == "INVALIDATED":
                     quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "FVG_QUALITY"
+                    classic_fvg["v4_rejected"] = "FVG_SWEPT"
                 else:
-                    fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
-                    if fvg_status == "INVALIDATED":
-                        quality_mult = 0.0
-                        classic_fvg["v4_rejected"] = "FVG_SWEPT"
-                    else:
-                        classic_fvg["v4_rejected"] = None
+                    classic_fvg["v4_rejected"] = None
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
@@ -460,7 +452,8 @@ def _collect_fvg_profile_impl(symbol: str):
                     continue
 
             tc = chunk[:-1]
-            min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
+            min_mult = cfg.FVG_SIZE_MAP.get(symbol, FVG_MIN_SIZE_ATR_MULT)
+            min_fvg_size = max(atr * min_mult, 1e-8)
             cfvgs = detect_fvgs(
                 tc,
                 lookback=min(50, len(tc)),
@@ -852,8 +845,6 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
         pass
 
     import config as cfg
-
-    cfg.MIN_REL_FVG_THRESHOLD = 0.5
 
     # Import engine from same module
     from analyzer_v5 import collect_fvg_profile, compute_session_stats
