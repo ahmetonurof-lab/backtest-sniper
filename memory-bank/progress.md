@@ -7,7 +7,7 @@
 - V4 bypass A/B test (fvg_profile_v4_bypass.py) — quality/validity/should_trade devre dışı
 - V3 engine (sweep_full_v3.py) + analyzer_v3
 - 3 session bazlı CBDR script (cbdr_default/real/asia)
-- CBDR threshold analysis (analyze_cbdr_thresholds.py) — **10 yeni coin'e daraltildi (2026-07-15)**
+- CBDR threshold analysis (analyze_cbdr_thresholds.py) — **10 yeni coin tamamlandı (2026-07-15)**
 - CBDR bucket scaling analizi (analyze_cbdr_thresholds.py — pairwise Wilson CI overlap, CBDR_RISK_MATRIX gerçek bucket sınırları)
 - Coin data download (dl_newcoins.py) — **10 coin feather dosyasi tamamlandi (2026-07-15)**
 - FVG lifecycle analyzer (fvg_lifecycle_analyzer.py)
@@ -16,11 +16,25 @@
 - Early London risk taraması (sweep_early_london.py — 6 değer x 13 coin)
 - Portföy DD analizi (sweep_portfolio_dd.py — Calmar ratio, recovery günü)
 - n<100 bucket normalize (normalize_cbdr_matrix.py)
-- Per-coin session assignment (4 REAL_CBDR + 4 DEFAULT + 5 ASIA_RANGE)
-- Per-coin CBDR risk matrisi (6 bucket x 13 coin, Wilson score bazlı)
+- Per-coin session assignment (4 REAL_CBDR + 4 DEFAULT + 5 ASIA_RANGE → **10 yeni coin eklendi**)
+- Per-coin CBDR risk matrisi (6 bucket x 13 coin → **10 yeni coin eklendi**)
 - Parquet quant logger (buffer+flush, snappy compression)
 - Risk manager (DD circuit breaker, filelock state)
 - CBDR görselleştirme (matplotlib)
+
+## ✅ Hizli Yukleme + Paralel Isleme (2026-07-15)
+- **load_data optimizasyonu:** `_make_bar()` bypass (frozen dataclass __post_init__), list comprehension, numpy direkt okuma. ~10x hız.
+- **bar_index=None fix:** `analyze_cbdr_thresholds.py:396` — sweep dedup bypass, analyzer_v5.py ile uyumlu.
+- **Timestamp fix:** `datetime64[us]` → `datetime64[ms]` dönüşümü, `values.astype("datetime64[ms]").astype("int64")`.
+- **Division-by-zero fix:** `_analyze_all_20.py:123` — `dd = st.get("max_dd_pct", 1) or 1`.
+- **10 yeni coin feather dosyası:** TIA/SEI/ONDO/PYTH/RENDER/ENA/STRK/GMX/DYDX/LDO — 30-71MB arası, 1M+ bar.
+
+## ✅ Yeni Coin Config (2026-07-15)
+- **CBDR_RISK_MATRIX:** 10 yeni coin eklendi. Session assignments: ASIA_RANGE=7 (TIA/ONDO/PYTH/RENDER/ENA/STRK/GMX/LDO), DEFAULT=3 (SEI/DYDX).
+- **FVG_SIZE_MAP:** Optimum değerler sweep ile bulundu — DYDX=0.040, ENA/GMX/LDO=0.020, ONDO=0.040, PYTH=0.130, RENDER/SEI/TIA=0.070, STRK=0.060.
+- **FVG_MIN_SIZE_ATR_MULT:** 0.08→0.06 (analyze_cbdr_thresholds.py ile aynı).
+- **SYMBOLS:** 10 yeni coin listeye eklendi (toplam 28).
+- **profile_fvg_size.py:** SYMBOLS_20 güncellendi (sadece 10 yeni coin).
 
 ## 🔧 Pending / In Progress
 - **15m Feather Ön-Hesaplama:** `data/daily/` altına `*_15m.feather` yaz. Her run'da 1m→Bar→resample yerine direkt 15m yükle. ~5-10sn/coin kazancı, ProcessPoolExecutor worker'larında cache sorununu çözer.

@@ -166,17 +166,28 @@ def auto_multiplier(wr: float, wilson_lower: float, trades: int) -> float:
     return 0.0
 
 
+def _make_bar(idx, op, hi, lo, cl, vo, ts):
+    bar = object.__new__(Bar)
+    object.__setattr__(bar, "index", idx)
+    object.__setattr__(bar, "open", op)
+    object.__setattr__(bar, "high", hi)
+    object.__setattr__(bar, "low", lo)
+    object.__setattr__(bar, "close", cl)
+    object.__setattr__(bar, "volume", vo)
+    object.__setattr__(bar, "is_closed", True)
+    object.__setattr__(bar, "timestamp", ts)
+    return bar
+
+
 @functools.lru_cache(maxsize=32)
 def load_data(filepath):
     """CSV veya Feather'den bar verisini yukle."""
-    bars = []
     if filepath.endswith(".feather"):
         df = pd.read_feather(filepath)
         df.columns = [c.strip() for c in df.columns]
-        n = len(df)
         o = df["open"].to_numpy(dtype=float)
-        high_arr = df["high"].to_numpy(dtype=float)
-        low_arr = df["low"].to_numpy(dtype=float)
+        ha = df["high"].to_numpy(dtype=float)
+        la = df["low"].to_numpy(dtype=float)
         c = df["close"].to_numpy(dtype=float)
         v = df["volume"].to_numpy(dtype=float)
         ts_ms = (
@@ -184,20 +195,12 @@ def load_data(filepath):
             .values.astype("datetime64[ms]")
             .astype("int64")
         )
-        for i in range(n):
-            bars.append(
-                Bar(
-                    index=i,
-                    open=o[i],
-                    high=high_arr[i],
-                    low=low_arr[i],
-                    close=c[i],
-                    volume=v[i],
-                    is_closed=True,
-                    timestamp=int(ts_ms[i]),
-                )
-            )
-        return bars
+        ts_list = ts_ms.tolist()
+        return [
+            _make_bar(i, o[i], ha[i], la[i], c[i], v[i], ts_list[i])
+            for i in range(len(df))
+        ]
+    bars = []
     with open(filepath, encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)
@@ -395,7 +398,7 @@ def collect_daily_data(
             rsm.on_sweep(
                 direction=ss.sweep_direction or "bullish",
                 level=ss.sweep_level or 0.0,
-                bar_index=sb,
+                bar_index=None,
             )
 
         if rsm.state_name == "SWEEP_DETECTED":

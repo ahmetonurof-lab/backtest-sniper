@@ -24,8 +24,16 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── 10 yeni coin (dl_newcoins.py ALL_SYMS ile ayni) ──
 ALL_SYMBOLS = [
-    "TIAUSDT", "SEIUSDT", "ONDOUSDT", "PYTHUSDT", "RENDERUSDT",
-    "ENAUSDT", "STRKUSDT", "GMXUSDT", "DYDXUSDT", "LDOUSDT",
+    "TIAUSDT",
+    "SEIUSDT",
+    "ONDOUSDT",
+    "PYTHUSDT",
+    "RENDERUSDT",
+    "ENAUSDT",
+    "STRKUSDT",
+    "GMXUSDT",
+    "DYDXUSDT",
+    "LDOUSDT",
 ]
 
 DEFAULT_BUCKET_BOUNDS = [
@@ -120,7 +128,7 @@ def _analyze_one_symbol(sym: str, workers: int = 1) -> dict | None:
         bep = st.get("be_plus_pct", 0)
         pf = st.get("profit_factor", 0)
         pnl = abs(st.get("total_pnl", 0))
-        dd = st.get("max_dd_pct", 1)
+        dd = st.get("max_dd_pct", 1) or 1
         score = (bep * pf * pnl) / dd
         ranked.append((score, sname, st))
     ranked.sort(key=lambda x: x[0], reverse=True)
@@ -249,7 +257,7 @@ def _run_serial(workers: int):
         note = " (YENI)" if sym not in ["DEFAULT"] else " (AYNI)"
         print(
             f"  => {sym}: BEST={best_sname} "
-            f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
+            f"BE+={best_st.get('be_plus_pct', 0):.1f}% PF={best_st['profit_factor']:.2f} "
             f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
             f"Skor={best_score:.0f}{note}",
             flush=True,
@@ -341,7 +349,7 @@ def _print_config(
         if bs:
             for b in bs:
                 print(
-                    f'            {b["label"]},  # n={b["trades"]} WR={b["wr"]:.1f}% CI=[{b["wilson_lower"]:.1f}%,{b["wilson_upper"]:.1f}%]'
+                    f"            {b['label']},  # n={b['trades']} WR={b['wr']:.1f}% CI=[{b['wilson_lower']:.1f}%,{b['wilson_upper']:.1f}%]"
                 )
         else:
             print("            (0.0, 1.0, 1.0),")
@@ -450,7 +458,7 @@ def main():
 
             print(
                 f"  => {sym}: BEST={best_sname} "
-                f"BE+={best_st.get('be_plus_pct',0):.1f}% PF={best_st['profit_factor']:.2f} "
+                f"BE+={best_st.get('be_plus_pct', 0):.1f}% PF={best_st['profit_factor']:.2f} "
                 f"DD={best_st['max_dd_pct']:.1f}% PnL={best_st['total_pnl']:+.0f} "
                 f"Skor={best_score:.0f}",
                 flush=True,

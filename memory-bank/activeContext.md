@@ -1,31 +1,24 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-11: Production reporting upgrade completed. Exit tracking: SL→LOSS/PROFIT_TRAIL. Sharpe: trade-return based (non-annualized). New summary columns: TP%, PTrail%, Loss%, Score, PnL/Fee, FVGCr. Score = (Sharpe × PF × PositiveExit%) / (1 + MaxDD%). Removed obsolete: WIN/BE/LOSS/WR%/BE+%.
+2026-07-15: 10 yeni coin (TIA/SEI/ONDO/PYTH/RENDER/ENA/STRK/GMX/DYDX/LDO) için backtest altyapısı tamamlandı. CBDR threshold testi + FVG size sweep tamamlandı, sonuçlar `sniper/src/config.py`'ye yazıldı.
 
 ## Recently Completed
-- **New Coin Data Download (2026-07-15):** 10 new coins downloaded via `dl_newcoins.py`: TIA, SEI, ONDO, PYTH, RENDER, ENA, STRK, GMX, DYDX, LDO. All feather files in `src/data/daily/`. GMX/DYDX/LDO were the last 3, completed 2026-07-15.
-- **CBDR Threshold Analysis — New Coins Only (2026-07-15):** `analyze_cbdr_thresholds.py` SYMBOLS list trimmed to only the 10 new coins (removed all existing 18 coins). Ready for best CBDR range testing.
-- **Production Reporting (2026-07-11):** `analyzer_v5.py` reporting system updated per NEXUS specs:
-  - Exit tracking: `SL` → `LOSS` / `PROFIT_TRAIL` (trailing_count > 0 & SL past entry = profitable trail)
-  - Sharpe: daily-PnL annualized → trade-return based (`pnl / risk_usd`), non-annualized, RFR=0
-  - New columns: `TP%`, `PTrail%`, `Loss%`, `PF`, `Sharpe`, `MaxDD%`, `Fee`, `NetPnL`, `PnL/Fee`, `FVGCr`, `FVGEnt`, `MinRisk`, `Score`
-  - Removed: `WIN`, `BE`, `LOSS`, `WR%`, `BE+%`, individual rejection columns
-  - Score = (Sharpe × PF × PositiveExit%) / (1 + MaxDD%) — No PnL in score, only ratios
-  - `risk_usd` added to `trade_records` for Sharpe computation
-- **2x2 Config Matrix Analysis (2026-07-11):** `reports/config_vs_analysis.md` — 3 runs compared (config2+0.40, config3+0.40, config3+0.50). config2+0.50 run pending.
-- **Logic Drift Fixes (2026-07-11):** bar_index=sb, MIN_REL_FVG_THRESHOLD=0.50 her yerde, CBDR_RISK_MATRIX canliya aktarildi, BE canlidan kaldirildi.
+- **load_data Optimizasyonu (2026-07-15):** `analyze_cbdr_thresholds.py` ve `_analyze_all_20.py` — `_make_bar()` bypass (frozen dataclass __post_init__), list comprehension, numpy direkt okuma. ~10x hız.
+- **bar_index=None Fix (2026-07-15):** `analyze_cbdr_thresholds.py:396` — `bar_index=sb` → `bar_index=None` (sweep dedup bypass, analyzer_v5.py ile uyumlu).
+- **Timestamp Fix (2026-07-15):** `datetime64[us]` → `datetime64[ms]` dönüşümü, `values.astype("datetime64[ms]").astype("int64")` ile milisaniye.
+- **Division-by-Zero Fix (2026-07-15):** `_analyze_all_20.py:123` — `dd = st.get("max_dd_pct", 1) or 1`.
+- **CBDR Threshold Testi — 10 Yeni Coin (2026-07-15):** `_analyze_all_20.py` ile koşuldu, sonuçlar `reports/yeni_coin_cbdr_test.txt`'de. Session assignments: ASIA_RANGE=7, DEFAULT=3.
+- **Config Güncellemesi (2026-07-15):** `sniper/src/config.py` — 10 yeni coin CBDR_RISK_MATRIX, SYMBOLS, FVG_SIZE_MAP eklendi. `FVG_MIN_SIZE_ATR_MULT` 0.08→0.06.
+- **FVG Size Sweep (2026-07-15):** `profile_fvg_size.py` ile 0.01-0.60 arası 60 adım × 10 coin sweep tamamlandı. Optimum değerler config'e yazıldı.
+- **New Coin Data Download (2026-07-15):** 10 new coins downloaded via `dl_newcoins.py`. All feather files in `src/data/daily/`.
 
 ## Next Actions
-1. **15m Feather Ön-Hesaplama:** `*_15m.feather` yaz, run'larda direkt yükle (cache sorununu çöz)
-2. **CBDR Threshold Results:** yeni 10 coin sonuçlarını değerlendir
-3. **config2+0.50 run** (Run D) — 2x2 matrisi tamamla
-2. **Canli bot testi:** guncel config + BE'siz trailing ile paper trade baslat
-3. **ETH duzelt:** ya tamamen cikar ya FVG tetikleme sartlarini zorlastir
-4. **VIP List build:** Score/Sharpe bazli coin siralamasi
-5. **FVG_SIZE_MAP:** futures ATR bazli hesapla
+1. **Canlıya Geçiş:** 10 yeni coin'i canlı bot listesine ekle, paper trade başlat
+2. **15m Feather Ön-Hesaplama:** `*_15m.feather` yaz, run'larda direkt yükle (cache sorununu çöz)
+3. **Canlı Backtest Karşılaştırması:** analyzer_v5.py sonuçları ile canlı performans karşılaştırması
 
 ## Notlar
-- Config.py su anda config2 (muhafazakar) degerlerinde (git commit hali). config3 matrix commitlenmedi.
-- Dynamic scoring artık PnL içermiyor, sadece oran bazlı (Sharpe × PF × PositiveExit% / (1+MaxDD%)).
-- Rapor dosyasi append modunda yaziyor, tum gecmis run'lar saklaniyor.
+- `FVG_SIZE_MAP` optimum değerleri: DYDX=0.040, ENA/GMX/LDO=0.020, ONDO=0.040, PYTH=0.130, RENDER/SEI/TIA=0.070, STRK=0.060.
+- `analyze_cbdr_thresholds.py` ve `analyzer_v5.py` strateji farkları:前者 `is_high_quality_fvg` filtresi var,后者 yok.
+- Strategy differences: `analyze_cbdr_thresholds.py` has `is_high_quality_fvg` filter (FVG/ATR >= 0.5); `analyzer_v5.py` does NOT.
