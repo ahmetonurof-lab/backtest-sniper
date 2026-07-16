@@ -29,15 +29,25 @@ import os
 import json
 import argparse
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-_SNIPER_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "sniper", "src")
+_BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _BASE)
+_SNIPER_SRC = os.environ.get("SNIPER_ROOT") or os.path.join(
+    _BASE, "..", "..", "sniper", "src"
+)
 if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
 import config as cfg  # noqa: E402
 from analyzer_v5 import collect_fvg_profile, compute_session_stats  # noqa: E402
 
-DEFAULT_BUCKETS = [(0.0, 1.0), (1.0, 1.5), (1.5, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 999.0)]
+DEFAULT_BUCKETS = [
+    (0.0, 1.0),
+    (1.0, 1.5),
+    (1.5, 2.0),
+    (2.0, 3.0),
+    (3.0, 5.0),
+    (5.0, 999.0),
+]
 
 
 def bucket_stats_for_symbol(symbol: str) -> list:
@@ -53,15 +63,17 @@ def bucket_stats_for_symbol(symbol: str) -> list:
 
     # day_key -> cbdr_pct sozlugu (analyze_bucket_scaling ile ayni mantik)
     day_to_cbdr = {
-        d["day_key"]: d["cbdr_pct"]
-        for d in daily_rows
-        if d.get("cbdr_pct") is not None
+        d["day_key"]: d["cbdr_pct"] for d in daily_rows if d.get("cbdr_pct") is not None
     }
 
     profile = cfg.CBDR_RISK_MATRIX.get(symbol, {})
     session = profile.get("session", "DEFAULT")
     matrix_buckets = profile.get("buckets", [])
-    bucket_bounds = [(lo, hi) for lo, hi, _mult in matrix_buckets] if matrix_buckets else DEFAULT_BUCKETS
+    bucket_bounds = (
+        [(lo, hi) for lo, hi, _mult in matrix_buckets]
+        if matrix_buckets
+        else DEFAULT_BUCKETS
+    )
 
     # Her trade'i gunun cbdr_pct'ine gore bucket'a ata
     bucket_trades: dict = {b: [] for b in bucket_bounds}
@@ -82,37 +94,43 @@ def bucket_stats_for_symbol(symbol: str) -> list:
             unmatched += 1
 
     if unmatched:
-        print(f"  [{symbol}] {unmatched} trade hicbir bucket'a eslenemedi (cbdr_pct eksik/disinda)")
+        print(
+            f"  [{symbol}] {unmatched} trade hicbir bucket'a eslenemedi (cbdr_pct eksik/disinda)"
+        )
 
     out = []
     for (lo, hi), trades in bucket_trades.items():
         if not trades:
-            out.append({
-                "symbol": symbol,
-                "session": session,
-                "bucket_low": lo,
-                "bucket_high": hi,
-                "n": 0,
-                "pf": 0.0,
-                "sharpe": 0.0,
-                "max_dd_pct": 0.0,
-                "pe_pct": 0.0,
-            })
+            out.append(
+                {
+                    "symbol": symbol,
+                    "session": session,
+                    "bucket_low": lo,
+                    "bucket_high": hi,
+                    "n": 0,
+                    "pf": 0.0,
+                    "sharpe": 0.0,
+                    "max_dd_pct": 0.0,
+                    "pe_pct": 0.0,
+                }
+            )
             continue
         stats = compute_session_stats(trades, cfg.INITIAL_BALANCE)
         if stats["total_trades"] == 0:
             continue
-        out.append({
-            "symbol": symbol,
-            "session": session,
-            "bucket_low": lo,
-            "bucket_high": hi,
-            "n": stats["total_trades"],
-            "pf": round(stats["profit_factor"], 3),
-            "sharpe": round(stats["sharpe"], 4),
-            "max_dd_pct": round(stats["max_dd_pct"], 3),
-            "pe_pct": round(stats["positive_exit_pct"], 2),
-        })
+        out.append(
+            {
+                "symbol": symbol,
+                "session": session,
+                "bucket_low": lo,
+                "bucket_high": hi,
+                "n": stats["total_trades"],
+                "pf": round(stats["profit_factor"], 3),
+                "sharpe": round(stats["sharpe"], 4),
+                "max_dd_pct": round(stats["max_dd_pct"], 3),
+                "pe_pct": round(stats["positive_exit_pct"], 2),
+            }
+        )
     return out
 
 
@@ -120,13 +138,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--output", default="bucket_data.json")
     parser.add_argument(
-        "--symbols", nargs="*", default=None,
-        help="Belirli semboller (default: config.py SYMBOLS listesinin tamami)"
+        "--symbols",
+        nargs="*",
+        default=None,
+        help="Belirli semboller (default: config.py SYMBOLS listesinin tamami)",
     )
     args = parser.parse_args()
 
     symbols = args.symbols if args.symbols else sorted(cfg.SYMBOLS)
-    print(f"{len(symbols)} sembol icin bucket cikartiliyor (trailing-dahil, analyzer_v5 motoru)...\n")
+    print(
+        f"{len(symbols)} sembol icin bucket cikartiliyor (trailing-dahil, analyzer_v5 motoru)...\n"
+    )
 
     all_records = []
     for sym in symbols:
@@ -137,6 +159,7 @@ def main():
             print(f"  [{sym}] {len(recs)} bucket uretildi")
         except Exception as e:
             import traceback
+
             print(f"  [{sym}] HATA: {e}")
             traceback.print_exc()
             continue
