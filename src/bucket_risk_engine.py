@@ -56,13 +56,13 @@ from datetime import datetime, timezone
 # ──────────────────────────────────────────────────────────────────────────
 
 ANCHORS = {
-    "pf_floor": 1.0,      # PF<=1.0  -> norm 0 (breakeven veya kayıp)
-    "pf_ceil": 4.0,       # PF>=4.0  -> norm 1 (doygunluk)
+    "pf_floor": 1.0,  # PF<=1.0  -> norm 0 (breakeven veya kayıp)
+    "pf_ceil": 4.0,  # PF>=4.0  -> norm 1 (doygunluk)
     "sharpe_ceil": 0.40,  # Sharpe>=0.40 -> norm 1
     "dd_floor_pct": 0.5,  # MaxDD<=%0.5 -> norm 1 (en iyi)
-    "dd_ceil_pct": 4.0,   # MaxDD>=%4.0 -> norm 0 (en kötü)
+    "dd_ceil_pct": 4.0,  # MaxDD>=%4.0 -> norm 0 (en kötü)
     "conf_ceil_n": 1000,  # n>=1000 -> norm 1 (tam güven)
-    "pe_floor_pct": 40.0, # PE<=%40 -> norm 0
+    "pe_floor_pct": 40.0,  # PE<=%40 -> norm 0
     "pe_ceil_pct": 70.0,  # PE>=%70 -> norm 1
 }
 
@@ -87,13 +87,13 @@ SCORE_TO_MULT = [
 
 # PF gate: sert tavan (composite skordan bağımsız, PF tek başına belirler)
 PF_GATE = [
-    (2.5, None),   # PF>=2.5 -> tavan yok
-    (1.8, 1.2),    # 1.8<=PF<2.5 -> tavan 1.2x
-    (1.3, 0.8),    # 1.3<=PF<1.8 -> tavan 0.8x
-    (0.0, 0.0),    # PF<1.3 -> tavan 0.0x
+    (2.5, None),  # PF>=2.5 -> tavan yok
+    (1.8, 1.2),  # 1.8<=PF<2.5 -> tavan 1.2x
+    (1.3, 0.8),  # 1.3<=PF<1.8 -> tavan 0.8x
+    (0.0, 0.0),  # PF<1.3 -> tavan 0.0x
 ]
 
-SAFETY_MIN_N = 100      # n<100 ise mult her koşulda <=1.0x
+SAFETY_MIN_N = 100  # n<100 ise mult her koşulda <=1.0x
 SAFETY_CAP = 1.0
 
 VALID_MULTS = [0.0, 0.5, 0.8, 1.0, 1.2, 1.5]
@@ -113,6 +113,7 @@ def snap_to_valid(mult: float) -> float:
 # 2. NORMALİZASYON FONKSİYONLARI
 # ──────────────────────────────────────────────────────────────────────────
 
+
 def normalize(bucket: dict) -> dict:
     pf = bucket["pf"]
     sharpe = bucket["sharpe"]
@@ -120,11 +121,20 @@ def normalize(bucket: dict) -> dict:
     n = bucket["n"]
     pe = bucket.get("pe_pct", 50.0)
 
-    pf_norm = clip((pf - ANCHORS["pf_floor"]) / (ANCHORS["pf_ceil"] - ANCHORS["pf_floor"]))
+    pf_norm = clip(
+        (pf - ANCHORS["pf_floor"]) / (ANCHORS["pf_ceil"] - ANCHORS["pf_floor"])
+    )
     sharpe_norm = clip(sharpe / ANCHORS["sharpe_ceil"])
-    dd_norm = clip(1 - (dd - ANCHORS["dd_floor_pct"]) / (ANCHORS["dd_ceil_pct"] - ANCHORS["dd_floor_pct"]))
+    dd_norm = clip(
+        1
+        - (dd - ANCHORS["dd_floor_pct"])
+        / (ANCHORS["dd_ceil_pct"] - ANCHORS["dd_floor_pct"])
+    )
     conf_norm = clip(n / ANCHORS["conf_ceil_n"])
-    pe_norm = clip((pe - ANCHORS["pe_floor_pct"]) / (ANCHORS["pe_ceil_pct"] - ANCHORS["pe_floor_pct"]))
+    pe_norm = clip(
+        (pe - ANCHORS["pe_floor_pct"])
+        / (ANCHORS["pe_ceil_pct"] - ANCHORS["pe_floor_pct"])
+    )
 
     return {
         "pf_norm": pf_norm,
@@ -161,7 +171,10 @@ def pf_gate_cap(pf: float):
 
 def _zero_bucket_result():
     return {
-        "norms": {k: 0.0 for k in ["pf_norm", "sharpe_norm", "dd_norm", "conf_norm", "pe_norm"]},
+        "norms": {
+            k: 0.0
+            for k in ["pf_norm", "sharpe_norm", "dd_norm", "conf_norm", "pe_norm"]
+        },
         "score": 0.0,
         "composite_mult": 0.0,
         "gate_cap": 0.0,
@@ -200,6 +213,7 @@ def compute_final_mult(bucket: dict):
 # 3. GEREKÇE ÜRETİMİ (explainability)
 # ──────────────────────────────────────────────────────────────────────────
 
+
 def reason_lines(bucket: dict, result: dict) -> list:
     if bucket["n"] == 0:
         return ["Bucket'ta hic trade yok (n=0) -> multiplier 0.0x (guvenli varsayilan)"]
@@ -216,7 +230,10 @@ def reason_lines(bucket: dict, result: dict) -> list:
     tick_or_cross("Confidence(n)", norms["conf_norm"], bucket["n"])
     tick_or_cross("PE (bonus)", norms["pe_norm"], bucket.get("pe_pct", 50.0), "%")
 
-    if result["gate_cap"] is not None and result["gated_mult"] < result["composite_mult"]:
+    if (
+        result["gate_cap"] is not None
+        and result["gated_mult"] < result["composite_mult"]
+    ):
         lines.append(
             f"→ PF Gate devrede: PF={bucket['pf']} tavanı {result['gate_cap']}x'e çekti "
             f"(composite skor {result['composite_mult']}x öneriyordu, gate kazandı)."
@@ -236,6 +253,7 @@ def reason_lines(bucket: dict, result: dict) -> list:
 # ──────────────────────────────────────────────────────────────────────────
 # 4. RAPOR ÜRETİMİ
 # ──────────────────────────────────────────────────────────────────────────
+
 
 def build_report(buckets_with_results: list) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -258,8 +276,12 @@ def build_report(buckets_with_results: list) -> str:
             out.append(f"## {current_symbol}")
             out.append("")
 
-        out.append(f"### {bucket['bucket_low']}-{bucket['bucket_high']}  (n={bucket['n']})")
-        out.append(f"Score={result['score']} | Final Multiplier = **{result['final_mult']}x**")
+        out.append(
+            f"### {bucket['bucket_low']}-{bucket['bucket_high']}  (n={bucket['n']})"
+        )
+        out.append(
+            f"Score={result['score']} | Final Multiplier = **{result['final_mult']}x**"
+        )
         out.append("")
         for line in reason_lines(bucket, result):
             out.append(line)
@@ -273,6 +295,7 @@ def build_report(buckets_with_results: list) -> str:
 # ──────────────────────────────────────────────────────────────────────────
 # 5. CONFIG.PY BLOĞU ÜRETİMİ
 # ──────────────────────────────────────────────────────────────────────────
+
 
 def build_config_block(buckets_with_results: list[tuple[dict, dict]]) -> str:
     by_symbol: dict[str, list[tuple[dict, dict]]] = {}
@@ -314,6 +337,7 @@ def build_config_block(buckets_with_results: list[tuple[dict, dict]]) -> str:
 # 6. ESKİ vs YENİ KARŞILAŞTIRMA (opsiyonel — eski config.py verilirse)
 # ──────────────────────────────────────────────────────────────────────────
 
+
 def parse_old_multipliers(old_config_path: str) -> dict:
     """
     Eski config.py içindeki CBDR_RISK_MATRIX'ten (symbol, low, high) -> eski_mult
@@ -328,22 +352,32 @@ def parse_old_multipliers(old_config_path: str) -> dict:
         if sym_match:
             current_symbol = sym_match.group(1)
             continue
-        bucket_match = re.match(
-            r"\s*\(([\d.]+),\s*([\d.]+),\s*([\d.]+)\)", line
-        )
+        bucket_match = re.match(r"\s*\(([\d.]+),\s*([\d.]+),\s*([\d.]+)\)", line)
         if bucket_match and current_symbol:
             low, high, mult = bucket_match.groups()
             result[(current_symbol, float(low), float(high))] = float(mult)
     return result
 
 
-def build_comparison_csv(buckets_with_results: list[tuple[dict, dict]], old_mults: dict, out_path: str):
+def build_comparison_csv(
+    buckets_with_results: list[tuple[dict, dict]], old_mults: dict, out_path: str
+):
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "symbol", "bucket_low", "bucket_high", "n", "pf", "sharpe",
-            "max_dd_pct", "old_mult", "new_mult", "delta"
-        ])
+        writer.writerow(
+            [
+                "symbol",
+                "bucket_low",
+                "bucket_high",
+                "n",
+                "pf",
+                "sharpe",
+                "max_dd_pct",
+                "old_mult",
+                "new_mult",
+                "delta",
+            ]
+        )
         rows = []
         for bucket, result in buckets_with_results:
             key = (bucket["symbol"], bucket["bucket_low"], bucket["bucket_high"])
@@ -356,21 +390,32 @@ def build_comparison_csv(buckets_with_results: list[tuple[dict, dict]], old_mult
         rows.sort(key=lambda r: abs(r[4]) if r[4] is not None else -1, reverse=True)
 
         for bucket, result, old, new, delta in rows:
-            writer.writerow([
-                bucket["symbol"], bucket["bucket_low"], bucket["bucket_high"],
-                bucket["n"], bucket["pf"], bucket["sharpe"], bucket["max_dd_pct"],
-                old if old is not None else "N/A", new,
-                round(delta, 2) if delta is not None else "N/A",
-            ])
+            writer.writerow(
+                [
+                    bucket["symbol"],
+                    bucket["bucket_low"],
+                    bucket["bucket_high"],
+                    bucket["n"],
+                    bucket["pf"],
+                    bucket["sharpe"],
+                    bucket["max_dd_pct"],
+                    old if old is not None else "N/A",
+                    new,
+                    round(delta, 2) if delta is not None else "N/A",
+                ]
+            )
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # 7. MAIN
 # ──────────────────────────────────────────────────────────────────────────
 
+
 def main():
     if len(sys.argv) < 2:
-        print("Kullanım: python3 bucket_risk_engine.py bucket_data.json [eski_config.py]")
+        print(
+            "Kullanım: python3 bucket_risk_engine.py bucket_data.json [eski_config.py]"
+        )
         sys.exit(1)
 
     data_path = sys.argv[1]
@@ -396,18 +441,26 @@ def main():
     # 3) Eski config yedeği + karşılaştırma
     if old_config_path:
         backup_path = out_dir / "config_backup_pre_v2.py"
-        backup_path.write_text(Path(old_config_path).read_text(encoding="utf-8"), encoding="utf-8")
+        backup_path.write_text(
+            Path(old_config_path).read_text(encoding="utf-8"), encoding="utf-8"
+        )
 
         old_mults = parse_old_multipliers(old_config_path)
-        build_comparison_csv(buckets_with_results, old_mults, str(out_dir / "bucket_score_comparison.csv"))
+        build_comparison_csv(
+            buckets_with_results,
+            old_mults,
+            str(out_dir / "bucket_score_comparison.csv"),
+        )
         print(f"Yedek alındı: {backup_path}")
-        print(f"Karşılaştırma: bucket_score_comparison.csv")
+        print("Karşılaştırma: bucket_score_comparison.csv")
 
     print(f"Rapor: bucket_risk_report.md ({len(buckets)} bucket)")
-    print(f"Config bloğu: cbdr_risk_matrix_v2.py")
-    print("NOT: Bu blok mevcut config.py'deki CBDR_RISK_MATRIX'in YERİNE elle "
-          "yapıştırılmalı — script config.py'yi otomatik overwrite ETMEZ, "
-          "kontrolsüz değişikliği önlemek için.")
+    print("Config bloğu: cbdr_risk_matrix_v2.py")
+    print(
+        "NOT: Bu blok mevcut config.py'deki CBDR_RISK_MATRIX'in YERİNE elle "
+        "yapıştırılmalı — script config.py'yi otomatik overwrite ETMEZ, "
+        "kontrolsüz değişikliği önlemek için."
+    )
 
 
 if __name__ == "__main__":

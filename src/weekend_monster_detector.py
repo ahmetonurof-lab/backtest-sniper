@@ -23,14 +23,13 @@ import argparse
 import random
 from datetime import datetime
 
-_BASE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _BASE)
-_SNIPER_SRC = os.environ.get("SNIPER_ROOT") or os.path.join(_BASE, "..", "..", "sniper", "src")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_SNIPER_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "sniper", "src")
 if _SNIPER_SRC not in sys.path:
     sys.path.insert(0, _SNIPER_SRC)
 
-import config as cfg  # noqa: E402
-from analyzer_v5 import collect_fvg_profile, compute_session_stats  # noqa: E402
+import config as cfg
+from analyzer_v5 import collect_fvg_profile, compute_session_stats
 
 MIN_N_PER_GROUP = 100          # bu esigin altinda hicbir sonuca guvenme
 EFFECT_SIZE_MIN_PF_RATIO = 1.3  # ekonomik anlamlilik esigi
@@ -38,7 +37,7 @@ FDR_ALPHA = 0.05
 
 
 def parse_day_key_weekday(day_key: str):
-    """day_key'den haftanin gununu cikar. Format: %Y-%m-%d (session.py cbdr_key)."""
+    """day_key formati session.py:367'de dogrulandi: '%Y-%m-%d'."""
     try:
         return datetime.strptime(day_key, "%Y-%m-%d").weekday()  # 0=Pzt ... 5=Cmt,6=Paz
     except (ValueError, TypeError):
@@ -66,41 +65,57 @@ def split_by_weekday(trade_records):
     return weekday_trades, weekend_trades, unmatched, day_is_weekend
 
 
-def pf_from_trades(trades):
-    if not trades:
-        return 0.0
-    gp = sum(t["pnl"] for t in trades if t["pnl"] > 0)
-    gl = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+def precompute_day_stats(trades):
+    """Her gun icin (gross_profit, gross_loss) tek seferde hesaplanir.
+    Permutasyon dongusu artik trade degil GUN uzerinde calisir -- 900 gun
+    vs 5000 trade, ~5x hizlanma, ve permutasyon basina trade taramasi
+    tamamen ortadan kalkiyor (asil timeout nedeni buydu)."""
+    day_stats = {}
+    for t in trades:
+        dk = t.get("day_key")
+        gp, gl = day_stats.get(dk, (0.0, 0.0))
+        if t["pnl"] > 0:
+            gp += t["pnl"]
+        else:
+            gl += abs(t["pnl"])
+        day_stats[dk] = (gp, gl)
+    return day_stats
+
+
+def pf_from_day_stats(day_keys, day_stats):
+    gp = sum(day_stats[d][0] for d in day_keys if d in day_stats)
+    gl = sum(day_stats[d][1] for d in day_keys if d in day_stats)
     return 999.0 if gl == 0 else gp / gl
 
 
 def permutation_test_pf_diff(all_trades, day_is_weekend, n_weekend_days, n_perms=2000, seed=42):
     """
-    Gun bazinda permutasyon: gercek hafta sonu gun sayisi kadar GUNU rastgele
-    'hafta sonu' olarak isaretleyip (ayni gundeki trade'ler birlikte kalir),
-    her permutasyonda PF farkini hesapla. Gercek fark bu null dagilimin
-    neresinde -> empirik p-degeri.
+    Gun bazinda permutasyon (ONCEDEN HESAPLANMIS gun istatistikleriyle):
+    gercek hafta sonu gun sayisi kadar GUNU rastgele 'hafta sonu' olarak
+    isaretleyip (ayni gundeki trade'ler birlikte kalir), her permutasyonda
+    PF farkini hesapla. Gercek fark bu null dagilimin neresinde -> empirik p.
     """
     rng = random.Random(seed)
     all_days = list(day_is_weekend.keys())
     if len(all_days) <= n_weekend_days or n_weekend_days == 0:
-        return None  # yetersiz gun cesitliligi
+        return None
 
-    # gercek PF farkini hesapla (referans)
-    real_weekday = [t for t in all_trades if not day_is_weekend[t["day_key"]]]
-    real_weekend = [t for t in all_trades if day_is_weekend[t["day_key"]]]
-    real_diff = pf_from_trades(real_weekend) - pf_from_trades(real_weekday)
+    day_stats = precompute_day_stats(all_trades)
+
+    real_weekend_days = [d for d in all_days if day_is_weekend[d]]
+    real_weekday_days = [d for d in all_days if not day_is_weekend[d]]
+    real_diff = pf_from_day_stats(real_weekend_days, day_stats) - pf_from_day_stats(real_weekday_days, day_stats)
 
     null_diffs = []
     for _ in range(n_perms):
         shuffled_weekend_days = set(rng.sample(all_days, n_weekend_days))
-        perm_weekend = [t for t in all_trades if t["day_key"] in shuffled_weekend_days]
-        perm_weekday = [t for t in all_trades if t["day_key"] not in shuffled_weekend_days]
-        null_diffs.append(pf_from_trades(perm_weekend) - pf_from_trades(perm_weekday))
+        shuffled_weekday_days = [d for d in all_days if d not in shuffled_weekend_days]
+        pf_we = pf_from_day_stats(shuffled_weekend_days, day_stats)
+        pf_wd = pf_from_day_stats(shuffled_weekday_days, day_stats)
+        null_diffs.append(pf_we - pf_wd)
 
-    # iki-yonlu empirik p-degeri
     extreme = sum(1 for d in null_diffs if abs(d) >= abs(real_diff))
-    p_value = (extreme + 1) / (n_perms + 1)  # +1 duzeltmesi (asla p=0 cikmasin)
+    p_value = (extreme + 1) / (n_perms + 1)
     return real_diff, p_value
 
 
