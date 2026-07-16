@@ -20,7 +20,7 @@ SYM = "BTCUSDT"
 BASELINE_PATH = os.path.join(os.path.dirname(__file__), "..", "reports", "regression_baseline.json")
 TOLERANCE = {
     "total_trades": 0.02,    # %2
-    "win_pct": 2.0,           # mutlak yuzde
+    "tp_pct": 2.0,           # mutlak yuzde
     "profit_factor": 0.10,    # mutlak
     "max_dd_pct": 1.0,        # mutlak yuzde
     "sharpe": 0.3,            # mutlak
@@ -48,7 +48,7 @@ def run_test():
     daily_rows, wins, losses, trade_records, rejection_counts = result
     stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE, daily_rows)
 
-    print(f"  Trades={stats['total_trades']} WR={stats['win_pct']:.1f}% "
+    print(f"  Trades={stats['total_trades']} TP={stats['tp_pct']:.1f}% "
           f"PF={stats['profit_factor']:.2f} DD={stats['max_dd_pct']:.1f}% "
           f"Sharpe={stats['sharpe']:.2f} PnL={stats['total_pnl']:+.0f}", flush=True)
 
@@ -56,7 +56,7 @@ def run_test():
         "symbol": SYM,
         "session": sname,
         "total_trades": stats["total_trades"],
-        "win_pct": round(stats["win_pct"], 1),
+        "tp_pct": round(stats["tp_pct"], 1),
         "profit_factor": round(stats["profit_factor"], 2),
         "max_dd_pct": round(stats["max_dd_pct"], 1),
         "sharpe": round(stats["sharpe"], 2),
@@ -83,7 +83,7 @@ def load_baseline():
 
 def compare(current, baseline):
     failures = 0
-    for key in ["total_trades", "win_pct", "profit_factor", "max_dd_pct", "sharpe", "total_pnl"]:
+    for key in ["total_trades", "tp_pct", "profit_factor", "max_dd_pct", "sharpe", "total_pnl"]:
         cv = current[key]
         bv = baseline[key]
         tol = TOLERANCE.get(key, 0)

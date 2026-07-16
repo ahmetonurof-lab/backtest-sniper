@@ -6,6 +6,7 @@ Her gun icin CBDR genisligi % + o gunku trade sonuclari.
 
 # ruff: noqa: E402, E702 — path manipulation requires late imports;
 # semicolons are pre-existing legacy style, kept for minimal diff.
+import argparse
 import calendar
 import csv
 import functools
@@ -33,45 +34,11 @@ from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
 
 
-# ── docs/config_reference.py snapshot (sadece risk sabitleri, eşik/sezon yok) ──
-class _cfg:
-    INITIAL_BALANCE = 10000.0
-    RISK_PER_TRADE = 0.003
-    SL_ATR_MULT = 1.5
-    TP_RR = 2.0
-    FVG_BUFFER_MULT = 0.50
-    EARLY_LONDON_RISK_MULT = 1.5
-    MIN_REL_FVG_THRESHOLD = 0.50
-    FVG_WICK_RATIO_MAX = 0.75
-    FVG_BUFFER_MIN_FACTOR = 0.10
-    ATR_TRAIL_MULT = 0.25
-    TRAIL_MIN_MOVE_MULT = 0.2
-    BE_RISK_MULT = 1.0
-    BE_SPREAD_PTS = 0.0
-    FVG_MIN_SIZE_ATR_MULT = 0.06
-    GLOBAL_FVG_EXPIRY_BARS = 45
-    MIN_RISK_DIST_ATR_MULT = 0.1
-    CBDR_DEAD_THRESHOLD_PCT = 0.5
-    ASIA_DEAD_THRESHOLD_PCT = 0.3
-    CBDR_SWEEP_ATR_TOLERANCE_MULT = 0.5
-    CBDR_SWEEP_DEFAULT_TOLERANCE = 10.0
-    CBDR_RISK_MATRIX: dict[str, dict] = {}  # sıfırdan test: ön tanımlı eşik/sezon yok
-    SYMBOLS = [
-        "TIAUSDT",
-        "SEIUSDT",
-        "ONDOUSDT",
-        "PYTHUSDT",
-        "RENDERUSDT",
-        "ENAUSDT",
-        "STRKUSDT",
-        "GMXUSDT",
-        "DYDXUSDT",
-        "LDOUSDT",
-    ]
+import config as cfg  # noqa: E402 — tek kaynak, _cfg kopyasi kaldirildi
 
 
 def get_cbdr_multiplier(symbol: str, cbdr_pct: float) -> float:
-    profile = _cfg.CBDR_RISK_MATRIX.get(symbol)
+    profile = cfg.CBDR_RISK_MATRIX.get(symbol)
     if not profile:
         return 1.0
     for lo, hi, mult in profile["buckets"]:
@@ -81,7 +48,7 @@ def get_cbdr_multiplier(symbol: str, cbdr_pct: float) -> float:
 
 
 def should_trade(symbol: str, cbdr_width_pct: float | None = None) -> tuple[bool, str]:
-    profile = _cfg.CBDR_RISK_MATRIX.get(symbol)
+    profile = cfg.CBDR_RISK_MATRIX.get(symbol)
     if profile is None:
         return True, ""  # sıfırdan test: matrix'te yoksa her CBDR'ye izin ver
     if cbdr_width_pct is not None:
@@ -101,13 +68,10 @@ def is_high_quality_fvg(fvg_pips: float, current_atr: float) -> bool:
     if current_atr <= 1e-8:
         return False
     rel_fvg = fvg_pips / current_atr
-    if rel_fvg < _cfg.MIN_REL_FVG_THRESHOLD:
+    if rel_fvg < cfg.MIN_REL_FVG_THRESHOLD:
         return False
     return True
 
-
-# cfg alias for code compat (_cfg oldugu icin cfg.X calisir)
-cfg = _cfg
 
 # ─── Session configs ───────────────────────────────────────────────
 # Her session kendi start/end saatleriyle izole state'te calisir.
@@ -141,27 +105,27 @@ def wilson_lower(wins: int, trades: int, z: float = 1.96) -> float:
     return max(0.0, (centre - margin) / denominator)
 
 
-def auto_multiplier(wr: float, wilson_lower: float, trades: int) -> float:
-    """WR + Wilson CI alt sinirina gore otomatik multiplier.
+def auto_multiplier(tp: float, wilson_lower: float, trades: int) -> float:
+    """TP% + Wilson CI alt sinirina gore otomatik multiplier.
     n<100 ise her zaman 1.0x (overfitting onlemi).
-    WR >= 45 ve Wilson >= 40 -> 1.50x
-    WR >= 40 ve Wilson >= 35 -> 1.25x
-    WR >= 35                -> 1.00x
-    WR >= 30                -> 0.75x
-    WR >= 25                -> 0.50x
-    WR < 25                 -> 0.00x
+    TP% >= 45 ve Wilson >= 40 -> 1.50x
+    TP% >= 40 ve Wilson >= 35 -> 1.25x
+    TP% >= 35                -> 1.00x
+    TP% >= 30                -> 0.75x
+    TP% >= 25                -> 0.50x
+    TP% < 25                 -> 0.00x
     """
     if trades < 100:
         return 1.0
-    if wr >= 45 and wilson_lower >= 40:
+    if tp >= 45 and wilson_lower >= 40:
         return 1.5
-    if wr >= 40 and wilson_lower >= 35:
+    if tp >= 40 and wilson_lower >= 35:
         return 1.25
-    if wr >= 35:
+    if tp >= 35:
         return 1.0
-    if wr >= 30:
+    if tp >= 30:
         return 0.75
-    if wr >= 25:
+    if tp >= 25:
         return 0.5
     return 0.0
 
@@ -798,7 +762,7 @@ def analyze_bucket_scaling(
 ) -> dict:
     """
     CBDR_RISK_MATRIX'teki GERCEK (lo, hi, mult) bucket sinirlarini kullanarak
-    her bucket icin WR + Wilson CI hesapla ve pairwise karsilastirma yap.
+    her bucket icin TP% + Wilson CI hesapla ve pairwise karsilastirma yap.
 
     fvg_profile_v5.py bootstrap_ci overlap desenini Wilson CI overlap ile izler:
       overlap = not (ci_j_upper < ci_i_lower or ci_j_lower > ci_i_upper)
@@ -898,17 +862,17 @@ def compute_session_stats(trade_records, initial_balance):
     if n == 0:
         return {
             "total_trades": 0,
-            "win_pct": 0,
-            "be_plus_pct": 0,
+            "tp_pct": 0,
+            "profit_trail_pct": 0,
             "profit_factor": 0,
             "max_dd_pct": 0,
             "avg_mae": 0,
             "total_pnl": 0,
         }
-    wins = sum(1 for r in trade_records if r[2] > 0)
-    be = sum(1 for r in trade_records if r[2] == 0)
-    be_plus_pct = (wins + be) / n * 100 if n > 0 else 0
-    win_pct = wins / n * 100 if n > 0 else 0
+    tp = sum(1 for r in trade_records if r[2] > 0)
+    profit_trail = sum(1 for r in trade_records if r[2] == 0)
+    profit_trail_pct = (tp + profit_trail) / n * 100 if n > 0 else 0
+    tp_pct = tp / n * 100 if n > 0 else 0
 
     gross_profit = sum(r[2] for r in trade_records if r[2] > 0) or 0
     gross_loss = abs(sum(r[2] for r in trade_records if r[2] < 0))
@@ -933,8 +897,8 @@ def compute_session_stats(trade_records, initial_balance):
 
     return {
         "total_trades": n,
-        "win_pct": win_pct,
-        "be_plus_pct": be_plus_pct,
+        "tp_pct": tp_pct,
+        "profit_trail_pct": profit_trail_pct,
         "profit_factor": profit_factor,
         "max_dd_pct": max_dd_pct,
         "avg_mae": avg_mae,
@@ -1016,10 +980,10 @@ def run_session_analysis(sym: str):
         total_all_trades += len(raw_trades)
         total_unique_trades += stats["total_trades"]
 
-    # 4. Adim: Karsilastirmali tabloyu bas (Skor = BE+% * PF * PnL / DD)
+    # 4. Adim: Karsilastirmali tabloyu bas (Skor = PTrail% * PF * PnL / DD)
     skorlar = []
     for st in stats_rows:
-        bep = st.get("be_plus_pct", st["win_pct"])
+        bep = st.get("profit_trail_pct", st["tp_pct"])
         pf = st["profit_factor"]
         pnl = abs(st["total_pnl"])
         dd = st["max_dd_pct"] if st["max_dd_pct"] > 0 else 1
@@ -1030,7 +994,7 @@ def run_session_analysis(sym: str):
         f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ───────────────────────────────────────────────────────┐"
     )
     print(
-        f"  │ {'Session':<14} {'Total':>7} {'Uniq':>6} {'BE+%':>6} {'PF':>6} {'DD%':>5} {'Skor':>10} {'PnL':>9} {'':>4} │"
+        f"  │ {'Session':<14} {'Total':>7} {'Uniq':>6} {'PTrail%':>8} {'PF':>6} {'DD%':>5} {'Skor':>10} {'PnL':>9} {'':>4} │"
     )
     print(
         f"  ├{'─' * 14}┼{'─' * 7}┼{'─' * 6}┼{'─' * 6}┼{'─' * 6}┼{'─' * 5}┼{'─' * 10}┼{'─' * 9}┼{'─' * 4}┤"
@@ -1039,7 +1003,7 @@ def run_session_analysis(sym: str):
         best_mark = "←" if sname == best_skor[1] else ""
         print(
             f"  │ {sname:<14} {st['total_trades_raw']:>7} {st['unique_trades']:>6} "
-            f"{st.get('be_plus_pct', st['win_pct']):>5.1f}% {st['profit_factor']:>5.2f} "
+            f"{st.get('profit_trail_pct', st['tp_pct']):>7.1f}% {st['profit_factor']:>5.2f} "
             f"{st['max_dd_pct']:>4.1f}% {skor:>9.0f} {st['total_pnl']:>+8.0f} {best_mark:>4} │"
         )
     print(
@@ -1067,7 +1031,7 @@ def run_session_analysis(sym: str):
         print(
             f"\n  [{sym}] {sname} — CBDR% Bucket Analizi (fail limit: {fl_str}, Wilson: {wil_str})"
         )
-        print(f"  {'Aralik%':<18} {'Gun':>4} {'Islem':>6} {'WR%':>6} {'PnL':>10}")
+        print(f"  {'Aralik%':<18} {'Gun':>4} {'Islem':>6} {'TP%':>6} {'PnL':>10}")
         print(f"  {'-' * 48}")
         for b in analysis["buckets"]:
             print(
@@ -1080,7 +1044,7 @@ def run_session_analysis(sym: str):
             bucket_scaling_results[sname] = bs
             print(f"\n  [{sym}] {sname} — Bucket Scaling (CBDR_RISK_MATRIX sinirlari)")
             print(
-                f"  {'Bucket':<10} {'Mult':>5} {'Islem':>6} {'WR%':>6} {'WilsonLo':>8} {'WilsonHi':>8}"
+                f"  {'Bucket':<10} {'Mult':>5} {'Islem':>6} {'TP%':>6} {'WilsonLo':>8} {'WilsonHi':>8}"
             )
             print(f"  {'-' * 50}")
             for bs_b in bs["bucket_stats"]:
@@ -1093,7 +1057,7 @@ def run_session_analysis(sym: str):
                 for c in bs["comparisons"]:
                     print(
                         f"    {c['bucket_a']:>8} vs {c['bucket_b']:<8} "
-                        f"WR {c['wr_a']:.1f}% vs {c['wr_b']:.1f}% "
+                        f"TP {c['wr_a']:.1f}% vs {c['wr_b']:.1f}% "
                         f"CI: {c['ci_overlap']} → {c['verdict']}"
                     )
 
@@ -1106,16 +1070,25 @@ def run_session_analysis(sym: str):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--symbols", nargs="*", default=None,
+        help="Belirli semboller (default: cfg.SYMBOLS tamami)"
+    )
+    args = parser.parse_args()
+
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
     all_session_results = {}
 
+    symbols = args.symbols if args.symbols else sorted(cfg.SYMBOLS)
     print("=" * 120)
     print("  CBDR ESIK ANALIZI — Multi-Session Karsilastirmali")
     print(f"  Session'lar: {', '.join(SESSION_CONFIGS.keys())}")
+    print(f"  Sembol sayisi: {len(symbols)}")
     print("=" * 120)
 
-    for sym in sorted(cfg.SYMBOLS):
+    for sym in symbols:
         print(f"\n  [{sym}] Session analizi basliyor...", flush=True)
 
         result = run_session_analysis(sym)
@@ -1148,7 +1121,7 @@ def main():
                     "Session": sname,
                     "Total_Trades_Raw": len(session_raw[sname]["trade_records"]),
                     "Unique_Trades": stats["total_trades"],
-                    "Win%": round(stats["win_pct"], 1),
+                    "TP%": round(stats["tp_pct"], 1),
                     "Profit_Factor": round(stats["profit_factor"], 2),
                     "MaxDD%": round(stats["max_dd_pct"], 2),
                     "Avg_MAE": round(stats["avg_mae"], 2),
@@ -1168,7 +1141,7 @@ def main():
                 "Session",
                 "Total_Trades_Raw",
                 "Unique_Trades",
-                "Win%",
+                "TP%",
                 "Profit_Factor",
                 "MaxDD%",
                 "Avg_MAE",
@@ -1196,8 +1169,8 @@ def main():
                         "Bucket_B": c["bucket_b"],
                         "N_A": c["n_a"],
                         "N_B": c["n_b"],
-                        "WR_A": f"{c['wr_a']:.1f}%",
-                        "WR_B": f"{c['wr_b']:.1f}%",
+                        "TP_A": f"{c['wr_a']:.1f}%",
+                        "TP_B": f"{c['wr_b']:.1f}%",
                         "CI_Overlap": c["ci_overlap"],
                         "Verdict": c["verdict"],
                     }
@@ -1211,8 +1184,8 @@ def main():
                     "Bucket_B": bs["summary"],
                     "N_A": "",
                     "N_B": "",
-                    "WR_A": "",
-                    "WR_B": "",
+                    "TP_A": "",
+                    "TP_B": "",
                     "CI_Overlap": "",
                     "Verdict": f"{bs['divergent_pairs']} cift ayrisiyor",
                 }
@@ -1228,8 +1201,8 @@ def main():
                 "Bucket_B",
                 "N_A",
                 "N_B",
-                "WR_A",
-                "WR_B",
+                "TP_A",
+                "TP_B",
                 "CI_Overlap",
                 "Verdict",
             ],
@@ -1254,7 +1227,7 @@ def main():
     lines.append("## Multi-Session Comparison Table")
     lines.append("")
     lines.append(
-        "| Coin | Session | Total Raw | Unique | Win% | PF | MaxDD% | Avg MAE | PnL | Fail Limit | Wilson |"
+        "| Coin | Session | Total Raw | Unique | TP% | PF | MaxDD% | Avg MAE | PnL | Fail Limit | Wilson |"
     )
     lines.append(
         "|"
@@ -1278,7 +1251,7 @@ def main():
     for row in csv_rows:
         lines.append(
             f"| {row['Coin']:<8} | {row['Session']:<10} | {row['Total_Trades_Raw']:>9} | "
-            f"{row['Unique_Trades']:>6} | {row['Win%']:>4.1f}% | {row['Profit_Factor']:>3.2f} | "
+            f"{row['Unique_Trades']:>6} | {row['TP%']:>4.1f}% | {row['Profit_Factor']:>3.2f} | "
             f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} | {row['PnL']:>+8.0f} | "
             f"{row['Fail_Limit']:>10} | {'✓' if row['Wilson'] else '—':>3} |"
         )
@@ -1299,7 +1272,7 @@ def main():
                 f"- **Total Trades (raw):** {len(session_raw[sname]['trade_records'])}"
             )
             lines.append(f"- **Unique Trades:** {stats['total_trades']}")
-            lines.append(f"- **Win%:** {stats['win_pct']:.1f}%")
+            lines.append(f"- **TP%:** {stats['tp_pct']:.1f}%")
             lines.append(f"- **Profit Factor:** {stats['profit_factor']:.2f}")
             lines.append(f"- **MaxDD%:** {stats['max_dd_pct']:.2f}%")
             lines.append(f"- **Avg MAE:** {stats['avg_mae']:.2f}")
@@ -1314,7 +1287,7 @@ def main():
                 wil_str = "✓" if thr.get("wilson_found") else "—"
                 lines.append(f"- **Fail Limit:** {fl_str} (Wilson: {wil_str})")
                 lines.append("")
-                lines.append("| CBDR% Araligi | Gun | Islem | WR% | PnL |")
+                lines.append("| CBDR% Araligi | Gun | Islem | TP% | PnL |")
                 lines.append(
                     f"|{'-' * 14}:|{'-' * 4}:|{'-' * 6}:|{'-' * 5}:|{'-' * 8}:|"
                 )
@@ -1329,7 +1302,7 @@ def main():
                 lines.append("#### Bucket Scaling (CBDR_RISK_MATRIX)")
                 lines.append("")
                 lines.append(
-                    "| Bucket | Mult | Islem | WR% | Wilson Lower | Wilson Upper |"
+                    "| Bucket | Mult | Islem | TP% | Wilson Lower | Wilson Upper |"
                 )
                 lines.append(
                     f"|{'-' * 10}:|{'-' * 5}:|{'-' * 6}:|{'-' * 5}:|{'-' * 12}:|{'-' * 12}:|"
@@ -1344,7 +1317,7 @@ def main():
                     lines.append(f"**Pairwise CI Overlap:** {bs['summary']}")
                     lines.append("")
                     lines.append(
-                        "| Bucket A | Bucket B | N_A | N_B | WR_A | WR_B | CI Overlap | Verdict |"
+                        "| Bucket A | Bucket B | N_A | N_B | TP_A | TP_B | CI Overlap | Verdict |"
                     )
                     lines.append(
                         f"|{'-' * 10}|{'-' * 10}|{'-' * 5}|{'-' * 5}|{'-' * 6}|{'-' * 6}|{'-' * 10}|{'-' * 18}|"
