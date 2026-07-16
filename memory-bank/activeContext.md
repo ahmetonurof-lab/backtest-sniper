@@ -1,9 +1,10 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-15: 10 yeni coin (TIA/SEI/ONDO/PYTH/RENDER/ENA/STRK/GMX/DYDX/LDO) için backtest altyapısı tamamlandı. CBDR threshold testi + FVG size sweep tamamlandı, sonuçlar `sniper/src/config.py`'ye yazıldı.
+2026-07-16: Bucket data extractor + risk engine fix: boş bucket'lar sessizce atlanıp config'de eksik kalarak CBDR eşleşmeyen günlerde 1.0x (serbest) dönmesine yol açıyordu. Extractor artık boş bucket'ları n=0 ile yazar, risk engine n=0 → 0.0x atar.
 
 ## Recently Completed
+- **Empty Bucket Fix (2026-07-16):** `bucket_data_extractor_v2.py:89-101` — boş bucket'ları n=0 ile JSON'a yaz. `bucket_risk_engine.py:160-194` — n=0 → 0.0x (skip normalize). Öncesinde: extractor boş bucket'ı atlıyordu → config'de eksik bucket → session_router fallback 1.0x.
 - **load_data Optimizasyonu (2026-07-15):** `analyze_cbdr_thresholds.py` ve `_analyze_all_20.py` — `_make_bar()` bypass (frozen dataclass __post_init__), list comprehension, numpy direkt okuma. ~10x hız.
 - **bar_index=None Fix (2026-07-15):** `analyze_cbdr_thresholds.py:396` — `bar_index=sb` → `bar_index=None` (sweep dedup bypass, analyzer_v5.py ile uyumlu).
 - **Timestamp Fix (2026-07-15):** `datetime64[us]` → `datetime64[ms]` dönüşümü, `values.astype("datetime64[ms]").astype("int64")` ile milisaniye.
