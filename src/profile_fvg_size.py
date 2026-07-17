@@ -83,7 +83,7 @@ def _compute_score(trade_records) -> tuple[float, int]:
 
 
 # ─── Worker: tek coin profilleme ─────────────────────────────
-def _profile_one(sym: str) -> dict | None:
+def _profile_one(sym: str, session_override: str | None = None) -> dict | None:
     import os
     import sys
 
@@ -99,41 +99,52 @@ def _profile_one(sym: str) -> dict | None:
     if not os.path.isfile(feather_path):
         return None
 
-    values = [
-        round(SWEEP_START + i * SWEEP_STEP, 3)
-        for i in range(int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1)
-    ]
-    results = []
+    # Session override: change coin's session in CBDR_RISK_MATRIX temporarily
+    _original_session = None
+    if session_override and sym in cfg.CBDR_RISK_MATRIX:
+        _original_session = cfg.CBDR_RISK_MATRIX[sym].get("session")
+        cfg.CBDR_RISK_MATRIX[sym]["session"] = session_override
 
-    for idx, size in enumerate(values):
-        cfg.FVG_SIZE_MAP[sym] = size
-        try:
-            r = collect_fvg_profile(sym)
-        except Exception as e:
-            _log_line(f"  [{sym}] size={size:.3f} CRASH: {e}")
-            continue
+    try:
+        values = [
+            round(SWEEP_START + i * SWEEP_STEP, 3)
+            for i in range(int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1)
+        ]
+        results = []
 
-        if r is None or (isinstance(r, tuple) and r[0] is None):
-            continue
+        for idx, size in enumerate(values):
+            cfg.FVG_SIZE_MAP[sym] = size
+            try:
+                r = collect_fvg_profile(sym)
+            except Exception as e:
+                _log_line(f"  [{sym}] size={size:.3f} CRASH: {e}")
+                continue
 
-        _, _, _, trade_records, rejection_counts = r
-        if not trade_records:
-            results.append((size, 0, 0))
-            continue
+            if r is None or (isinstance(r, tuple) and r[0] is None):
+                continue
 
-        score, n = _compute_score(trade_records)
-        entered = rejection_counts.get("ENTERED", 0)
-        results.append((size, score, n))
-        _log_line(
-            f"  [{sym}] {idx + 1:>2}/{len(values)} size={size:.3f} "
-            f"score={score} trades={n} entered={entered}"
-        )
+            _, _, _, trade_records, rejection_counts = r
+            if not trade_records:
+                results.append((size, 0, 0))
+                continue
 
-    if not results:
-        return None
-    best = max(results, key=lambda x: x[1])
-    _log_line(f"  [{sym}] BEST: size={best[0]:.3f} score={best[1]} trades={best[2]}")
-    return {"sym": sym, "best_size": best[0], "best_score": best[1]}
+            score, n = _compute_score(trade_records)
+            entered = rejection_counts.get("ENTERED", 0)
+            results.append((size, score, n))
+            _log_line(
+                f"  [{sym}] {idx + 1:>2}/{len(values)} size={size:.3f} "
+                f"score={score} trades={n} entered={entered}"
+            )
+
+        if not results:
+            return None
+        best = max(results, key=lambda x: x[1])
+        _log_line(f"  [{sym}] BEST: size={best[0]:.3f} score={best[1]} trades={best[2]}")
+        return {"sym": sym, "best_size": best[0], "best_score": best[1]}
+    finally:
+        # Restore original session
+        if _original_session is not None and sym in cfg.CBDR_RISK_MATRIX:
+            cfg.CBDR_RISK_MATRIX[sym]["session"] = _original_session
 
 
 def _print_map(results: dict):
@@ -167,10 +178,17 @@ def main():
     parser = argparse.ArgumentParser(description="FVG_SIZE_MAP profiler")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--serial", action="store_true")
+    parser.add_argument(
+        "--session",
+        type=str,
+        default=None,
+        help="Override session for all coins (e.g., DEFAULT, ASIA_RANGE, REAL_CBDR)",
+    )
     args = parser.parse_args()
 
     use_serial = args.serial or args.workers <= 1
     n_workers = 1 if use_serial else args.workers
+    session_override = args.session
 
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "w", encoding="utf-8") as f:
@@ -183,11 +201,15 @@ def main():
         f.write(
             f"  Mod: {'PARALEL' if not use_serial else 'SERIAL'} ({n_workers} worker)\n"
         )
+        if session_override:
+            f.write(f"  Session Override: {session_override}\n")
         f.write("=" * 80 + "\n")
         f.flush()
 
     t0 = time.time()
     print(f"[LOG] Detaylar -> {LOG_FILE}", flush=True)
+    if session_override:
+        print(f"[SESSION] Override: {session_override}", flush=True)
     print(
         f"[BASLADI] {len(SYMBOLS_20)} coin, {int((SWEEP_END - SWEEP_START) / SWEEP_STEP) + 1} deger/coin, {n_workers} worker",
         flush=True,
@@ -198,7 +220,7 @@ def main():
     if use_serial:
         for sym in sorted(SYMBOLS_20):
             _log_line(f"\n[{sym}] basliyor...")
-            r = _profile_one(sym)
+            r = _profile_one(sym, session_override=session_override)
             if r is None:
                 _log_line(f"[{sym}] BASARISIZ")
                 continue
@@ -212,7 +234,10 @@ def main():
         syms = sorted(SYMBOLS_20)
         _log_line(f"\n{syms} paralel isleniyor...\n")
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-            fut_map = {executor.submit(_profile_one, sym): sym for sym in syms}
+            fut_map = {
+                executor.submit(_profile_one, sym, session_override): sym
+                for sym in syms
+            }
             for future in concurrent.futures.as_completed(fut_map):
                 sym = fut_map[future]
                 try:
