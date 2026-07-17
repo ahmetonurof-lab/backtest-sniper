@@ -12,6 +12,7 @@ import csv
 import functools
 import math
 import os
+import re
 import sys
 import time
 import pandas as pd
@@ -64,25 +65,44 @@ def should_trade(symbol: str, cbdr_width_pct: float | None = None) -> tuple[bool
     return True, ""
 
 
-def is_high_quality_fvg(fvg_pips: float, current_atr: float) -> bool:
-    if current_atr <= 1e-8:
-        return False
-    rel_fvg = fvg_pips / current_atr
-    if rel_fvg < cfg.MIN_REL_FVG_THRESHOLD:
-        return False
-    return True
-
-
 # ─── Session configs ───────────────────────────────────────────────
 # Her session kendi start/end saatleriyle izole state'te calisir.
 # Canli SessionState kullanilir (IctRangeState kopyasi kaldirildi).
 SESSION_CONFIGS = {
-    "REAL_CBDR": {"start": 19, "end": 1},  # ICT Real CBDR
-    "DEFAULT": {"start": 22, "end": 2},  # Senin default saatlerin
-    "ASIA_RANGE": {"start": 1, "end": 5},  # Asya seansi
+    "REAL_CBDR": {"start": 19, "end": 1},
+    "DEFAULT": {"start": 22, "end": 2},
+    "ASIA_RANGE": {"start": 1, "end": 5},
+}
+
+FVG_SIZE_MAP_FILES = {
+    sname: os.path.join(
+        os.path.dirname(__file__), "..", "reports", f"fvg_profile_{sname}.md"
+    )
+    for sname in SESSION_CONFIGS
 }
 
 
+def _parse_fvg_size_from_md(filepath: str) -> dict[str, float] | None:
+    if not os.path.isfile(filepath):
+        return None
+    result = {}
+    with open(filepath, encoding="utf-8") as f:
+        in_block = False
+        for line in f:
+            s = line.strip()
+            if s.startswith("```python"):
+                in_block = True
+                continue
+            if in_block and s.startswith("```"):
+                break
+            if in_block:
+                m = re.match(r'\s*"(\w+USDT)":\s*([\d.]+)', s)
+                if m:
+                    result[m.group(1)] = float(m.group(2))
+    return result if result else None
+
+
+# ─── Wilson Score CI ───────────────────────────────────────────
 def wilson_upper(wins: int, trades: int, z: float = 1.96) -> float:
     if trades == 0:
         return 1.0
@@ -105,29 +125,166 @@ def wilson_lower(wins: int, trades: int, z: float = 1.96) -> float:
     return max(0.0, (centre - margin) / denominator)
 
 
-def auto_multiplier(tp: float, wilson_lower: float, trades: int) -> float:
-    """TP% + Wilson CI alt sinirina gore otomatik multiplier.
-    n<100 ise her zaman 1.0x (overfitting onlemi).
-    TP% >= 45 ve Wilson >= 40 -> 1.50x
-    TP% >= 40 ve Wilson >= 35 -> 1.25x
-    TP% >= 35                -> 1.00x
-    TP% >= 30                -> 0.75x
-    TP% >= 25                -> 0.50x
-    TP% < 25                 -> 0.00x
-    """
-    if trades < 100:
-        return 1.0
-    if tp >= 45 and wilson_lower >= 40:
-        return 1.5
-    if tp >= 40 and wilson_lower >= 35:
-        return 1.25
-    if tp >= 35:
-        return 1.0
-    if tp >= 30:
-        return 0.75
-    if tp >= 25:
-        return 0.5
-    return 0.0
+# ─── CBDR Bucket Esigi Analizi ─────────────────────────────────
+_BUCKET_LABEL_MAP = {
+    (0.0, 1.0): "0-1%",
+    (1.0, 1.5): "1-1.5%",
+    (1.5, 2.0): "1.5-2%",
+    (2.0, 3.0): "2-3%",
+    (3.0, 5.0): "3-5%",
+    (5.0, 999.0): ">5%",
+}
+
+
+def _bucket_label(lo: float, hi: float) -> str:
+    for (blo, bhi), lbl in _BUCKET_LABEL_MAP.items():
+        if abs(lo - blo) < 0.01 and abs(hi - bhi) < 0.01:
+            return lbl
+    return f"{lo:.1f}-{hi:.1f}%"
+
+
+def analyze_thresholds(daily_rows, symbol: str, min_bucket_trades: int = 100):
+    valid = [d for d in daily_rows if d["cbdr_pct"] is not None and d["trades"] > 0]
+    if len(valid) < 5:
+        return None
+    valid.sort(key=lambda x: x["cbdr_pct"])
+    n = len(valid)
+    bucket_size = max(1, n // 5)
+    buckets = []
+    for i in range(0, n, bucket_size):
+        bucket = valid[i : min(i + bucket_size, n)]
+        if not bucket:
+            break
+        bt = sum(d["trades"] for d in bucket)
+        bwins = sum(d["wins"] for d in bucket)
+        bp = sum(d["pnl"] for d in bucket)
+        buckets.append(
+            {
+                "lo_pct": bucket[0]["cbdr_pct"],
+                "hi_pct": bucket[-1]["cbdr_pct"],
+                "range": f"{bucket[0]['cbdr_pct']:.2f}-{bucket[-1]['cbdr_pct']:.2f}",
+                "days": len(bucket),
+                "trades": bt,
+                "wins": bwins,
+                "wr": round(bwins / bt * 100, 1) if bt > 0 else 0,
+                "pnl": round(bp, 2),
+            }
+        )
+    total_trades = sum(d["trades"] for d in valid)
+    total_wins = sum(d["wins"] for d in valid)
+    overall_wr = total_wins / total_trades if total_trades > 0 else 0
+    fail_limit = None
+    for i, b in enumerate(buckets):
+        if b["trades"] < min_bucket_trades:
+            continue
+        if wilson_upper(b["wins"], b["trades"]) >= overall_wr:
+            continue
+        remaining = buckets[i:]
+        sig_count = 0
+        for r in remaining:
+            if (
+                r["trades"] >= min_bucket_trades
+                and wilson_upper(r["wins"], r["trades"]) < overall_wr
+            ):
+                sig_count += 1
+                if sig_count >= 3:
+                    excluded = sum(
+                        r2["trades"] for r2 in buckets if r2["lo_pct"] >= b["lo_pct"]
+                    )
+                    if excluded <= 0.80 * total_trades:
+                        fail_limit = b["lo_pct"]
+                    break
+            else:
+                break
+        if fail_limit is not None:
+            break
+    return {
+        "symbol": symbol,
+        "total_days": len(valid),
+        "total_trades": total_trades,
+        "overall_wr": round(overall_wr * 100, 1),
+        "fail_limit": round(fail_limit, 2) if fail_limit is not None else None,
+        "wilson_found": fail_limit is not None,
+        "buckets": buckets,
+        "total_pnl": sum(d["pnl"] for d in valid),
+    }
+
+
+def analyze_bucket_scaling(
+    daily_rows: list[dict], symbol: str, min_bucket_trades: int = 100
+) -> dict:
+    profile = cfg.CBDR_RISK_MATRIX.get(symbol)
+    if not profile:
+        return None
+    matrix_buckets = profile.get("buckets", [])
+    if not matrix_buckets:
+        return None
+    valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
+    if not valid:
+        return None
+    bucket_data: dict = defaultdict(lambda: {"trades": 0, "wins": 0})
+    for d in valid:
+        cbdr_w = d["cbdr_pct"]
+        for lo, hi, _mult in matrix_buckets:
+            if lo <= cbdr_w < hi:
+                bucket_data[(lo, hi)]["trades"] += d.get("trades", 0)
+                bucket_data[(lo, hi)]["wins"] += d.get("wins", 0)
+                break
+    bucket_stats = []
+    for lo, hi, mult in matrix_buckets:
+        bd = bucket_data.get((lo, hi), {"trades": 0, "wins": 0})
+        n = bd["trades"]
+        w = bd["wins"]
+        wr = w / n if n > 0 else 0.0
+        bucket_stats.append(
+            {
+                "lo": lo,
+                "hi": hi,
+                "mult": mult,
+                "label": _bucket_label(lo, hi),
+                "trades": n,
+                "wins": w,
+                "wr": round(wr * 100, 1),
+                "wilson_upper": round(wilson_upper(w, n) * 100, 1),
+                "wilson_lower": round(wilson_lower(w, n) * 100, 1),
+            }
+        )
+    qualifying = [b for b in bucket_stats if b["trades"] >= min_bucket_trades]
+    comparisons = []
+    divergent_count = 0
+    for i in range(len(qualifying)):
+        for j in range(i + 1, len(qualifying)):
+            bi, bj = qualifying[i], qualifying[j]
+            ci_i_lo, ci_i_hi = bi["wilson_lower"] / 100.0, bi["wilson_upper"] / 100.0
+            ci_j_lo, ci_j_hi = bj["wilson_lower"] / 100.0, bj["wilson_upper"] / 100.0
+            overlap = not (ci_j_hi < ci_i_lo or ci_j_lo > ci_i_hi)
+            verdict = "FARK YOK" if overlap else "ANLAMLI FARK VAR"
+            if not overlap:
+                divergent_count += 1
+            comparisons.append(
+                {
+                    "bucket_a": bi["label"],
+                    "bucket_b": bj["label"],
+                    "n_a": bi["trades"],
+                    "n_b": bj["trades"],
+                    "wr_a": bi["wr"],
+                    "wr_b": bj["wr"],
+                    "ci_overlap": "Evet" if overlap else "Hayır",
+                    "verdict": verdict,
+                }
+            )
+    return {
+        "symbol": symbol,
+        "bucket_stats": bucket_stats,
+        "comparisons": comparisons,
+        "divergent_pairs": divergent_count,
+        "total_qualifying_buckets": len(qualifying),
+        "summary": (
+            f"{divergent_count}/{len(comparisons)} bucket cifti birbirinden ayrisiyor"
+            if comparisons
+            else "Yeterli bucket yok (n>=100)"
+        ),
+    }
 
 
 def _make_bar(idx, op, hi, lo, cl, vo, ts):
@@ -326,7 +483,10 @@ def collect_daily_data(
     prev_close: float = b15[0].open
     for bar in b15[1:500]:
         tr = calculate_true_range(bar, prev_close)
-        atr_val = update_atr(atr_val if atr_val > 0 else None, tr)
+        if atr_val == 0.0:
+            atr_val = tr
+        else:
+            atr_val = update_atr(atr_val, tr)
         prev_close = bar.close
 
     total_bars = len(b15)
@@ -366,7 +526,7 @@ def collect_daily_data(
             )
 
         if rsm.state_name == "SWEEP_DETECTED":
-            rsm.on_sweep_confirmed(chunk, cur, atr)
+            rsm.on_sweep_confirmed(chunk, cur, atr, symbol)
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
@@ -430,14 +590,10 @@ def collect_daily_data(
             # ── FVG quality filter (analyzer_v5 ile ayni) ──
             quality_mult = 1.0
             if tf is not None:
-                if not is_high_quality_fvg(tf.top - tf.bottom, atr):
+                fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
+                if fvg_status == "INVALIDATED":
                     quality_mult = 0.0
-                    rejection_counts["FVG_QUALITY"] += 1
-                else:
-                    fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
-                    if fvg_status == "INVALIDATED":
-                        quality_mult = 0.0
-                        rejection_counts["FVG_SWEPT"] += 1
+                    rejection_counts["FVG_SWEPT"] += 1
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
@@ -507,7 +663,8 @@ def collect_daily_data(
                     continue
 
             tc = chunk[:-1]
-            min_fvg_size = max(atr * FVG_MIN_SIZE_ATR_MULT, 1e-8)
+            min_mult = cfg.FVG_SIZE_MAP.get(symbol, FVG_MIN_SIZE_ATR_MULT)
+            min_fvg_size = max(atr * min_mult, 1e-8)
             cfvgs = detect_fvgs(
                 tc,
                 lookback=min(50, len(tc)),
@@ -561,7 +718,10 @@ def collect_daily_data(
                 if cur.low <= t["sl"]:
                     t["exit_price"] = t["sl"]
                     t["exit_bar"] = sb
-                    t["result"] = "SL"
+                    if t.get("trailing_count", 0) > 0 and t["sl"] > t["entry_price"]:
+                        t["result"] = "PROFIT_TRAIL"
+                    else:
+                        t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
                 elif cur.high >= t["tp"]:
@@ -574,7 +734,10 @@ def collect_daily_data(
                 if cur.high >= t["sl"]:
                     t["exit_price"] = t["sl"]
                     t["exit_bar"] = sb
-                    t["result"] = "SL"
+                    if t.get("trailing_count", 0) > 0 and t["sl"] < t["entry_price"]:
+                        t["result"] = "PROFIT_TRAIL"
+                    else:
+                        t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
                 elif cur.low <= t["tp"]:
@@ -597,12 +760,12 @@ def collect_daily_data(
                 t["fee"] = round(total_fee, 2)
                 t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                # Overlap filtrelemesi icin trade record'u sakla
                 trade_records.append(
                     {
                         "trade_id": t.get("trade_id", ""),
                         "pnl": t["pnl"],
                         "result": t["result"],
+                        "fee": t.get("fee", 0),
                     }
                 )
                 if t["pnl"] > 0:
@@ -626,14 +789,20 @@ def collect_daily_data(
                     if t["side"] == "long"
                     else (t["entry_price"] - lp)
                 )
-                t["pnl"] = round(diff * t["qty"], 2)
+                entry_fee = t["entry_price"] * t["qty"] * COMMISSION_RATE
+                exit_fee = lp * t["qty"] * COMMISSION_RATE
+                total_fee = entry_fee + exit_fee
+                t["entry_fee"] = round(entry_fee, 2)
+                t["exit_fee"] = round(exit_fee, 2)
+                t["fee"] = round(total_fee, 2)
+                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
                 day_trades[t.get("day_key", "")].append(t["pnl"])
-                # Overlap filtrelemesi icin trade record'u sakla
                 trade_records.append(
                     {
                         "trade_id": t.get("trade_id", ""),
                         "pnl": t["pnl"],
                         "result": t["result"],
+                        "fee": t.get("fee", 0),
                     }
                 )
                 if t["pnl"] > 0:
@@ -667,222 +836,36 @@ def collect_daily_data(
     return daily_rows, wins, losses, trade_records, rejection_counts
 
 
-def analyze_thresholds(daily_rows, symbol: str, min_bucket_trades: int = 100):
-    valid = [d for d in daily_rows if d["cbdr_pct"] is not None and d["trades"] > 0]
-    if len(valid) < 5:
-        return None
-
-    valid.sort(key=lambda x: x["cbdr_pct"])
-    n = len(valid)
-
-    bucket_size = max(1, n // 5)
-    buckets = []
-    for i in range(0, n, bucket_size):
-        bucket = valid[i : min(i + bucket_size, n)]
-        if not bucket:
-            break
-        bt = sum(d["trades"] for d in bucket)
-        bwins = sum(d["wins"] for d in bucket)
-        bp = sum(d["pnl"] for d in bucket)
-        buckets.append(
-            {
-                "lo_pct": bucket[0]["cbdr_pct"],
-                "hi_pct": bucket[-1]["cbdr_pct"],
-                "range": f"{bucket[0]['cbdr_pct']:.2f}-{bucket[-1]['cbdr_pct']:.2f}",
-                "days": len(bucket),
-                "trades": bt,
-                "wins": bwins,
-                "wr": round(bwins / bt * 100, 1) if bt > 0 else 0,
-                "pnl": round(bp, 2),
-            }
-        )
-
-    total_trades = sum(d["trades"] for d in valid)
-    total_wins = sum(d["wins"] for d in valid)
-    overall_wr = total_wins / total_trades if total_trades > 0 else 0
-
-    fail_limit = None
-    for i, b in enumerate(buckets):
-        if b["trades"] < min_bucket_trades:
-            continue
-        if wilson_upper(b["wins"], b["trades"]) >= overall_wr:
-            continue
-        remaining = buckets[i:]
-        sig_count = 0
-        for r in remaining:
-            if (
-                r["trades"] >= min_bucket_trades
-                and wilson_upper(r["wins"], r["trades"]) < overall_wr
-            ):
-                sig_count += 1
-                if sig_count >= 3:
-                    excluded = sum(
-                        r2["trades"] for r2 in buckets if r2["lo_pct"] >= b["lo_pct"]
-                    )
-                    if excluded <= 0.80 * total_trades:
-                        fail_limit = b["lo_pct"]
-                    break
-            else:
-                break
-        if fail_limit is not None:
-            break
-
-    return {
-        "symbol": symbol,
-        "total_days": len(valid),
-        "total_trades": total_trades,
-        "overall_wr": round(overall_wr * 100, 1),
-        "fail_limit": round(fail_limit, 2) if fail_limit is not None else None,
-        "wilson_found": fail_limit is not None,
-        "buckets": buckets,
-        "total_pnl": sum(d["pnl"] for d in valid),
-    }
-
-
-# ─── Bucket label helpers ───────────────────────────────────────────
-_BUCKET_LABEL_MAP = {
-    (0.0, 1.0): "0-1%",
-    (1.0, 1.5): "1-1.5%",
-    (1.5, 2.0): "1.5-2%",
-    (2.0, 3.0): "2-3%",
-    (3.0, 5.0): "3-5%",
-    (5.0, 999.0): ">5%",
-}
-
-
-def _bucket_label(lo: float, hi: float) -> str:
-    for (blo, bhi), lbl in _BUCKET_LABEL_MAP.items():
-        if abs(lo - blo) < 0.01 and abs(hi - bhi) < 0.01:
-            return lbl
-    return f"{lo:.1f}-{hi:.1f}%"
-
-
-def analyze_bucket_scaling(
-    daily_rows: list[dict], symbol: str, min_bucket_trades: int = 100
-) -> dict:
-    """
-    CBDR_RISK_MATRIX'teki GERCEK (lo, hi, mult) bucket sinirlarini kullanarak
-    her bucket icin TP% + Wilson CI hesapla ve pairwise karsilastirma yap.
-
-    fvg_profile_v5.py bootstrap_ci overlap desenini Wilson CI overlap ile izler:
-      overlap = not (ci_j_upper < ci_i_lower or ci_j_lower > ci_i_upper)
-    """
-    profile = cfg.CBDR_RISK_MATRIX.get(symbol)
-    if not profile:
-        return None
-    matrix_buckets = profile.get("buckets", [])
-    if not matrix_buckets:
-        return None
-
-    valid = [d for d in daily_rows if d["cbdr_pct"] is not None]
-    if not valid:
-        return None
-
-    # Her gunu gercek bucket sinirlarina ata
-    bucket_data: dict = defaultdict(lambda: {"trades": 0, "wins": 0})
-    for d in valid:
-        cbdr_w = d["cbdr_pct"]
-        for lo, hi, _mult in matrix_buckets:
-            if lo <= cbdr_w < hi:
-                bucket_data[(lo, hi)]["trades"] += d.get("trades", 0)
-                bucket_data[(lo, hi)]["wins"] += d.get("wins", 0)
-                break
-
-    # Bucket istatistikleri
-    bucket_stats = []
-    for lo, hi, mult in matrix_buckets:
-        bd = bucket_data.get((lo, hi), {"trades": 0, "wins": 0})
-        n = bd["trades"]
-        w = bd["wins"]
-        wr = w / n if n > 0 else 0.0
-        bucket_stats.append(
-            {
-                "lo": lo,
-                "hi": hi,
-                "mult": mult,
-                "label": _bucket_label(lo, hi),
-                "trades": n,
-                "wins": w,
-                "wr": round(wr * 100, 1),
-                "wilson_upper": round(wilson_upper(w, n) * 100, 1),
-                "wilson_lower": round(wilson_lower(w, n) * 100, 1),
-            }
-        )
-
-    # Pairwise karsilastirma — sadece n >= min_bucket_trades olan bucket'lar
-    qualifying = [b for b in bucket_stats if b["trades"] >= min_bucket_trades]
-    comparisons = []
-    divergent_count = 0
-
-    for i in range(len(qualifying)):
-        for j in range(i + 1, len(qualifying)):
-            bi = qualifying[i]
-            bj = qualifying[j]
-            ci_i_lo = bi["wilson_lower"] / 100.0
-            ci_i_hi = bi["wilson_upper"] / 100.0
-            ci_j_lo = bj["wilson_lower"] / 100.0
-            ci_j_hi = bj["wilson_upper"] / 100.0
-            overlap = not (ci_j_hi < ci_i_lo or ci_j_lo > ci_i_hi)
-            if overlap:
-                verdict = "FARK YOK"
-            else:
-                verdict = "ANLAMLI FARK VAR"
-                divergent_count += 1
-            comparisons.append(
-                {
-                    "bucket_a": bi["label"],
-                    "bucket_b": bj["label"],
-                    "n_a": bi["trades"],
-                    "n_b": bj["trades"],
-                    "wr_a": bi["wr"],
-                    "wr_b": bj["wr"],
-                    "ci_overlap": "Evet" if overlap else "Hayır",
-                    "verdict": verdict,
-                }
-            )
-
-    total_buckets = len(qualifying)
-    return {
-        "symbol": symbol,
-        "bucket_stats": bucket_stats,
-        "comparisons": comparisons,
-        "divergent_pairs": divergent_count,
-        "total_qualifying_buckets": total_buckets,
-        "summary": (
-            f"{divergent_count}/{len(comparisons)} bucket cifti birbirinden ayrisiyor"
-            if comparisons
-            else "Yeterli bucket yok (n>=100)"
-        ),
-    }
-
-
 def compute_session_stats(trade_records, initial_balance):
-    """Bir session'daki unique trade listesinden istatistik hesapla."""
     n = len(trade_records)
     if n == 0:
         return {
             "total_trades": 0,
             "tp_pct": 0,
             "profit_trail_pct": 0,
+            "positive_exit_pct": 0,
             "profit_factor": 0,
             "max_dd_pct": 0,
-            "avg_mae": 0,
             "total_pnl": 0,
+            "total_fee": 0,
+            "pnl_per_fee": 0,
+            "score": 0,
         }
-    tp = sum(1 for r in trade_records if r[2] > 0)
-    profit_trail = sum(1 for r in trade_records if r[2] == 0)
-    profit_trail_pct = (tp + profit_trail) / n * 100 if n > 0 else 0
-    tp_pct = tp / n * 100 if n > 0 else 0
+    tp = sum(1 for r in trade_records if r["result"] == "TP")
+    profit_trail = sum(1 for r in trade_records if r["result"] == "PROFIT_TRAIL")
+    tp_pct = tp / n * 100
+    profit_trail_pct = profit_trail / n * 100
+    positive_exit_pct = tp_pct + profit_trail_pct
 
-    gross_profit = sum(r[2] for r in trade_records if r[2] > 0) or 0
-    gross_loss = abs(sum(r[2] for r in trade_records if r[2] < 0))
+    gross_profit = sum(r["pnl"] for r in trade_records if r["pnl"] > 0) or 0
+    gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0))
     profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
 
     cumulative = 0
     peak = 0
     max_dd = 0
-    for _, _, pnl, _ in trade_records:
-        cumulative += pnl
+    for r in trade_records:
+        cumulative += r["pnl"]
         if cumulative > peak:
             peak = cumulative
         dd = peak - cumulative
@@ -891,451 +874,276 @@ def compute_session_stats(trade_records, initial_balance):
     peak_balance = initial_balance + peak
     max_dd_pct = (max_dd / peak_balance) * 100 if peak_balance > 0 else 0
 
-    losses_list = [r[2] for r in trade_records if r[2] < 0]
-    avg_mae = abs(sum(losses_list) / len(losses_list)) if losses_list else 0
-    total_pnl = sum(r[2] for r in trade_records)
+    total_pnl = sum(r["pnl"] for r in trade_records)
+    total_fee = sum(r.get("fee", 0) for r in trade_records)
+    pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
+
+    score = (
+        (profit_factor * positive_exit_pct / 100 * pnl_per_fee)
+        / (1 + max_dd_pct / 100)
+        * 100
+        if max_dd_pct >= 0
+        else 0
+    )
 
     return {
         "total_trades": n,
         "tp_pct": tp_pct,
         "profit_trail_pct": profit_trail_pct,
+        "positive_exit_pct": positive_exit_pct,
         "profit_factor": profit_factor,
         "max_dd_pct": max_dd_pct,
-        "avg_mae": avg_mae,
         "total_pnl": total_pnl,
+        "total_fee": total_fee,
+        "pnl_per_fee": pnl_per_fee,
+        "score": round(score),
     }
 
 
-def run_session_analysis(sym: str):
-    """Tek bir sembol icin tum session'lari calistir, overlap filtrele, karsilastir."""
-    t0 = time.time()
+def run_session_analysis(sym: str, session_name: str, session_hours: dict):
+    try:
+        result = collect_daily_data(
+            sym, session_name=session_name, session_hours=session_hours
+        )
+        if result is None:
+            return None
+        daily_rows, wins, losses, trade_records, rejection_counts = result
+        if len(daily_rows) < 3:
+            return None
+        stats = compute_session_stats(trade_records, cfg.INITIAL_BALANCE)
+        return {
+            "symbol": sym,
+            "session": session_name,
+            "daily_rows": daily_rows,
+            "trade_records": trade_records,
+            "stats": stats,
+            "rejection_counts": rejection_counts,
+        }
+    except Exception as e:
+        print(f"    [{session_name}/{sym}] HATA: {e}", flush=True)
+        import traceback
 
-    # 1. Adim: Her session'u ayri ayri calistir (izole state)
-    all_trade_records = []  # (trade_id, session_name, pnl, result)
-    session_raw_data = {}  # session_name -> raw data for threshold analysis
-
-    for sname, shours in SESSION_CONFIGS.items():
-        try:
-            result = collect_daily_data(sym, session_name=sname, session_hours=shours)
-            if result is None:
-                print(f"    [{sname}] VERI DOSYASI YOK", flush=True)
-                continue
-            daily_rows, wins, losses, trade_records, rejection_counts = result
-            if len(daily_rows) < 3:
-                print(f"    [{sname}] YETERSIZ VERI", flush=True)
-                continue
-            session_raw_data[sname] = {
-                "daily_rows": daily_rows,
-                "wins": wins,
-                "losses": losses,
-                "trade_records": trade_records,
-                "rejection_counts": rejection_counts,
-            }
-            for tr in trade_records:
-                all_trade_records.append(
-                    (tr["trade_id"], sname, tr["pnl"], tr["result"])
-                )
-            rej_str = str(dict(sorted(rejection_counts.items(), key=lambda x: x[0])))
-            print(
-                f"    [{sname}] {len(daily_rows)} gun, {len(trade_records)} islem OK",
-                flush=True,
-            )
-            print(f"    [{sname}] Red: {rej_str}", flush=True)
-        except Exception as e:
-            print(
-                f"    [{sname}] HATA: {e} — atlaniyor, diger session'lara devam",
-                flush=True,
-            )
-            continue
-
-    if not session_raw_data:
-        print(f"  [{sym}] HICBIR SESSION CALISMADI", flush=True)
+        traceback.print_exc()
         return None
-
-    # 2. Adim: Overlap filtrele — ayni bar_index (sb) sadece ilk session'a sayilsin
-    # trade_id = {session_name}_{entry_day}_{sb}
-    # overlap_key = sb (bar index) — hangi session olursa olsun ayni bardaki trade tek sayilir
-    seen_overlap = set()
-    unique_trade_records = []
-    for tid, sname, pnl, result in all_trade_records:
-        overlap_key = tid.rsplit("_", 1)[-1]  # sb (bar index)
-        if overlap_key not in seen_overlap:
-            seen_overlap.add(overlap_key)
-            unique_trade_records.append((tid, sname, pnl, result))
-        # duplicate ise atlanir — sadece ilk session sayilir
-
-    # 3. Adim: Session istatistiklerini hesapla (unique trade'ler uzerinden)
-    session_names_ordered = [s for s in SESSION_CONFIGS if s in session_raw_data]
-    stats_rows = []
-    total_all_trades = 0
-    total_unique_trades = 0
-    for sname in session_names_ordered:
-        session_trades = [r for r in unique_trade_records if r[1] == sname]
-        raw_trades = session_raw_data[sname]["trade_records"]
-        stats = compute_session_stats(session_trades, cfg.INITIAL_BALANCE)
-        stats["session"] = sname
-        stats["total_trades_raw"] = len(raw_trades)  # overlap oncesi
-        stats["unique_trades"] = stats["total_trades"]  # overlap sonrasi
-        stats_rows.append(stats)
-        total_all_trades += len(raw_trades)
-        total_unique_trades += stats["total_trades"]
-
-    # 4. Adim: Karsilastirmali tabloyu bas (Skor = PTrail% * PF * PnL / DD)
-    skorlar = []
-    for st in stats_rows:
-        bep = st.get("profit_trail_pct", st["tp_pct"])
-        pf = st["profit_factor"]
-        pnl = abs(st["total_pnl"])
-        dd = st["max_dd_pct"] if st["max_dd_pct"] > 0 else 1
-        skor = (bep * pf * pnl) / dd
-        skorlar.append((skor, st["session"], st))
-    best_skor = max(skorlar, key=lambda x: x[0]) if skorlar else (0, "", {})
-    print(
-        f"\n  ┌─ [{sym}] Multi-Session Karsilastirma ───────────────────────────────────────────────────────┐"
-    )
-    print(
-        f"  │ {'Session':<14} {'Total':>7} {'Uniq':>6} {'PTrail%':>8} {'PF':>6} {'DD%':>5} {'Skor':>10} {'PnL':>9} {'':>4} │"
-    )
-    print(
-        f"  ├{'─' * 14}┼{'─' * 7}┼{'─' * 6}┼{'─' * 6}┼{'─' * 6}┼{'─' * 5}┼{'─' * 10}┼{'─' * 9}┼{'─' * 4}┤"
-    )
-    for skor, sname, st in skorlar:
-        best_mark = "←" if sname == best_skor[1] else ""
-        print(
-            f"  │ {sname:<14} {st['total_trades_raw']:>7} {st['unique_trades']:>6} "
-            f"{st.get('profit_trail_pct', st['tp_pct']):>7.1f}% {st['profit_factor']:>5.2f} "
-            f"{st['max_dd_pct']:>4.1f}% {skor:>9.0f} {st['total_pnl']:>+8.0f} {best_mark:>4} │"
-        )
-    print(
-        f"  └{'─' * 14}┴{'─' * 7}┴{'─' * 6}┴{'─' * 6}┴{'─' * 6}┴{'─' * 5}┴{'─' * 10}┴{'─' * 9}┴{'─' * 4}┘"
-    )
-    print(f"  BEST: {best_skor[1]} (Skor={best_skor[0]:.0f})", flush=True)
-    print(
-        f"  Toplam: {total_all_trades} raw trade, {total_unique_trades} unique trade "
-        f"({time.time() - t0:.0f}s)",
-        flush=True,
-    )
-
-    # 5. Adim: Her session icin CBDR genisligi bucket analizi (Wilson score)
-    threshold_results = {}
-    bucket_scaling_results = {}
-    for sname in session_names_ordered:
-        daily_rows = session_raw_data[sname]["daily_rows"]
-        analysis = analyze_thresholds(daily_rows, sym)
-        if analysis is None:
-            continue
-        threshold_results[sname] = analysis
-        fl = analysis["fail_limit"]
-        fl_str = f"%{fl:.2f}" if fl is not None else "BULUNAMADI"
-        wil_str = "✓" if analysis.get("wilson_found") else "—"
-        print(
-            f"\n  [{sym}] {sname} — CBDR% Bucket Analizi (fail limit: {fl_str}, Wilson: {wil_str})"
-        )
-        print(f"  {'Aralik%':<18} {'Gun':>4} {'Islem':>6} {'TP%':>6} {'PnL':>10}")
-        print(f"  {'-' * 48}")
-        for b in analysis["buckets"]:
-            print(
-                f"  {b['range']:<18} {b['days']:>4} {b['trades']:>6} {b['wr']:>5.1f}% {b['pnl']:>+9.0f}"
-            )
-
-        # Bucket scaling analizi (CBDR_RISK_MATRIX bucket sinirlariyla)
-        bs = analyze_bucket_scaling(daily_rows, sym)
-        if bs is not None:
-            bucket_scaling_results[sname] = bs
-            print(f"\n  [{sym}] {sname} — Bucket Scaling (CBDR_RISK_MATRIX sinirlari)")
-            print(
-                f"  {'Bucket':<10} {'Mult':>5} {'Islem':>6} {'TP%':>6} {'WilsonLo':>8} {'WilsonHi':>8}"
-            )
-            print(f"  {'-' * 50}")
-            for bs_b in bs["bucket_stats"]:
-                print(
-                    f"  {bs_b['label']:<10} {bs_b['mult']:>4.1f}x {bs_b['trades']:>6} "
-                    f"{bs_b['wr']:>5.1f}% {bs_b['wilson_lower']:>7.1f}% {bs_b['wilson_upper']:>7.1f}%"
-                )
-            if bs["comparisons"]:
-                print(f"  Pairwise: {bs['summary']}")
-                for c in bs["comparisons"]:
-                    print(
-                        f"    {c['bucket_a']:>8} vs {c['bucket_b']:<8} "
-                        f"TP {c['wr_a']:.1f}% vs {c['wr_b']:.1f}% "
-                        f"CI: {c['ci_overlap']} → {c['verdict']}"
-                    )
-
-    return (
-        session_raw_data,
-        unique_trade_records,
-        threshold_results,
-        bucket_scaling_results,
-    )
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Per-session FVG size backtest")
     parser.add_argument(
-        "--symbols", nargs="*", default=None,
-        help="Belirli semboller (default: cfg.SYMBOLS tamami)"
+        "--symbols",
+        nargs="*",
+        default=None,
+        help="Belirli semboller (default: cfg.SYMBOLS tamami)",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Paralel worker sayisi (1=serial)"
     )
     args = parser.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
-    all_session_results = {}
+
+    # Onceki raporu temizle (her calistirmada sifirdan basla)
+    _old_md = os.path.join(
+        os.path.dirname(__file__), "..", "reports", "session_analysis.md"
+    )
+    if os.path.isfile(_old_md):
+        os.remove(_old_md)
+        print(f"[TEMIZLIK] Eski rapor silindi: {_old_md}", flush=True)
+
+    # Parse FVG size maps from .md files
+    fvg_size_maps = {}
+    for sname, md_path in FVG_SIZE_MAP_FILES.items():
+        fvg_map = _parse_fvg_size_from_md(md_path)
+        if fvg_map is None:
+            print(f"[UYARI] {sname} FVG size map bulunamadi: {md_path}", flush=True)
+            continue
+        fvg_size_maps[sname] = fvg_map
+        print(f"[FVG] {sname}: {len(fvg_map)} coin FVG size yuklendi", flush=True)
+
+    if not fvg_size_maps:
+        print("[HATA] Hicbir FVG size map yuklenemedi")
+        return
 
     symbols = args.symbols if args.symbols else sorted(cfg.SYMBOLS)
-    print("=" * 120)
-    print("  CBDR ESIK ANALIZI — Multi-Session Karsilastirmali")
-    print(f"  Session'lar: {', '.join(SESSION_CONFIGS.keys())}")
-    print(f"  Sembol sayisi: {len(symbols)}")
-    print("=" * 120)
+    all_results = {}
 
-    for sym in symbols:
-        print(f"\n  [{sym}] Session analizi basliyor...", flush=True)
-
-        result = run_session_analysis(sym)
-        if result is None:
+    for sname in sorted(fvg_size_maps):
+        sh = SESSION_CONFIGS.get(sname)
+        if not sh:
             continue
-        all_session_results[sym] = (
-            result  # (session_raw, unique_trades, threshold_results, bucket_scaling_results)
+        sh_str = f"{sh['start']:02d}:00-{sh['end']:02d}:00 UTC"
+        print(f"\n{'=' * 100}")
+        print(f"  SESSION: {sname} ({sh_str})")
+        print(f"  Symbols: {len(symbols)}, Workers: {args.workers}")
+        print(f"{'=' * 100}")
+
+        _orig_fvg_map = getattr(cfg, "FVG_SIZE_MAP", {}).copy()
+        cfg.FVG_SIZE_MAP = fvg_size_maps[sname].copy()
+
+        report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+        os.makedirs(report_dir, exist_ok=True)
+        md_path = os.path.join(report_dir, "session_analysis.md")
+
+        # Session header (her session basinda bir kere)
+        header_lines = []
+        if not os.path.isfile(md_path):
+            header_lines.append("# Session Analysis — Per-Session FVG Size Backtest")
+            header_lines.append("")
+            header_lines.append(
+                f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+            header_lines.append(
+                "**Strategy:** V5 — Sweep → RSM → Quality → FVG size → CBDR Mult → EL → Entry"
+            )
+            header_lines.append("")
+        header_lines.append(f"## {sname} ({sh_str})")
+        header_lines.append("")
+        header_lines.append(
+            "| Symbol | FVG Size | Trades | TP% | PTrail% | PE% | PF | DD% | PnL | Fee | PnL/Fee | Score |"
         )
+        header_lines.append(
+            "|--------|----------|-------|-----|---------|-----|----|-----|-----|-----|---------|-------|"
+        )
+        mode = "a" if os.path.isfile(md_path) else "w"
+        with open(md_path, mode, encoding="utf-8") as f:
+            f.write("\n".join(header_lines) + "\n")
+        print(f"[RAPOR] {sname} header -> {md_path}", flush=True)
 
-    # ── Ozet CSV & MD rapor ──
-    report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
-    os.makedirs(report_dir, exist_ok=True)
-
-    csv_path = os.path.join(report_dir, "ict_cbdr_thresholds.csv")
-    md_path = os.path.join(report_dir, "ict_cbdr_thresholds.md")
-
-    # Session bazinda CSV satirlari
-    csv_rows = []
-    for sym in sorted(all_session_results):
-        session_raw, unique_trades, threshold_results, _ = all_session_results[sym]
-        for sname in SESSION_CONFIGS:
-            if sname not in session_raw:
+        session_results = []
+        for sym in symbols:
+            if sym not in cfg.FVG_SIZE_MAP:
+                print(f"    [{sname}] {sym}: FVG size yok, atlaniyor", flush=True)
                 continue
-            session_trades = [r for r in unique_trades if r[1] == sname]
-            stats = compute_session_stats(session_trades, cfg.INITIAL_BALANCE)
-            thr = threshold_results.get(sname, {})
-            csv_rows.append(
-                {
-                    "Coin": sym,
-                    "Session": sname,
-                    "Total_Trades_Raw": len(session_raw[sname]["trade_records"]),
-                    "Unique_Trades": stats["total_trades"],
-                    "TP%": round(stats["tp_pct"], 1),
-                    "Profit_Factor": round(stats["profit_factor"], 2),
-                    "MaxDD%": round(stats["max_dd_pct"], 2),
-                    "Avg_MAE": round(stats["avg_mae"], 2),
-                    "PnL": round(stats["total_pnl"], 0),
-                    "Fail_Limit": f"{thr['fail_limit']:.2f}%"
-                    if thr.get("fail_limit")
-                    else "BULUNAMADI",
-                    "Wilson": thr.get("wilson_found", False),
-                }
-            )
-
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(
-            f,
-            fieldnames=[
-                "Coin",
-                "Session",
-                "Total_Trades_Raw",
-                "Unique_Trades",
-                "TP%",
-                "Profit_Factor",
-                "MaxDD%",
-                "Avg_MAE",
-                "PnL",
-                "Fail_Limit",
-                "Wilson",
-            ],
-        )
-        w.writeheader()
-        w.writerows(csv_rows)
-    print(f"\n  CSV rapor: {csv_path}")
-
-    # ── Bucket Scaling CSV ──
-    bs_csv_path = os.path.join(report_dir, "ict_cbdr_bucket_scaling.csv")
-    bs_csv_rows = []
-    for sym in sorted(all_session_results):
-        _, _, _, bucket_scaling_results = all_session_results[sym]
-        for sname, bs in bucket_scaling_results.items():
-            for c in bs["comparisons"]:
-                bs_csv_rows.append(
-                    {
-                        "Coin": sym,
-                        "Session": sname,
-                        "Bucket_A": c["bucket_a"],
-                        "Bucket_B": c["bucket_b"],
-                        "N_A": c["n_a"],
-                        "N_B": c["n_b"],
-                        "TP_A": f"{c['wr_a']:.1f}%",
-                        "TP_B": f"{c['wr_b']:.1f}%",
-                        "CI_Overlap": c["ci_overlap"],
-                        "Verdict": c["verdict"],
-                    }
-                )
-            # Ozet satir
-            bs_csv_rows.append(
-                {
-                    "Coin": sym,
-                    "Session": sname,
-                    "Bucket_A": "--- OZET ---",
-                    "Bucket_B": bs["summary"],
-                    "N_A": "",
-                    "N_B": "",
-                    "TP_A": "",
-                    "TP_B": "",
-                    "CI_Overlap": "",
-                    "Verdict": f"{bs['divergent_pairs']} cift ayrisiyor",
-                }
-            )
-
-    with open(bs_csv_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(
-            f,
-            fieldnames=[
-                "Coin",
-                "Session",
-                "Bucket_A",
-                "Bucket_B",
-                "N_A",
-                "N_B",
-                "TP_A",
-                "TP_B",
-                "CI_Overlap",
-                "Verdict",
-            ],
-        )
-        w.writeheader()
-        w.writerows(bs_csv_rows)
-    print(f"  Bucket Scaling CSV: {bs_csv_path}")
-
-    # MD rapor
-    lines = []
-    lines.append("# ICT CBDR Threshold Analysis — Multi-Session Comparison")
-    lines.append("")
-    lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(
-        "**Strategy:** V5 — Sweep → RSM → Quality (FVG size + sweep) → CBDR Mult → EL → Entry"
-    )
-    lines.append(f"**Session Configs:** {', '.join(SESSION_CONFIGS.keys())}")
-    lines.append(
-        "**Overlap Filter:** Active — same (day, bar_index) counted only in first session"
-    )
-    lines.append("")
-    lines.append("## Multi-Session Comparison Table")
-    lines.append("")
-    lines.append(
-        "| Coin | Session | Total Raw | Unique | TP% | PF | MaxDD% | Avg MAE | PnL | Fail Limit | Wilson |"
-    )
-    lines.append(
-        "|"
-        + "|".join(
-            [
-                "-" * 8,
-                "-" * 10,
-                "-" * 11,
-                "-" * 8,
-                "-" * 6,
-                "-" * 5,
-                "-" * 8,
-                "-" * 9,
-                "-" * 8,
-                "-" * 13,
-                "-" * 8,
-            ]
-        )
-        + "|"
-    )
-    for row in csv_rows:
-        lines.append(
-            f"| {row['Coin']:<8} | {row['Session']:<10} | {row['Total_Trades_Raw']:>9} | "
-            f"{row['Unique_Trades']:>6} | {row['TP%']:>4.1f}% | {row['Profit_Factor']:>3.2f} | "
-            f"{row['MaxDD%']:>6.2f}% | {row['Avg_MAE']:>7.2f} | {row['PnL']:>+8.0f} | "
-            f"{row['Fail_Limit']:>10} | {'✓' if row['Wilson'] else '—':>3} |"
-        )
-    lines.append("")
-
-    for sym in sorted(all_session_results):
-        session_raw, unique_trades, threshold_results, bucket_scaling_results = (
-            all_session_results[sym]
-        )
-        for sname in SESSION_CONFIGS:
-            if sname not in session_raw:
+            fvg_size = cfg.FVG_SIZE_MAP[sym]
+            res = run_session_analysis(sym, sname, sh)
+            if res is None:
+                print(f"    [{sname}] {sym}: VERI YOK veya YETERSIZ", flush=True)
                 continue
-            session_trades = [r for r in unique_trades if r[1] == sname]
-            stats = compute_session_stats(session_trades, cfg.INITIAL_BALANCE)
-            lines.append(f"### {sym} — {sname}")
-            lines.append("")
-            lines.append(
-                f"- **Total Trades (raw):** {len(session_raw[sname]['trade_records'])}"
+            session_results.append(res)
+            st = res["stats"]
+            daily_rows = res["daily_rows"]
+            line = (
+                f"| {sym:<8} | {fvg_size:.3f} | {st['total_trades']:>5} | "
+                f"{st['tp_pct']:>4.1f}% | {st['profit_trail_pct']:>5.1f}% | "
+                f"{st['positive_exit_pct']:>4.1f}% | {st['profit_factor']:>4.2f} | "
+                f"{st['max_dd_pct']:>4.1f}% | {st['total_pnl']:>+7.0f} | "
+                f"{st['total_fee']:>+7.0f} | {st['pnl_per_fee']:>5.2f} | {st['score']:>5.0f} |"
             )
-            lines.append(f"- **Unique Trades:** {stats['total_trades']}")
-            lines.append(f"- **TP%:** {stats['tp_pct']:.1f}%")
-            lines.append(f"- **Profit Factor:** {stats['profit_factor']:.2f}")
-            lines.append(f"- **MaxDD%:** {stats['max_dd_pct']:.2f}%")
-            lines.append(f"- **Avg MAE:** {stats['avg_mae']:.2f}")
-            lines.append(f"- **Total PnL:** {stats['total_pnl']:+.0f}")
-            thr = threshold_results.get(sname, {})
+
+            # Per-coin bucket detayi (console + MD)
+            thr = analyze_thresholds(daily_rows, sym)
+            bs = analyze_bucket_scaling(daily_rows, sym)
+            bucket_lines = [line]
             if thr:
-                fl_str = (
-                    f"{thr['fail_limit']:.2f}%"
-                    if thr.get("fail_limit")
-                    else "BULUNAMADI"
-                )
-                wil_str = "✓" if thr.get("wilson_found") else "—"
-                lines.append(f"- **Fail Limit:** {fl_str} (Wilson: {wil_str})")
-                lines.append("")
-                lines.append("| CBDR% Araligi | Gun | Islem | TP% | PnL |")
-                lines.append(
-                    f"|{'-' * 14}:|{'-' * 4}:|{'-' * 6}:|{'-' * 5}:|{'-' * 8}:|"
-                )
-                for b in thr.get("buckets", []):
-                    lines.append(
-                        f"| {b['range']:<14} | {b['days']:>4} | {b['trades']:>6} | {b['wr']:>4.1f}% | {b['pnl']:>+7.0f} |"
-                    )
-            # Bucket Scaling MD bolumu
-            bs = bucket_scaling_results.get(sname)
-            if bs:
-                lines.append("")
-                lines.append("#### Bucket Scaling (CBDR_RISK_MATRIX)")
-                lines.append("")
-                lines.append(
-                    "| Bucket | Mult | Islem | TP% | Wilson Lower | Wilson Upper |"
-                )
-                lines.append(
-                    f"|{'-' * 10}:|{'-' * 5}:|{'-' * 6}:|{'-' * 5}:|{'-' * 12}:|{'-' * 12}:|"
-                )
-                for bs_b in bs["bucket_stats"]:
-                    lines.append(
-                        f"| {bs_b['label']:<10} | {bs_b['mult']:.1f}x | {bs_b['trades']:>6} | "
-                        f"{bs_b['wr']:>4.1f}% | {bs_b['wilson_lower']:>10.1f}% | {bs_b['wilson_upper']:>10.1f}% |"
-                    )
-                if bs["comparisons"]:
-                    lines.append("")
-                    lines.append(f"**Pairwise CI Overlap:** {bs['summary']}")
-                    lines.append("")
-                    lines.append(
-                        "| Bucket A | Bucket B | N_A | N_B | TP_A | TP_B | CI Overlap | Verdict |"
-                    )
-                    lines.append(
-                        f"|{'-' * 10}|{'-' * 10}|{'-' * 5}|{'-' * 5}|{'-' * 6}|{'-' * 6}|{'-' * 10}|{'-' * 18}|"
-                    )
-                    for c in bs["comparisons"]:
-                        lines.append(
-                            f"| {c['bucket_a']:<10} | {c['bucket_b']:<10} | {c['n_a']:>3} | {c['n_b']:>3} | "
-                            f"{c['wr_a']:>4.1f}% | {c['wr_b']:>4.1f}% | {c['ci_overlap']:<10} | {c['verdict']:<18} |"
+                fl = thr.get("fail_limit")
+                fl_str = f"{fl:.2f}%" if fl is not None else "—"
+                bucket_lines.append("")
+                bucket_lines.append("| Analiz | Deger |")
+                bucket_lines.append("|--------|------|")
+                bucket_lines.append(f"| Wilson WR | {thr['overall_wr']:.1f}% |")
+                bucket_lines.append(f"| Fail Limit | {fl_str} |")
+                bucket_lines.append(f"| Total Trades | {thr['total_trades']} |")
+            if bs and bs["bucket_stats"]:
+                bucket_lines.append("")
+                bucket_lines.append("| Bucket | Trades | PE% | Wilson CI 95% |")
+                bucket_lines.append("|--------|-------|-----|---------------|")
+                for b in bs["bucket_stats"]:
+                    if b["trades"] > 0:
+                        bucket_lines.append(
+                            f"| {b['label']:<7} | {b['trades']:>5} | {b['wr']:>4.1f}% | "
+                            f"{b['wilson_lower']:.1f}%-{b['wilson_upper']:.1f}% |"
                         )
-            lines.append("")
+                if bs["comparisons"]:
+                    print(f"    [{sname}] {sym:<8} Bucket: {bs['summary']}", flush=True)
 
-    lines.append("---")
-    lines.append("*Report auto-generated by `analyze_cbdr_thresholds.py`*")
+            # Her coin biter bitmez dosyaya yaz
+            with open(md_path, "a", encoding="utf-8") as f:
+                f.write("\n".join(bucket_lines) + "\n")
+            print(
+                f"    [{sname}] {sym:<8} FVG={fvg_size:.3f} "
+                f"{st['total_trades']:>6} islem | "
+                f"TP%={st['tp_pct']:>5.1f} PTrail%={st['profit_trail_pct']:>5.1f} "
+                f"PF={st['profit_factor']:>5.2f} DD%={st['max_dd_pct']:>4.1f} "
+                f"PnL={st['total_pnl']:>+8.0f} Skor={st['score']:>6.0f}",
+                flush=True,
+            )
 
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    print(f"  MD rapor: {md_path}")
-    print(f"\n  Toplam sure: {time.time() - t0:.0f}s")
+        cfg.FVG_SIZE_MAP = _orig_fvg_map
+        all_results[sname] = session_results
+
+        if not session_results:
+            continue
+
+        # Session summary + aggregated bucket tablosu
+        total_trades = sum(r["stats"]["total_trades"] for r in session_results)
+        total_pnl = sum(r["stats"]["total_pnl"] for r in session_results)
+        total_fee = sum(r["stats"]["total_fee"] for r in session_results)
+        avg_score = (
+            sum(r["stats"]["score"] for r in session_results) / len(session_results)
+            if session_results
+            else 0
+        )
+        total_days = sum(len(r["daily_rows"]) for r in session_results)
+        print(
+            f"\n  [{sname}] SUMMARY: {len(session_results)} coin, "
+            f"{total_trades} trade, PnL={total_pnl:+.0f}, "
+            f"Fee={total_fee:+.0f}, AvgScore={avg_score:.0f}",
+            flush=True,
+        )
+
+        tail_lines = []
+        tail_lines.append(
+            f"**Summary:** {total_days} days, {total_trades} trades, "
+            f"net PnL={total_pnl:+.0f}, Fee={total_fee:+.0f}, "
+            f"Avg Score={avg_score:.0f}"
+        )
+        tail_lines.append("")
+        tail_lines.append("### CBDR Bucket Scaling — Session Summary")
+        tail_lines.append("")
+        agg: dict = defaultdict(lambda: {"trades": 0, "wins": 0})
+        for r in session_results:
+            bs = analyze_bucket_scaling(r["daily_rows"], r["symbol"])
+            if bs and bs["bucket_stats"]:
+                for b in bs["bucket_stats"]:
+                    agg[b["label"]]["trades"] += b["trades"]
+                    agg[b["label"]]["wins"] += b["wins"]
+        if agg:
+            tail_lines.append("| Bucket | Trades | PE% | Wilson CI 95% |")
+            tail_lines.append("|--------|-------|-----|---------------|")
+            for lbl in ["0-1%", "1-1.5%", "1.5-2%", "2-3%", "3-5%", ">5%"]:
+                d = agg.get(lbl)
+                if d and d["trades"] > 0:
+                    wr = d["wins"] / d["trades"] * 100
+                    wl = wilson_lower(d["wins"], d["trades"]) * 100
+                    wu = wilson_upper(d["wins"], d["trades"]) * 100
+                    tail_lines.append(
+                        f"| {lbl:<7} | {d['trades']:>5} | {wr:>4.1f}% | {wl:>5.1f}%-{wu:>5.1f}% |"
+                    )
+        tail_lines.append("")
+        tail_lines.append("---")
+        tail_lines.append("")
+
+        with open(md_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(tail_lines) + "\n")
+        print(f"[RAPOR] {sname} -> {md_path}", flush=True)
+
+    print(f"\n{'=' * 100}")
+    print(f"  TOPLAM SURE: {time.time() - t0:.0f}s")
+    print(f"{'=' * 100}")
+    for sname in sorted(all_results):
+        results = all_results[sname]
+        total_trades = sum(r["stats"]["total_trades"] for r in results)
+        total_pnl = sum(r["stats"]["total_pnl"] for r in results)
+        total_fee = sum(r["stats"]["total_fee"] for r in results)
+        avg_score = (
+            sum(r["stats"]["score"] for r in results) / len(results) if results else 0
+        )
+        print(
+            f"  {sname}: {len(results)} coin, {total_trades} trade, "
+            f"PnL={total_pnl:+.0f}, Fee={total_fee:+.0f}, Avg Score={avg_score:.0f}"
+        )
+    print(f"  Rapor: {md_path}")
 
 
 if __name__ == "__main__":
