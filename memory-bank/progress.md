@@ -146,6 +146,13 @@ Korunan: BUG 5 (be_triggered), BUG 6 (PF cap), BUG 7 (MaxDD), BUG 9 (Sharpe), de
 | SUIUSDT | 571 | 21.4% | 1.68 | +4,087 | 8,230 |
 | **TOPLAM** | **12,337** | **—** | **—** | **+191,032** | **100,857** |
 
+## ✅ Config Session Sync (2026-07-17)
+- **session_analysis.md** üretildi — 3 session karşılaştırması (ASIA_RANGE, DEFAULT, REAL_CBDR)
+- **the_best_session.md** yazıldı — her coin için en yüksek skorlu sezon
+- **config.py CBDR_RISK_MATRIX** session'ları best session'a göre güncellendi (9 coin'de değişiklik)
+- **config.py FVG_SIZE_MAP** yenilendi — her coin best session'ındaki FVG Size değeriyle
+- **cbdr_risk_matrix_v2.py** session'ları sync edildi
+
 ## 📐 CBDR Risk Matrix Summary
 - **REAL_CBDR (4 coin):** BTC, ATOM, DOT, ETH
 - **DEFAULT (4 coin):** ADA, SOL, SUI, XRP

@@ -1,5 +1,5 @@
 # ── CBDR Risk Matrisi v2 (composite score + PF gate ile üretildi) ──
-# Üretim zamanı: 2026-07-16 03:02 UTC
+# Üretim zamanı: 2026-07-17 12:32 UTC
 # Metodoloji: mutlak sabit çapa (coin-içi normalizasyon yok),
 # PF hem ağırlık hem sert gate, n<100 güvenlik kilidi.
 # Gerekçeler için bkz: bucket_risk_report.md
@@ -71,7 +71,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "ATOMUSDT": {
-        "session": "ASIA_RANGE",
+        "session": "REAL_CBDR",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
@@ -84,7 +84,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "AVAXUSDT": {
-        "session": "REAL_CBDR",
+        "session": "DEFAULT",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
@@ -123,7 +123,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "DOTUSDT": {
-        "session": "DEFAULT",
+        "session": "REAL_CBDR",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
@@ -175,7 +175,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "INJUSDT": {
-        "session": "ASIA_RANGE",
+        "session": "REAL_CBDR",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
@@ -201,7 +201,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "LINKUSDT": {
-        "session": "REAL_CBDR",
+        "session": "ASIA_RANGE",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
@@ -214,7 +214,7 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         ],
     },
     "NEARUSDT": {
-        "session": "ASIA_RANGE",
+        "session": "REAL_CBDR",
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
