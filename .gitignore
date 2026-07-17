@@ -7,4 +7,16 @@ __pycache__/
 data/
 .coverage
 .ruff_cache/
-nul  
+nul
+
+# Auto-generated logs & temp files
+src/*.log
+src/sonuclar.txt
+src/kelly_calibration_report.md
+reports/config_ciktisi*.txt
+reports/ict_cbdr_*
+reports/cbdr_thresholds_baseline.json
+reports/cbdr_*_report.md
+reports/shootout_analysis.md
+reports/sweep_*_report.md
+reports/yeni_coin_*
