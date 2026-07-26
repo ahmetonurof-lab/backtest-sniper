@@ -1,0 +1,39 @@
+## FVG Zone + Fibonacci Analizi
+| Zone      | Fibo Level | Confirmed   | Trades | TP%   | PTrail% | Loss%  | PF    | Avg R(win) | Avg R(loss) | Net PnL    |
+|---|---|---|---|---|---|---|---|---|---|---|
+| discount   | 0.236      | confirmed   |  18427 |  11.1% |    52.7% |   36.2% |  4.53 |     2.4201 |     -0.8926 |    +845818 |
+| discount   | 0.236      | unconfirmed |  13618 |  10.5% |    50.5% |   39.1% |  4.74 |     2.2500 |     -0.7851 |    +674328 |
+| discount   | 0.382      | confirmed   |   5097 |  12.5% |    43.4% |   44.1% |  2.55 |     2.0043 |     -0.9300 |    +129337 |
+| discount   | 0.382      | unconfirmed |     37 |  16.2% |    45.9% |   37.8% | 12.90 |     4.5389 |     -0.6749 |      +5459 |
+| discount   | 0.500      | confirmed   |   3359 |  13.7% |    40.0% |   46.3% |  2.13 |     1.9601 |     -0.9021 |     +62694 |
+| discount   | 0.500      | unconfirmed |     11 |   9.1% |    36.4% |   54.5% |  1.71 |     1.4878 |     -0.8964 |       +151 |
+| discount   | 0.618      | confirmed   |   2691 |  16.0% |    36.0% |   48.0% |  1.76 |     1.8135 |     -0.9393 |     +36148 |
+| discount   | 0.618      | unconfirmed |     15 |   6.7% |    73.3% |   20.0% |  9.27 |     1.7943 |     -0.5525 |       +908 |
+| discount   | 0.786      | confirmed   |   3454 |  14.4% |    38.1% |   47.4% |  1.78 |     1.8023 |     -0.9252 |     +42623 |
+| discount   | 0.786      | unconfirmed |   4067 |  12.4% |    41.1% |   46.4% |  2.02 |     1.7280 |     -0.8863 |     +58915 |
+| premium    | 0.236      | confirmed   |   3335 |  18.0% |    32.4% |   49.6% |  1.57 |     1.7547 |     -0.9631 |     +32923 |
+| premium    | 0.236      | unconfirmed |   3991 |  16.3% |    36.0% |   47.7% |  2.01 |     1.8370 |     -0.8978 |     +60396 |
+| premium    | 0.382      | confirmed   |   2526 |  17.2% |    33.6% |   49.2% |  1.89 |     2.0828 |     -0.9510 |     +41516 |
+| premium    | 0.382      | unconfirmed |     16 |   6.2% |    75.0% |   18.8% |  2.05 |     0.4578 |     -0.7769 |       +160 |
+| premium    | 0.500      | confirmed   |   3396 |  15.3% |    35.1% |   49.6% |  1.78 |     1.8107 |     -0.9458 |     +49134 |
+| premium    | 0.500      | unconfirmed |     13 |  15.4% |    61.5% |   23.1% | 22.98 |     3.0374 |     -0.6156 |      +1827 |
+| premium    | 0.618      | confirmed   |   5848 |  15.2% |    42.1% |   42.6% |  2.80 |     2.0503 |     -0.9214 |    +169261 |
+| premium    | 0.618      | unconfirmed |     44 |   6.8% |    50.0% |   43.2% |  2.83 |     1.9456 |     -0.9749 |      +1523 |
+| premium    | 0.786      | confirmed   |  20049 |  12.6% |    49.5% |   37.9% |  3.99 |     2.3188 |     -0.9182 |    +835158 |
+| premium    | 0.786      | unconfirmed |  13054 |  12.2% |    49.9% |   37.9% |  4.61 |     2.1329 |     -0.7743 |    +618639 |
+
+
+Toplam işlem sayısı: 96.269
+Net kâr: +3.553.112 birim
+Winrate (Kazanma oranı): %59,56
+Profit Factor (PF): 3,59
+Şimdi üç senaryoyu yan yana karşılaştıralım:
+Senaryo	İşlem	Net Kâr	Winrate	PF
+Tüm seviyeler (0.236–0.786)	103.048	3.666.918	%59,08	3,54
+Sadece 0.236 & 0.786	79.995	3.168.800	%60,48	3,90
+0.236, 0.382, 0.618, 0.786	96.269	3.553.112	%59,56	3,59
+Net yorum:
+0.382 ve 0.618 seviyeleri işlem sayısını artırıp toplam kârı yükseltiyor (3.168K → 3.553K).
+Ancak Winrate ve Profit Factor düşüyor: PF 3,90’dan 3,59’a, kazanma oranı %60,48’den %59,56’ya geriliyor.
+Kalite metrikleri açısından en iyi strateji hâlâ sadece 0.236 ve 0.786 seviyelerinde işlem almak.
+Eğer amaç toplam kârı maksimize etmekse, 0.382 ve 0.618 eklenebilir; fakat bunun risk-getiri verimliliğini bir miktar düşürdüğü görülüyor.

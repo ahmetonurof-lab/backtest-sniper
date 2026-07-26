@@ -1,4 +1,4 @@
-# backtest-sniper — Tech Context
+1: # backtest-sniper — Tech Context
 
 ## Technologies
 - **Python** 3.12+
@@ -41,7 +41,7 @@ backtest-sniper/
 │   │   └── visualize_cbdr.py / visualize_cbdr_zoom.py  # Görselleştirme
 │   ├── _run_btc.py / _run_btc2.py / _run_btc3.py # BTC test scriptleri
 │   ├── _run_all.py              # 13 coin toplu koşu
-│   └── _run_fvg_coin.py         # Coin profil koşusu
+│   └── _run_fvg_coin.py         # Coin profil koşumu
 ├── reports/                     # MD rapor, JSON, Parquet, CSV, PNG
 ├── docs/                        # strategy_flow.md, test_report.md
 ├── output/                      # trade_state.json
@@ -74,3 +74,20 @@ backtest-sniper/
 | ATR_TRAIL_MULT | 0.25 | Trailing ATR çarpanı |
 | MIN_RISK_DIST_ATR_MULT | 0.1 | Min risk mesafesi |
 | FVG_WICK_RATIO_MAX | 0.75 | Max wick/body oranı |
+
+(End of file - total 76 lines)
+
+## Özel Not: NVIDIA Ücretsiz AI Modeller
+- **Nemotron-3** (8B, 340B): Metin üretimi ve test amaçlı.
+- **Nemotron-4**: Daha büyük bir model, instruction-following yeteneği artar.
+- **CLIP**: Görüntü‑metin eşleştirme, zero‑shot sınıflandırma.
+- **SegFormer**: Semantik segmentasyon.
+- **StyleGAN2‑ADA**: Yüksek kaliteli sintetikk görüntü üretimi.
+- **AudioGen / AudioLM**: Metenden ses üretimi.
+- **Riva**: Speech‑to‑Text ve Text‑to‑Speech hizmetleri.
+- **NeMo**: Konuşma‑raylı AI (ASR, TTS, dil modelleri).
+- **Triton Inference Server**: Yüksek‑verimli model servisi.
+- **Megatron‑LM**: Çok büyük dil modelleri için eğitim çerçevesi.
+- **Dalí**: Metinden görüntü üretimi.
+- **FasterTransformer**: Optimizeli transformer inference.
+- **GPT‑Neox**: Açık‑lisan model mimarisi.
