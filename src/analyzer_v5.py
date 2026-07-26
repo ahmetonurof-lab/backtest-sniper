@@ -1058,14 +1058,62 @@ def main():
     # ── FVG Zone + Fibonacci Analizi ──
     try:
         from fvg_zone_analyzer import (
+            Trade,
+            classify_trades,
+            compute_zone_fibo_stats,
             generate_zone_fibo_report,
             run_holdout_validation,
+            generate_holdout_report,
         )
 
         report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
-        generate_zone_fibo_report(all_trade_records, report_dir)
+
+        trades = []
+        for rec in all_trade_records:
+            result_map = {
+                "TP": "TP",
+                "PROFIT_TRAIL": "PTrail",
+                "LOSS": "Loss",
+                "OPEN": "Loss",
+            }
+            trades.append(
+                Trade(
+                    timestamp=float(rec.get("risk_usd", 0)),
+                    fvg_direction=rec.get("fvg_direction", "bullish"),
+                    fvg_top=rec.get("fvg_top", 0),
+                    fvg_bottom=rec.get("fvg_bottom", 0),
+                    swing_high=rec.get("cbdr_body_high", 0),
+                    swing_low=rec.get("cbdr_body_low", 0),
+                    result=result_map.get(rec.get("result", ""), "Loss"),
+                    r_multiple=(
+                        rec["pnl"] / rec["risk_usd"]
+                        if rec.get("risk_usd", 0) > 0
+                        else 0.0
+                    ),
+                    pnl=rec.get("pnl", 0),
+                )
+            )
+
+        classify_trades(trades)
+        stats = compute_zone_fibo_stats(trades)
+        fibo_report = generate_zone_fibo_report(stats)
+        fibo_path = os.path.join(report_dir, "fvg_zone_fibo_analysis.md")
+        os.makedirs(report_dir, exist_ok=True)
+        with open(fibo_path, "w", encoding="utf-8") as f:
+            f.write(fibo_report)
         print("  [FVG Zone] Fiyat bölgesi + Fibonacci analizi raporu yazıldı")
-        h_result = run_holdout_validation(all_trade_records, report_dir)
+
+        h_result = run_holdout_validation(trades)
+        holdout_report = generate_holdout_report(h_result)
+        holdout_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "docs",
+            "fibo_zone_holdout_validation.md",
+        )
+        os.makedirs(os.path.dirname(holdout_path), exist_ok=True)
+        with open(holdout_path, "a", encoding="utf-8") as f:
+            f.write("\n" + holdout_report)
         print(
             f"  [Holdout] Doğrulama: validated={h_result.validated} "
             f"reason={h_result.reason}"
