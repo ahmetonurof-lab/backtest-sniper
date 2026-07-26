@@ -67,9 +67,7 @@ def compute_zone_fibo_stats(trade_records: list[dict]) -> list[dict]:
         swing_high = trade.get("cbdr_body_high", 0)
         swing_low = trade.get("cbdr_body_low", 0)
 
-        fibo_level, confirmed = find_nearest_fib_level(
-            midpoint, swing_high, swing_low
-        )
+        fibo_level, confirmed = find_nearest_fib_level(midpoint, swing_high, swing_low)
         fibo_key = f"{fibo_level:.3f}" if fibo_level is not None else "none"
         confirmed_key = "confirmed" if confirmed else "unconfirmed"
 
@@ -80,23 +78,15 @@ def compute_zone_fibo_stats(trade_records: list[dict]) -> list[dict]:
     for (zone, fibo_key, confirmed_key), trades in sorted(groups.items()):
         n = len(trades)
         wins = sum(1 for t in trades if t.get("result") == "TP")
-        profit_trail = sum(
-            1 for t in trades if t.get("result") == "PROFIT_TRAIL"
-        )
-        losses = sum(
-            1
-            for t in trades
-            if t.get("result") in ("LOSS", "OPEN")
-        )
+        profit_trail = sum(1 for t in trades if t.get("result") == "PROFIT_TRAIL")
+        losses = sum(1 for t in trades if t.get("result") in ("LOSS", "OPEN"))
         tp_pct = wins / n * 100 if n > 0 else 0
         pt_pct = profit_trail / n * 100 if n > 0 else 0
         loss_pct = losses / n * 100 if n > 0 else 0
         positive_exit_pct = tp_pct + pt_pct
 
         gross_profit = sum(t["pnl"] for t in trades if t.get("pnl", 0) > 0) or 0
-        gross_loss = abs(
-            sum(t["pnl"] for t in trades if t.get("pnl", 0) < 0)
-        )
+        gross_loss = abs(sum(t["pnl"] for t in trades if t.get("pnl", 0) < 0))
         pf = gross_profit / gross_loss if gross_loss > 0 else 999.0
 
         win_trades = [
@@ -221,7 +211,9 @@ def run_holdout_validation(trade_records: list[dict], output_dir: str) -> Holdou
 
     for label, records in [("train", train), ("holdout", holdout)]:
         for zone, fibo_level in matched_keys:
-            group = [t for t in records if classify_zone(t.get("fvg_direction", "")) == zone]
+            group = [
+                t for t in records if classify_zone(t.get("fvg_direction", "")) == zone
+            ]
             group = _filter_fib_level(group, fibo_level)
             stats = _bucket_stats(group)
             stats["split"] = label
@@ -234,7 +226,9 @@ def run_holdout_validation(trade_records: list[dict], output_dir: str) -> Holdou
                 holdout_matched.append(stats)
 
         for zone, fibo_level in mismatched_keys:
-            group = [t for t in records if classify_zone(t.get("fvg_direction", "")) == zone]
+            group = [
+                t for t in records if classify_zone(t.get("fvg_direction", "")) == zone
+            ]
             group = _filter_fib_level(group, fibo_level)
             stats = _bucket_stats(group)
             stats["split"] = label
@@ -271,7 +265,7 @@ def run_holdout_validation(trade_records: list[dict], output_dir: str) -> Holdou
         reason = (
             f"Holdout matched PF={holdout_matched_pf:.2f} "
             f"(train matched PF="
-            f"{sum(r['pf'] for r in train_matched if r['pf']<999)/max(sum(1 for r in train_matched if r['pf']<999),1):.2f}), "
+            f"{sum(r['pf'] for r in train_matched if r['pf'] < 999) / max(sum(1 for r in train_matched if r['pf'] < 999), 1):.2f}), "
             f"winrate={holdout_matched_wr:.1f}%. Kural dogrulandi."
         )
     elif holdout_matched_pf < 2.5 or holdout_matched_wr < 55:
@@ -305,7 +299,9 @@ def generate_holdout_report(result: HoldoutResult, output_dir: str) -> None:
     lines.append("")
     lines.append("*Veri bölme: İlk %70 = Train, Son %30 = Holdout (kronolojik).*")
     lines.append("*Kural: Fibo seviyeleri {0.236, 0.786}, tüm onay durumları dahil.*")
-    lines.append("*Matched = discount+0.236 / premium+0.786; Mismatched = discount+0.786 / premium+0.236.*")
+    lines.append(
+        "*Matched = discount+0.236 / premium+0.786; Mismatched = discount+0.786 / premium+0.236.*"
+    )
     lines.append("")
 
     for split_label, matched_list, mismatched_list in [
@@ -315,9 +311,7 @@ def generate_holdout_report(result: HoldoutResult, output_dir: str) -> None:
         lines.append(f"### {split_label}")
         lines.append("")
 
-        hdr = (
-            "| Zone      | Fibo Level | Match     | Trades | Reliable | Winrate | PF    | Net PnL    | MaxDD%  |"
-        )
+        hdr = "| Zone      | Fibo Level | Match     | Trades | Reliable | Winrate | PF    | Net PnL    | MaxDD%  |"
         sep = "|" + "|".join(["---"] * 9) + "|"
         lines.append(hdr)
         lines.append(sep)
@@ -336,7 +330,9 @@ def generate_holdout_report(result: HoldoutResult, output_dir: str) -> None:
 
     lines.append("### Karar")
     lines.append("")
-    lines.append(f"**{'Doğrulandı' if result.validated else 'Doğrulanmadı'}.** {result.reason}")
+    lines.append(
+        f"**{'Doğrulandı' if result.validated else 'Doğrulanmadı'}.** {result.reason}"
+    )
     lines.append("")
 
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs")
@@ -378,9 +374,7 @@ def generate_zone_fibo_report(trade_records: list[dict], output_dir: str) -> Non
         lines.append(line)
 
     lines.append("")
-    lines.append(
-        "*Fibo seviyeleri: swing_low + (swing_high - swing_low) * level.*"
-    )
+    lines.append("*Fibo seviyeleri: swing_low + (swing_high - swing_low) * level.*")
     lines.append(
         "*Onay eşiği: FVG midpoint ile Fibonacci seviyesi arasındaki fark "
         f"{FIBO_TOLERANCE * 100:.1f}% altı.*"

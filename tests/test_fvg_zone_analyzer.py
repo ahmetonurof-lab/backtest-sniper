@@ -455,9 +455,7 @@ def test_generate_holdout_report_writes_file(tmp_path):
     generate_holdout_report(result, str(tmp_path))
     import os
 
-    docs_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "docs"
-    )
+    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs")
     report_file = os.path.join(docs_dir, "fibo_zone_holdout_validation.md")
     assert os.path.exists(report_file)
     content = open(report_file, encoding="utf-8").read()
