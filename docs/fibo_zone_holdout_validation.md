@@ -486,3 +486,49 @@
 ### Karar
 
 **Doğrulandı.** Test reason
+
+## Fibonacci Zone Holdout Validation — Matched vs Mismatched Pairs
+
+Matched pairs = discount+0.236, premium+0.786 (combined as ONE strategy).
+Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded from strategy).
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 42949 | 59.21% | 2.99 | +1057243 | 45.73% | yes |
+| Matched | Holdout | 22199 | 68.37% | 6.99 | +1916699 | 18.83% | yes |
+| Mismatched | Train | 12595 | 52.5% | 1.9 | +155783 | 356.04% | yes |
+| Mismatched | Holdout | 2252 | 51.07% | 1.75 | +39074 | 93.82% | yes |
+
+**Decision: VALIDATED**
+
+Holdout PF 6.99 vs train PF 2.99 (ratio=2.34 if train nonzero); holdout winrate 68.37% vs train 59.21%. PASSED thresholds (pf_ratio>=0.8, winrate_drop<=5.0pt).
+
+## Run 3 — DD Fix Sonrası
+
+*compute_max_dd artık starting_balance=cfg.INITIAL_BALANCE (10 000) ile anchor'lanıyor. Eski davranış: peak neredeyse 0 kalıyordu → 0.0% DD veya absurd >1000% DD. Yeni davranış: equity 10 000'den başlar, peak/DD bu gerçek balance'e göre hesaplanır.*
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 42949 | 59.21% | 2.99 | +1057243 | 0.56% | yes |
+| Matched | Holdout | 22199 | 68.37% | 6.99 | +1916699 | 0.4% | yes |
+| Mismatched | Train | 12595 | 52.5% | 1.9 | +155783 | 1.03% | yes |
+| Mismatched | Holdout | 2252 | 51.07% | 1.75 | +39074 | 1.34% | yes |
+
+**Decision: VALIDATED**
+
+MaxDD% artık %100'ü fahiş şekilde aşmıyor. Mismatched Train en yüksek DD = 1.03%, Mismatched Holdout = 1.34%. Eski hali (balance=0 anchor) ile aynı veriden 356.04% DD çıkıyordu — fix sonrası gerçek risk ölçümüne döndü.
+## Fibonacci Zone Holdout Validation — Matched vs Mismatched Pairs
+
+Matched pairs = discount+0.236, premium+0.786 (combined as ONE strategy).
+Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded from strategy).
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 42949 | 59.21% | 2.99 | +1057243 | 0.56% | yes |
+| Matched | Holdout | 22199 | 68.37% | 6.99 | +1916699 | 0.4% | yes |
+| Mismatched | Train | 12595 | 52.5% | 1.9 | +155783 | 1.03% | yes |
+| Mismatched | Holdout | 2252 | 51.07% | 1.75 | +39074 | 1.34% | yes |
+
+**Decision: VALIDATED**
+
+Holdout PF 6.99 vs train PF 2.99 (ratio=2.34 if train nonzero); holdout winrate 68.37% vs train 59.21%. PASSED thresholds (pf_ratio>=0.8, winrate_drop<=5.0pt).

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-07-20T03:33:35",
+  "generated_at": "2026-07-27T00:08:30",
   "repos": {
     "sniper": {
       "functions": {
@@ -6893,7 +6893,7 @@
           "hash": "sha256:6f1468bf97ef5dde"
         }
       },
-      "last_full_scan": "2026-07-26T19:44:47"
+      "last_full_scan": "2026-07-27T00:08:26"
     },
     "backtest-sniper": {
       "functions": {
@@ -6914,66 +6914,6 @@
           "line_start": 23,
           "line_end": 31,
           "signature": "def should_trade(symbol: str, cbdr_width_pct: float | None=None) -> tuple:"
-        },
-        "src.analyzer_v5.load_data": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 60,
-          "line_end": 94,
-          "signature": "def load_data(filepath):"
-        },
-        "src.analyzer_v5.resample_15m": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 97,
-          "line_end": 124,
-          "signature": "def resample_15m(bars_1m):"
-        },
-        "src.analyzer_v5.get_fvg_status": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 128,
-          "line_end": 148,
-          "signature": "def get_fvg_status(top, bottom, direction, b):"
-        },
-        "src.analyzer_v5.fvg_close_confirmed": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 152,
-          "line_end": 167,
-          "signature": "def fvg_close_confirmed(fvg, all_bars):"
-        },
-        "src.analyzer_v5.collect_fvg_profile": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 173,
-          "line_end": 182,
-          "signature": "def collect_fvg_profile(symbol: str):"
-        },
-        "src.analyzer_v5._collect_fvg_profile_impl": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 185,
-          "line_end": 768,
-          "signature": "def _collect_fvg_profile_impl(symbol: str):"
-        },
-        "src.analyzer_v5.compute_session_stats": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 772,
-          "line_end": 849,
-          "signature": "def compute_session_stats(trade_records, initial_balance, daily_rows=None):"
-        },
-        "src.analyzer_v5._analyze_one_sym_v5": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 854,
-          "line_end": 892,
-          "signature": "def _analyze_one_sym_v5(sym: str) -> dict | None:"
-        },
-        "src.analyzer_v5.main": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 895,
-          "line_end": 1074,
-          "signature": "def main():"
-        },
-        "src.analyzer_v5.main.fvg_created": {
-          "file": "src\\analyzer_v5.py",
-          "line_start": 1009,
-          "line_end": 1014,
-          "signature": "def fvg_created(rej):"
         },
         "src.analyze_cbdr_thresholds.get_cbdr_multiplier": {
           "file": "src\\analyze_cbdr_thresholds.py",
@@ -7365,78 +7305,6 @@
           "line_end": 2686,
           "signature": "def _build_and_save_report(all_coin_data, results_data):"
         },
-        "src.fvg_zone_analyzer.classify_zone": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 63,
-          "line_end": 65,
-          "signature": "def classify_zone(fvg_direction: str) -> Zone:"
-        },
-        "src.fvg_zone_analyzer.find_nearest_fib_level": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 68,
-          "line_end": 98,
-          "signature": "def find_nearest_fib_level(fvg_top: float, fvg_bottom: float, swing_high: float, swing_low: float, tolerance: float=DEFAULT_FIB_TOLERANCE, levels: Iterable[float]=FIB_LEVELS) -> tuple[float | None, bo"
-        },
-        "src.fvg_zone_analyzer.classify_trades": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 101,
-          "line_end": 108,
-          "signature": "def classify_trades(trades: list[Trade]) -> list[Trade]:"
-        },
-        "src.fvg_zone_analyzer.compute_max_dd": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 111,
-          "line_end": 125,
-          "signature": "def compute_max_dd(pnl_series: list[float]) -> float:"
-        },
-        "src.fvg_zone_analyzer._pf": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 143,
-          "line_end": 148,
-          "signature": "def _pf(wins: list[float], losses: list[float]) -> float:"
-        },
-        "src.fvg_zone_analyzer._bucket_stats": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 151,
-          "line_end": 179,
-          "signature": "def _bucket_stats(zone, fib_level, confirmed, bucket_trades: list[Trade]) -> BucketStats:"
-        },
-        "src.fvg_zone_analyzer.compute_zone_fibo_stats": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 182,
-          "line_end": 199,
-          "signature": "def compute_zone_fibo_stats(trades: list[Trade]) -> list[BucketStats]:"
-        },
-        "src.fvg_zone_analyzer.generate_zone_fibo_report": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 202,
-          "line_end": 214,
-          "signature": "def generate_zone_fibo_report(stats: list[BucketStats]) -> str:"
-        },
-        "src.fvg_zone_analyzer._filter_pairs": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 227,
-          "line_end": 230,
-          "signature": "def _filter_pairs(trades: list[Trade], pairs: frozenset[tuple[Zone, float]]) -> list[Trade]:"
-        },
-        "src.fvg_zone_analyzer.run_holdout_validation": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 233,
-          "line_end": 300,
-          "signature": "def run_holdout_validation(trades: list[Trade], train_frac: float=0.7, matched_pairs: frozenset=MATCHED_PAIRS, mismatched_pairs: frozenset=MISMATCHED_PAIRS, pf_ratio_threshold: float=0.8, winrate_drop"
-        },
-        "src.fvg_zone_analyzer.generate_holdout_report": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 303,
-          "line_end": 331,
-          "signature": "def generate_holdout_report(result: HoldoutResult) -> str:"
-        },
-        "src.fvg_zone_analyzer.generate_holdout_report.row": {
-          "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 314,
-          "line_end": 319,
-          "signature": "def row(label, split, s: BucketStats):"
-        },
         "src.kelly_calibration_check.r_multiples": {
           "file": "src\\kelly_calibration_check.py",
           "line_start": 50,
@@ -7592,174 +7460,6 @@
           "line_start": 102,
           "line_end": 144,
           "signature": "def get_dynamic_risk_multiplier(self, current_equity: float, is_early_london: bool) -> float:"
-        },
-        "src.test_analyze_cbdr_thresholds._assert_eq": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 27,
-          "line_end": 36,
-          "signature": "def _assert_eq(label, got, expected):"
-        },
-        "src.test_analyze_cbdr_thresholds._assert_close": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 39,
-          "line_end": 48,
-          "signature": "def _assert_close(label, got, expected, tol=0.01):"
-        },
-        "src.test_analyze_cbdr_thresholds.print_summary": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 51,
-          "line_end": 56,
-          "signature": "def print_summary(section):"
-        },
-        "src.test_analyze_cbdr_thresholds.test_parse_fvg_size_from_md": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 62,
-          "line_end": 90,
-          "signature": "def test_parse_fvg_size_from_md():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_compute_session_stats_empty": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 96,
-          "line_end": 99,
-          "signature": "def test_compute_session_stats_empty():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_compute_session_stats_all_tp": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 102,
-          "line_end": 119,
-          "signature": "def test_compute_session_stats_all_tp():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_compute_session_stats_mixed": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 122,
-          "line_end": 161,
-          "signature": "def test_compute_session_stats_mixed():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_compute_session_stats_drawdown_high": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 164,
-          "line_end": 187,
-          "signature": "def test_compute_session_stats_drawdown_high():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_score_formula_matches_v5": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 193,
-          "line_end": 221,
-          "signature": "def test_score_formula_matches_v5():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_wilson_upper_edge": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 227,
-          "line_end": 228,
-          "signature": "def test_wilson_upper_edge():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_wilson_lower_edge": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 231,
-          "line_end": 232,
-          "signature": "def test_wilson_lower_edge():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_wilson_50pct_200": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 235,
-          "line_end": 240,
-          "signature": "def test_wilson_50pct_200():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_wilson_90pct_1000": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 243,
-          "line_end": 247,
-          "signature": "def test_wilson_90pct_1000():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_analyze_thresholds_none": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 253,
-          "line_end": 255,
-          "signature": "def test_analyze_thresholds_none():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_analyze_thresholds_few_days": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 258,
-          "line_end": 261,
-          "signature": "def test_analyze_thresholds_few_days():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_analyze_thresholds_basic": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 264,
-          "line_end": 274,
-          "signature": "def test_analyze_thresholds_basic():"
-        },
-        "src.test_analyze_cbdr_thresholds.test_analyze_bucket_scaling_no_profile": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 280,
-          "line_end": 283,
-          "signature": "def test_analyze_bucket_scaling_no_profile():"
-        },
-        "src.test_analyze_cbdr_thresholds._save_baseline": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 305,
-          "line_end": 309,
-          "signature": "def _save_baseline(data):"
-        },
-        "src.test_analyze_cbdr_thresholds._load_baseline": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 312,
-          "line_end": 316,
-          "signature": "def _load_baseline():"
-        },
-        "src.test_analyze_cbdr_thresholds.run_regression": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 319,
-          "line_end": 347,
-          "signature": "def run_regression():"
-        },
-        "src.test_analyze_cbdr_thresholds.compare_regression": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 350,
-          "line_end": 371,
-          "signature": "def compare_regression(current, baseline):"
-        },
-        "src.test_analyze_cbdr_thresholds.run_unit_tests": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 377,
-          "line_end": 406,
-          "signature": "def run_unit_tests():"
-        },
-        "src.test_analyze_cbdr_thresholds.main": {
-          "file": "src\\test_analyze_cbdr_thresholds.py",
-          "line_start": 409,
-          "line_end": 448,
-          "signature": "def main():"
-        },
-        "src.test_regression.run_test": {
-          "file": "src\\test_regression.py",
-          "line_start": 31,
-          "line_end": 68,
-          "signature": "def run_test():"
-        },
-        "src.test_regression.save_baseline": {
-          "file": "src\\test_regression.py",
-          "line_start": 71,
-          "line_end": 74,
-          "signature": "def save_baseline(data):"
-        },
-        "src.test_regression.load_baseline": {
-          "file": "src\\test_regression.py",
-          "line_start": 77,
-          "line_end": 81,
-          "signature": "def load_baseline():"
-        },
-        "src.test_regression.compare": {
-          "file": "src\\test_regression.py",
-          "line_start": 84,
-          "line_end": 103,
-          "signature": "def compare(current, baseline):"
-        },
-        "src.test_regression.main": {
-          "file": "src\\test_regression.py",
-          "line_start": 106,
-          "line_end": 136,
-          "signature": "def main():"
         },
         "src.weekend_monster_detector.parse_day_key_weekday": {
           "file": "src\\weekend_monster_detector.py",
@@ -9129,6 +8829,144 @@
           "line_end": 406,
           "signature": "def _close(fvg, ab):"
         },
+        "tests.test_analyze_cbdr_thresholds._assert_eq": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 27,
+          "line_end": 36,
+          "signature": "def _assert_eq(label, got, expected):"
+        },
+        "tests.test_analyze_cbdr_thresholds._assert_close": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 39,
+          "line_end": 48,
+          "signature": "def _assert_close(label, got, expected, tol=0.01):"
+        },
+        "tests.test_analyze_cbdr_thresholds.print_summary": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 51,
+          "line_end": 56,
+          "signature": "def print_summary(section):"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_parse_fvg_size_from_md": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 62,
+          "line_end": 90,
+          "signature": "def test_parse_fvg_size_from_md():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_compute_session_stats_empty": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 96,
+          "line_end": 99,
+          "signature": "def test_compute_session_stats_empty():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_compute_session_stats_all_tp": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 102,
+          "line_end": 119,
+          "signature": "def test_compute_session_stats_all_tp():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_compute_session_stats_mixed": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 122,
+          "line_end": 161,
+          "signature": "def test_compute_session_stats_mixed():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_compute_session_stats_drawdown_high": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 164,
+          "line_end": 187,
+          "signature": "def test_compute_session_stats_drawdown_high():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_score_formula_matches_v5": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 193,
+          "line_end": 221,
+          "signature": "def test_score_formula_matches_v5():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_wilson_upper_edge": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 227,
+          "line_end": 228,
+          "signature": "def test_wilson_upper_edge():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_wilson_lower_edge": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 231,
+          "line_end": 232,
+          "signature": "def test_wilson_lower_edge():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_wilson_50pct_200": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 235,
+          "line_end": 240,
+          "signature": "def test_wilson_50pct_200():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_wilson_90pct_1000": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 243,
+          "line_end": 247,
+          "signature": "def test_wilson_90pct_1000():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_analyze_thresholds_none": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 253,
+          "line_end": 255,
+          "signature": "def test_analyze_thresholds_none():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_analyze_thresholds_few_days": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 258,
+          "line_end": 261,
+          "signature": "def test_analyze_thresholds_few_days():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_analyze_thresholds_basic": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 264,
+          "line_end": 274,
+          "signature": "def test_analyze_thresholds_basic():"
+        },
+        "tests.test_analyze_cbdr_thresholds.test_analyze_bucket_scaling_no_profile": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 280,
+          "line_end": 283,
+          "signature": "def test_analyze_bucket_scaling_no_profile():"
+        },
+        "tests.test_analyze_cbdr_thresholds._save_baseline": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 305,
+          "line_end": 309,
+          "signature": "def _save_baseline(data):"
+        },
+        "tests.test_analyze_cbdr_thresholds._load_baseline": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 312,
+          "line_end": 316,
+          "signature": "def _load_baseline():"
+        },
+        "tests.test_analyze_cbdr_thresholds.run_regression": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 319,
+          "line_end": 347,
+          "signature": "def run_regression():"
+        },
+        "tests.test_analyze_cbdr_thresholds.compare_regression": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 350,
+          "line_end": 371,
+          "signature": "def compare_regression(current, baseline):"
+        },
+        "tests.test_analyze_cbdr_thresholds.run_unit_tests": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 377,
+          "line_end": 406,
+          "signature": "def run_unit_tests():"
+        },
+        "tests.test_analyze_cbdr_thresholds.main": {
+          "file": "tests\\test_analyze_cbdr_thresholds.py",
+          "line_start": 409,
+          "line_end": 448,
+          "signature": "def main():"
+        },
         "tests.test_regression.run_test": {
           "file": "tests\\test_regression.py",
           "line_start": 31,
@@ -9158,6 +8996,210 @@
           "line_start": 106,
           "line_end": 136,
           "signature": "def main():"
+        },
+        "src.analyzer_v5.load_data": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 60,
+          "line_end": 94,
+          "signature": "def load_data(filepath):"
+        },
+        "src.analyzer_v5.resample_15m": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 97,
+          "line_end": 124,
+          "signature": "def resample_15m(bars_1m):"
+        },
+        "src.analyzer_v5.get_fvg_status": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 128,
+          "line_end": 148,
+          "signature": "def get_fvg_status(top, bottom, direction, b):"
+        },
+        "src.analyzer_v5.fvg_close_confirmed": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 152,
+          "line_end": 167,
+          "signature": "def fvg_close_confirmed(fvg, all_bars):"
+        },
+        "src.analyzer_v5.collect_fvg_profile": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 173,
+          "line_end": 182,
+          "signature": "def collect_fvg_profile(symbol: str):"
+        },
+        "src.analyzer_v5._collect_fvg_profile_impl": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 185,
+          "line_end": 768,
+          "signature": "def _collect_fvg_profile_impl(symbol: str):"
+        },
+        "src.analyzer_v5.compute_session_stats": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 772,
+          "line_end": 849,
+          "signature": "def compute_session_stats(trade_records, initial_balance, daily_rows=None):"
+        },
+        "src.analyzer_v5._analyze_one_sym_v5": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 854,
+          "line_end": 892,
+          "signature": "def _analyze_one_sym_v5(sym: str) -> dict | None:"
+        },
+        "src.analyzer_v5.main": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 895,
+          "line_end": 1122,
+          "signature": "def main():"
+        },
+        "src.analyzer_v5.main.fvg_created": {
+          "file": "src\\analyzer_v5.py",
+          "line_start": 1009,
+          "line_end": 1014,
+          "signature": "def fvg_created(rej):"
+        },
+        "tests.test_fvg_zone_analyzer.test_classify_zone": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 13,
+          "line_end": 15,
+          "signature": "def test_classify_zone():"
+        },
+        "tests.test_fvg_zone_analyzer.test_fib_uses_swing_range_not_current_price": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 18,
+          "line_end": 24,
+          "signature": "def test_fib_uses_swing_range_not_current_price():"
+        },
+        "tests.test_fvg_zone_analyzer.test_fib_not_confirmed_when_far_from_any_level": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 27,
+          "line_end": 32,
+          "signature": "def test_fib_not_confirmed_when_far_from_any_level():"
+        },
+        "tests.test_fvg_zone_analyzer.test_fib_returns_none_for_degenerate_swing": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 35,
+          "line_end": 38,
+          "signature": "def test_fib_returns_none_for_degenerate_swing():"
+        },
+        "tests.test_fvg_zone_analyzer.test_max_dd_simple": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 41,
+          "line_end": 44,
+          "signature": "def test_max_dd_simple():"
+        },
+        "tests.test_fvg_zone_analyzer.test_max_dd_large_balance_small_pnl": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 47,
+          "line_end": 50,
+          "signature": "def test_max_dd_large_balance_small_pnl():"
+        },
+        "tests.test_fvg_zone_analyzer._make_trade": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 53,
+          "line_end": 69,
+          "signature": "def _make_trade(ts, direction, fib_level, confirmed, result, r, pnl):"
+        },
+        "tests.test_fvg_zone_analyzer.test_different_fib_levels_never_collapse_to_identical_stats": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 72,
+          "line_end": 95,
+          "signature": "def test_different_fib_levels_never_collapse_to_identical_stats():"
+        },
+        "tests.test_fvg_zone_analyzer.test_low_n_bucket_flagged_unreliable": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 98,
+          "line_end": 102,
+          "signature": "def test_low_n_bucket_flagged_unreliable():"
+        },
+        "tests.test_fvg_zone_analyzer.test_holdout_does_not_average_matched_and_mismatched": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 105,
+          "line_end": 124,
+          "signature": "def test_holdout_does_not_average_matched_and_mismatched():"
+        },
+        "tests.test_fvg_zone_analyzer.test_holdout_validated_when_holdout_pf_close_to_train": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 127,
+          "line_end": 134,
+          "signature": "def test_holdout_validated_when_holdout_pf_close_to_train():"
+        },
+        "tests.test_fvg_zone_analyzer.test_holdout_not_validated_when_insufficient_n": {
+          "file": "tests\\test_fvg_zone_analyzer.py",
+          "line_start": 137,
+          "line_end": 141,
+          "signature": "def test_holdout_not_validated_when_insufficient_n():"
+        },
+        "src.fvg_zone_analyzer.classify_zone": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 72,
+          "line_end": 74,
+          "signature": "def classify_zone(fvg_direction: str) -> Zone:"
+        },
+        "src.fvg_zone_analyzer.find_nearest_fib_level": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 77,
+          "line_end": 107,
+          "signature": "def find_nearest_fib_level(fvg_top: float, fvg_bottom: float, swing_high: float, swing_low: float, tolerance: float=DEFAULT_FIB_TOLERANCE, levels: Iterable[float]=FIB_LEVELS) -> tuple[float | None, bo"
+        },
+        "src.fvg_zone_analyzer.classify_trades": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 110,
+          "line_end": 117,
+          "signature": "def classify_trades(trades: list[Trade]) -> list[Trade]:"
+        },
+        "src.fvg_zone_analyzer.compute_max_dd": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 120,
+          "line_end": 140,
+          "signature": "def compute_max_dd(pnl_series: list[float], starting_balance: float=10000.0) -> float:"
+        },
+        "src.fvg_zone_analyzer._pf": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 158,
+          "line_end": 163,
+          "signature": "def _pf(wins: list[float], losses: list[float]) -> float:"
+        },
+        "src.fvg_zone_analyzer._bucket_stats": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 166,
+          "line_end": 194,
+          "signature": "def _bucket_stats(zone, fib_level, confirmed, bucket_trades: list[Trade]) -> BucketStats:"
+        },
+        "src.fvg_zone_analyzer.compute_zone_fibo_stats": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 197,
+          "line_end": 214,
+          "signature": "def compute_zone_fibo_stats(trades: list[Trade]) -> list[BucketStats]:"
+        },
+        "src.fvg_zone_analyzer.generate_zone_fibo_report": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 217,
+          "line_end": 229,
+          "signature": "def generate_zone_fibo_report(stats: list[BucketStats]) -> str:"
+        },
+        "src.fvg_zone_analyzer._filter_pairs": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 242,
+          "line_end": 245,
+          "signature": "def _filter_pairs(trades: list[Trade], pairs: frozenset[tuple[Zone, float]]) -> list[Trade]:"
+        },
+        "src.fvg_zone_analyzer.run_holdout_validation": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 248,
+          "line_end": 315,
+          "signature": "def run_holdout_validation(trades: list[Trade], train_frac: float=0.7, matched_pairs: frozenset=MATCHED_PAIRS, mismatched_pairs: frozenset=MISMATCHED_PAIRS, pf_ratio_threshold: float=0.8, winrate_drop"
+        },
+        "src.fvg_zone_analyzer.generate_holdout_report": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 318,
+          "line_end": 346,
+          "signature": "def generate_holdout_report(result: HoldoutResult) -> str:"
+        },
+        "src.fvg_zone_analyzer.generate_holdout_report.row": {
+          "file": "src\\fvg_zone_analyzer.py",
+          "line_start": 329,
+          "line_end": 334,
+          "signature": "def row(label, split, s: BucketStats):"
         }
       },
       "files": {
@@ -9172,10 +9214,6 @@
         "reports\\build_best_fvg.py": {
           "last_modified": "2026-07-17T03:23:18",
           "hash": "sha256:25547b5c93b24c3b"
-        },
-        "src\\analyzer_v5.py": {
-          "last_modified": "2026-07-26T20:55:41",
-          "hash": "sha256:75e554a1285e376f"
         },
         "src\\analyze_cbdr_thresholds.py": {
           "last_modified": "2026-07-17T03:23:18",
@@ -9201,10 +9239,6 @@
           "last_modified": "2026-07-11T21:18:31",
           "hash": "sha256:5731a5bb1d6dfaa1"
         },
-        "src\\fvg_zone_analyzer.py": {
-          "last_modified": "2026-07-26T21:28:11",
-          "hash": "sha256:abaf2bd2abb64177"
-        },
         "src\\kelly_calibration_check.py": {
           "last_modified": "2026-07-16T13:27:07",
           "hash": "sha256:d4ad53095b981e84"
@@ -9224,14 +9258,6 @@
         "src\\risk_manager.py": {
           "last_modified": "2026-07-04T23:12:49",
           "hash": "sha256:ecbbb25004005b16"
-        },
-        "src\\test_analyze_cbdr_thresholds.py": {
-          "last_modified": "2026-07-17T03:23:39",
-          "hash": "sha256:94bd1f82e0c9fba5"
-        },
-        "src\\test_regression.py": {
-          "last_modified": "2026-07-16T15:17:18",
-          "hash": "sha256:07a4462f0f233133"
         },
         "src\\weekend_monster_detector.py": {
           "last_modified": "2026-07-16T13:26:52",
@@ -9429,16 +9455,32 @@
           "last_modified": "2026-06-27T13:21:41",
           "hash": "sha256:78368a2f1a567379"
         },
-        "src\\utils\\visualize_cbdr_zoom.py": {
-          "last_modified": "2026-06-27T13:21:49",
-          "hash": "sha256:6dacdce0362ca3db"
+        "tests\\test_analyze_cbdr_thresholds.py": {
+          "last_modified": "2026-07-17T03:23:39",
+          "hash": "sha256:94bd1f82e0c9fba5"
         },
         "tests\\test_regression.py": {
           "last_modified": "2026-07-16T15:17:18",
           "hash": "sha256:07a4462f0f233133"
+        },
+        "src\\analyzer_v5.py": {
+          "last_modified": "2026-07-26T22:11:36",
+          "hash": "sha256:ed5a3716bc084612"
+        },
+        "src\\utils\\visualize_cbdr_zoom.py": {
+          "last_modified": "2026-06-27T13:21:49",
+          "hash": "sha256:6dacdce0362ca3db"
+        },
+        "tests\\test_fvg_zone_analyzer.py": {
+          "last_modified": "2026-07-27T00:56:33",
+          "hash": "sha256:be8e6d112366fb3f"
+        },
+        "src\\fvg_zone_analyzer.py": {
+          "last_modified": "2026-07-27T00:56:46",
+          "hash": "sha256:464a201b50748c77"
         }
       },
-      "last_full_scan": "2026-07-26T21:28:30"
+      "last_full_scan": "2026-07-27T00:08:30"
     }
   }
 }

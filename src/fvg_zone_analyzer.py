@@ -26,7 +26,16 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
+import os
+import sys
+
 from typing import Iterable, Literal
+
+_SNIPER_SRC = os.path.join(os.path.dirname(__file__), "..", "..", "sniper", "src")
+if _SNIPER_SRC not in sys.path:
+    sys.path.insert(0, _SNIPER_SRC)
+
+import config as cfg  # noqa: E402
 
 FIB_LEVELS = (0.236, 0.382, 0.5, 0.618, 0.786)
 DEFAULT_FIB_TOLERANCE = 0.005  # ±0.5%
@@ -108,13 +117,19 @@ def classify_trades(trades: list[Trade]) -> list[Trade]:
     return trades
 
 
-def compute_max_dd(pnl_series: list[float]) -> float:
-    """Max drawdown (%) on a cumulative-PnL equity curve built from a list
-    of per-trade PnL values, in chronological order."""
+def compute_max_dd(
+    pnl_series: list[float], starting_balance: float = 10_000.0
+) -> float:
+    """Max drawdown (%) on a cumulative-PnL equity curve, anchored to a real
+    starting balance (cfg.INITIAL_BALANCE) — NOT to a bare PnL series
+    starting at 0. Without an anchor, peak can stay at/near zero and
+    produce either a silently-wrong 0.0% DD (when all early trades are
+    losses) or an absurd >1000% DD (when peak is a tiny positive value).
+    """
     if not pnl_series:
         return 0.0
-    equity = 0.0
-    peak = 0.0
+    equity = starting_balance
+    peak = starting_balance
     max_dd = 0.0
     for pnl in pnl_series:
         equity += pnl
@@ -142,7 +157,7 @@ class BucketStats:
 
 def _pf(wins: list[float], losses: list[float]) -> float:
     gross_win = sum(w for w in wins if w > 0)
-    gross_loss = abs(sum(l for l in losses if l < 0))
+    gross_loss = abs(sum(loss for loss in losses if loss < 0))
     if gross_loss == 0:
         return float("inf") if gross_win > 0 else 0.0
     return gross_win / gross_loss
@@ -163,7 +178,7 @@ def _bucket_stats(
     avg_r_win = statistics.mean(r_wins) if r_wins else 0.0
     avg_r_loss = statistics.mean(r_losses) if r_losses else 0.0
     pnl_series = [t.pnl for t in sorted(bucket_trades, key=lambda t: t.timestamp)]
-    max_dd = compute_max_dd(pnl_series)
+    max_dd = compute_max_dd(pnl_series, starting_balance=cfg.INITIAL_BALANCE)
     return BucketStats(
         zone=zone,
         fib_level=fib_level,
