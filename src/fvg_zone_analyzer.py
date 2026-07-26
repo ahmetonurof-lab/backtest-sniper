@@ -132,9 +132,9 @@ def compute_max_dd(trade_records: list[dict]) -> float:
     return (max_dd / peak) * 100
 
 
-def _filter_fib_levels(
+def _filter_fib_level(
     trade_records: list[dict],
-    allowed_levels: set[float],
+    target_level: float,
 ) -> list[dict]:
     filtered = []
     for t in trade_records:
@@ -154,7 +154,7 @@ def _filter_fib_levels(
             if diff < best_diff:
                 best_diff = diff
                 best_level = level
-        if best_level in allowed_levels:
+        if best_level == target_level:
             filtered.append(t)
     return filtered
 
@@ -168,8 +168,6 @@ def run_holdout_validation(trade_records: list[dict], output_dir: str) -> None:
     train = trade_records[:split_idx]
     holdout = trade_records[split_idx:]
 
-    allowed = {0.236, 0.786}
-
     rows = []
     for label, records in [("Train", train), ("Holdout", holdout)]:
         for fibo_level in [0.236, 0.786]:
@@ -179,7 +177,7 @@ def run_holdout_validation(trade_records: list[dict], output_dir: str) -> None:
                     for t in records
                     if classify_zone(t.get("fvg_direction", "")) == zone
                 ]
-                group = _filter_fib_levels(group, allowed)
+                group = _filter_fib_level(group, fibo_level)
                 n_t = len(group)
                 if n_t == 0:
                     continue
