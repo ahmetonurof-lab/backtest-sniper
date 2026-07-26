@@ -433,6 +433,8 @@ def _collect_fvg_profile_impl(symbol: str):
                         "be_triggered": False,
                         "day_key": entry_day,
                         "trade_uid": trade_uid,
+                        "cbdr_body_high": ss.cbdr_body_high,
+                        "cbdr_body_low": ss.cbdr_body_low,
                     }
                 )
                 rsm.reset()
@@ -561,6 +563,17 @@ def _collect_fvg_profile_impl(symbol: str):
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
                         "risk_usd": risk_usd_rec,
+                        "fvg_direction": t.get("trigger_fvg", {}).direction
+                        if t.get("trigger_fvg")
+                        else "",
+                        "fvg_top": t.get("trigger_fvg", {}).top
+                        if t.get("trigger_fvg")
+                        else 0,
+                        "fvg_bottom": t.get("trigger_fvg", {}).bottom
+                        if t.get("trigger_fvg")
+                        else 0,
+                        "cbdr_body_high": t.get("cbdr_body_high", 0),
+                        "cbdr_body_low": t.get("cbdr_body_low", 0),
                     }
                 )
                 if t["pnl"] > 0:
@@ -649,6 +662,17 @@ def _collect_fvg_profile_impl(symbol: str):
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
                         "risk_usd": risk_usd_rec,
+                        "fvg_direction": t.get("trigger_fvg", {}).direction
+                        if t.get("trigger_fvg")
+                        else "",
+                        "fvg_top": t.get("trigger_fvg", {}).top
+                        if t.get("trigger_fvg")
+                        else 0,
+                        "fvg_bottom": t.get("trigger_fvg", {}).bottom
+                        if t.get("trigger_fvg")
+                        else 0,
+                        "cbdr_body_high": t.get("cbdr_body_high", 0),
+                        "cbdr_body_low": t.get("cbdr_body_low", 0),
                     }
                 )
                 if t["pnl"] > 0:
@@ -862,6 +886,7 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
             "stats": stats,
             "daily_rows": daily_rows,
             "rejection_counts": rejection_counts,
+            "trade_records": trade_records,
         }
     except Exception as e:
         return {"sym": sym, "error": str(e)}
@@ -888,6 +913,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
     results_data = []
+    all_trade_records = []
 
     print("=" * 100)
     print("  V5 PROFIL — CBDR→Sweep→RSM→FVG→Entry→Trail→Exit")
@@ -921,6 +947,7 @@ def main():
                     trade_records, cfg.INITIAL_BALANCE, daily_rows
                 )
                 results_data.append((sym, stats, daily_rows, rejection_counts))
+                all_trade_records.extend(trade_records)
                 tp_c = int(stats["tp_pct"] * stats["total_trades"] / 100)
                 pt_c = int(stats["profit_trail_pct"] * stats["total_trades"] / 100)
                 ls_c = int(stats["loss_pct"] * stats["total_trades"] / 100)
@@ -958,6 +985,7 @@ def main():
                 results_data.append(
                     (sym, stats, res["daily_rows"], res["rejection_counts"])
                 )
+                all_trade_records.extend(res.get("trade_records", []))
                 tp_c = int(stats["tp_pct"] * stats["total_trades"] / 100)
                 pt_c = int(stats["profit_trail_pct"] * stats["total_trades"] / 100)
                 ls_c = int(stats["loss_pct"] * stats["total_trades"] / 100)
@@ -1026,6 +1054,21 @@ def main():
             f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}\n"
         )
     print(f"  Rapor: {rpt_path}")
+
+    # ── FVG Zone + Fibonacci Analizi ──
+    try:
+        from fvg_zone_analyzer import (
+            generate_zone_fibo_report,
+            run_holdout_validation,
+        )
+
+        report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+        generate_zone_fibo_report(all_trade_records, report_dir)
+        print("  [FVG Zone] Fiyat bölgesi + Fibonacci analizi raporu yazıldı")
+        run_holdout_validation(all_trade_records, report_dir)
+        print("  [Holdout] Fibonacci zone holdout doğrulaması raporu yazıldı")
+    except Exception as e:
+        print(f"  [FVG Zone] Rapor olusturma hatasi: {e}")
 
 
 if __name__ == "__main__":
