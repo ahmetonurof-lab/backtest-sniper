@@ -7398,43 +7398,43 @@
         "src.fvg_zone_analyzer._bucket_stats": {
           "file": "src\\fvg_zone_analyzer.py",
           "line_start": 151,
-          "line_end": 177,
+          "line_end": 179,
           "signature": "def _bucket_stats(zone, fib_level, confirmed, bucket_trades: list[Trade]) -> BucketStats:"
         },
         "src.fvg_zone_analyzer.compute_zone_fibo_stats": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 180,
-          "line_end": 197,
+          "line_start": 182,
+          "line_end": 199,
           "signature": "def compute_zone_fibo_stats(trades: list[Trade]) -> list[BucketStats]:"
         },
         "src.fvg_zone_analyzer.generate_zone_fibo_report": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 200,
-          "line_end": 212,
+          "line_start": 202,
+          "line_end": 214,
           "signature": "def generate_zone_fibo_report(stats: list[BucketStats]) -> str:"
         },
         "src.fvg_zone_analyzer._filter_pairs": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 225,
-          "line_end": 226,
+          "line_start": 227,
+          "line_end": 230,
           "signature": "def _filter_pairs(trades: list[Trade], pairs: frozenset[tuple[Zone, float]]) -> list[Trade]:"
         },
         "src.fvg_zone_analyzer.run_holdout_validation": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 229,
-          "line_end": 285,
+          "line_start": 233,
+          "line_end": 300,
           "signature": "def run_holdout_validation(trades: list[Trade], train_frac: float=0.7, matched_pairs: frozenset=MATCHED_PAIRS, mismatched_pairs: frozenset=MISMATCHED_PAIRS, pf_ratio_threshold: float=0.8, winrate_drop"
         },
         "src.fvg_zone_analyzer.generate_holdout_report": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 288,
-          "line_end": 316,
+          "line_start": 303,
+          "line_end": 331,
           "signature": "def generate_holdout_report(result: HoldoutResult) -> str:"
         },
         "src.fvg_zone_analyzer.generate_holdout_report.row": {
           "file": "src\\fvg_zone_analyzer.py",
-          "line_start": 299,
-          "line_end": 304,
+          "line_start": 314,
+          "line_end": 319,
           "signature": "def row(label, split, s: BucketStats):"
         },
         "src.kelly_calibration_check.r_multiples": {
@@ -9129,71 +9129,35 @@
           "line_end": 406,
           "signature": "def _close(fvg, ab):"
         },
-        "src.test_fvg_zone_analyzer.test_classify_zone": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 16,
-          "line_end": 18,
-          "signature": "def test_classify_zone():"
+        "tests.test_regression.run_test": {
+          "file": "tests\\test_regression.py",
+          "line_start": 31,
+          "line_end": 68,
+          "signature": "def run_test():"
         },
-        "src.test_fvg_zone_analyzer.test_fib_uses_swing_range_not_current_price": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 21,
-          "line_end": 27,
-          "signature": "def test_fib_uses_swing_range_not_current_price():"
+        "tests.test_regression.save_baseline": {
+          "file": "tests\\test_regression.py",
+          "line_start": 71,
+          "line_end": 74,
+          "signature": "def save_baseline(data):"
         },
-        "src.test_fvg_zone_analyzer.test_fib_not_confirmed_when_far_from_any_level": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 30,
-          "line_end": 35,
-          "signature": "def test_fib_not_confirmed_when_far_from_any_level():"
+        "tests.test_regression.load_baseline": {
+          "file": "tests\\test_regression.py",
+          "line_start": 77,
+          "line_end": 81,
+          "signature": "def load_baseline():"
         },
-        "src.test_fvg_zone_analyzer.test_fib_returns_none_for_degenerate_swing": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 38,
-          "line_end": 41,
-          "signature": "def test_fib_returns_none_for_degenerate_swing():"
+        "tests.test_regression.compare": {
+          "file": "tests\\test_regression.py",
+          "line_start": 84,
+          "line_end": 103,
+          "signature": "def compare(current, baseline):"
         },
-        "src.test_fvg_zone_analyzer.test_max_dd_simple": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 44,
-          "line_end": 47,
-          "signature": "def test_max_dd_simple():"
-        },
-        "src.test_fvg_zone_analyzer._make_trade": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 50,
-          "line_end": 66,
-          "signature": "def _make_trade(ts, direction, fib_level, confirmed, result, r, pnl):"
-        },
-        "src.test_fvg_zone_analyzer.test_different_fib_levels_never_collapse_to_identical_stats": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 69,
-          "line_end": 92,
-          "signature": "def test_different_fib_levels_never_collapse_to_identical_stats():"
-        },
-        "src.test_fvg_zone_analyzer.test_low_n_bucket_flagged_unreliable": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 95,
-          "line_end": 99,
-          "signature": "def test_low_n_bucket_flagged_unreliable():"
-        },
-        "src.test_fvg_zone_analyzer.test_holdout_does_not_average_matched_and_mismatched": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 102,
-          "line_end": 121,
-          "signature": "def test_holdout_does_not_average_matched_and_mismatched():"
-        },
-        "src.test_fvg_zone_analyzer.test_holdout_validated_when_holdout_pf_close_to_train": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 124,
-          "line_end": 131,
-          "signature": "def test_holdout_validated_when_holdout_pf_close_to_train():"
-        },
-        "src.test_fvg_zone_analyzer.test_holdout_not_validated_when_insufficient_n": {
-          "file": "src\\test_fvg_zone_analyzer.py",
-          "line_start": 134,
-          "line_end": 138,
-          "signature": "def test_holdout_not_validated_when_insufficient_n():"
+        "tests.test_regression.main": {
+          "file": "tests\\test_regression.py",
+          "line_start": 106,
+          "line_end": 136,
+          "signature": "def main():"
         }
       },
       "files": {
@@ -9230,16 +9194,16 @@
           "hash": "sha256:f242e2fde06db995"
         },
         "src\\config_backup_pre_v2.py": {
-          "last_modified": "2026-07-17T15:32:55",
-          "hash": "sha256:96a4034616b26967"
+          "last_modified": "2026-07-26T21:28:11",
+          "hash": "sha256:96fecee5311412a5"
         },
         "src\\fvg_profile_v5.py": {
           "last_modified": "2026-07-11T21:18:31",
           "hash": "sha256:5731a5bb1d6dfaa1"
         },
         "src\\fvg_zone_analyzer.py": {
-          "last_modified": "2026-07-26T20:49:43",
-          "hash": "sha256:aa7f6976ecc7e29b"
+          "last_modified": "2026-07-26T21:28:11",
+          "hash": "sha256:abaf2bd2abb64177"
         },
         "src\\kelly_calibration_check.py": {
           "last_modified": "2026-07-16T13:27:07",
@@ -9260,14 +9224,6 @@
         "src\\risk_manager.py": {
           "last_modified": "2026-07-04T23:12:49",
           "hash": "sha256:ecbbb25004005b16"
-        },
-        "src\\run_backtest.py": {
-          "last_modified": "2026-07-26T20:59:15",
-          "hash": "sha256:30d2829e1d676dfe"
-        },
-        "src\\run_holdout.py": {
-          "last_modified": "2026-07-26T20:57:49",
-          "hash": "sha256:7a67c39109263356"
         },
         "src\\test_analyze_cbdr_thresholds.py": {
           "last_modified": "2026-07-17T03:23:39",
@@ -9477,12 +9433,12 @@
           "last_modified": "2026-06-27T13:21:49",
           "hash": "sha256:6dacdce0362ca3db"
         },
-        "src\\test_fvg_zone_analyzer.py": {
-          "last_modified": "2026-07-26T21:14:38",
-          "hash": "sha256:5300fae3bfc69d18"
+        "tests\\test_regression.py": {
+          "last_modified": "2026-07-16T15:17:18",
+          "hash": "sha256:07a4462f0f233133"
         }
       },
-      "last_full_scan": "2026-07-26T21:10:56"
+      "last_full_scan": "2026-07-26T21:28:30"
     }
   }
 }

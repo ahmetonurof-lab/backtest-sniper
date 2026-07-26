@@ -170,7 +170,11 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
             (1.5, 2.0, 1.2),  # n=888 PF=2.955 Sharpe=0.303 MaxDD=1.36% Score=0.7251
             (2.0, 3.0, 1.2),  # n=1247 PF=3.135 Sharpe=0.3001 MaxDD=2.185% Score=0.7161
             (3.0, 5.0, 1.5),  # n=735 PF=3.852 Sharpe=0.3452 MaxDD=1.41% Score=0.8541
-            (5.0, 999.0, 1.5),  # n=241 PF=11.726 Sharpe=0.3327 MaxDD=1.392% Score=0.8342
+            (
+                5.0,
+                999.0,
+                1.5,
+            ),  # n=241 PF=11.726 Sharpe=0.3327 MaxDD=1.392% Score=0.8342
         ],
     },
     "ATOMUSDT": {
@@ -464,7 +468,11 @@ CBDR_RISK_MATRIX: dict[str, dict] = {
         "weekend_bonus": False,
         "weekend_mult": 1.0,
         "buckets": [
-            (0.0, 1.0, 0.0),  # n=1061 PF=0.972 Sharpe=-0.0134 MaxDD=27.159% Score=0.1221
+            (
+                0.0,
+                1.0,
+                0.0,
+            ),  # n=1061 PF=0.972 Sharpe=-0.0134 MaxDD=27.159% Score=0.1221
             (1.0, 1.5, 0.5),  # n=945 PF=1.593 Sharpe=0.1528 MaxDD=5.166% Score=0.3053
             (1.5, 2.0, 0.0),  # n=569 PF=1.289 Sharpe=0.0825 MaxDD=9.536% Score=0.168
             (2.0, 3.0, 1.0),  # n=712 PF=3.016 Sharpe=0.2687 MaxDD=3.611% Score=0.5749

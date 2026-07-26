@@ -25,7 +25,7 @@ Fixes applied vs. the earlier ad-hoc analysis:
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterable, Literal
 
 FIB_LEVELS = (0.236, 0.382, 0.5, 0.618, 0.786)
@@ -148,7 +148,9 @@ def _pf(wins: list[float], losses: list[float]) -> float:
     return gross_win / gross_loss
 
 
-def _bucket_stats(zone, fib_level, confirmed, bucket_trades: list[Trade]) -> BucketStats:
+def _bucket_stats(
+    zone, fib_level, confirmed, bucket_trades: list[Trade]
+) -> BucketStats:
     n = len(bucket_trades)
     wins = [t.pnl for t in bucket_trades if t.result in ("TP", "PTrail")]
     losses = [t.pnl for t in bucket_trades if t.result == "Loss"]
@@ -222,7 +224,9 @@ class HoldoutResult:
     reason: str
 
 
-def _filter_pairs(trades: list[Trade], pairs: frozenset[tuple[Zone, float]]) -> list[Trade]:
+def _filter_pairs(
+    trades: list[Trade], pairs: frozenset[tuple[Zone, float]]
+) -> list[Trade]:
     return [t for t in trades if t.zone is not None and (t.zone, t.fib_level) in pairs]
 
 
@@ -256,11 +260,16 @@ def run_holdout_validation(
     train_matched = _bucket_stats("matched", None, None, train_matched_trades)
     holdout_matched = _bucket_stats("matched", None, None, holdout_matched_trades)
     train_mismatched = _bucket_stats("mismatched", None, None, train_mismatched_trades)
-    holdout_mismatched = _bucket_stats("mismatched", None, None, holdout_mismatched_trades)
+    holdout_mismatched = _bucket_stats(
+        "mismatched", None, None, holdout_mismatched_trades
+    )
 
     if not train_matched.reliable or not holdout_matched.reliable:
         return HoldoutResult(
-            train_matched, holdout_matched, train_mismatched, holdout_mismatched,
+            train_matched,
+            holdout_matched,
+            train_mismatched,
+            holdout_mismatched,
             validated=False,
             reason="Matched-pair bucket has n<100 in train or holdout — insufficient data.",
         )
@@ -269,7 +278,9 @@ def run_holdout_validation(
         train_matched.pf != 0
         and holdout_matched.pf >= pf_ratio_threshold * train_matched.pf
     )
-    winrate_ok = holdout_matched.winrate >= (train_matched.winrate - winrate_drop_threshold)
+    winrate_ok = holdout_matched.winrate >= (
+        train_matched.winrate - winrate_drop_threshold
+    )
 
     validated = pf_ok and winrate_ok
     reason = (
@@ -280,8 +291,12 @@ def run_holdout_validation(
         f"(pf_ratio>={pf_ratio_threshold}, winrate_drop<={winrate_drop_threshold}pt)."
     )
     return HoldoutResult(
-        train_matched, holdout_matched, train_mismatched, holdout_mismatched,
-        validated=validated, reason=reason,
+        train_matched,
+        holdout_matched,
+        train_mismatched,
+        holdout_mismatched,
+        validated=validated,
+        reason=reason,
     )
 
 
