@@ -1065,8 +1065,11 @@ def main():
         report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
         generate_zone_fibo_report(all_trade_records, report_dir)
         print("  [FVG Zone] Fiyat bölgesi + Fibonacci analizi raporu yazıldı")
-        run_holdout_validation(all_trade_records, report_dir)
-        print("  [Holdout] Fibonacci zone holdout doğrulaması raporu yazıldı")
+        h_result = run_holdout_validation(all_trade_records, report_dir)
+        print(
+            f"  [Holdout] Doğrulama: validated={h_result.validated} "
+            f"reason={h_result.reason}"
+        )
     except Exception as e:
         print(f"  [FVG Zone] Rapor olusturma hatasi: {e}")
 

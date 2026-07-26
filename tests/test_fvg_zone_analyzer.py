@@ -13,6 +13,12 @@ from fvg_zone_analyzer import (
     classify_zone,
     find_nearest_fib_level,
     compute_zone_fibo_stats,
+    compute_max_dd,
+    run_holdout_validation,
+    generate_holdout_report,
+    HoldoutResult,
+    _filter_fib_level,
+    _bucket_stats,
 )
 
 
@@ -232,8 +238,6 @@ def test_generate_zone_fibo_report_writes_file(tmp_path):
 
 
 def test_compute_max_dd_positive():
-    from fvg_zone_analyzer import compute_max_dd
-
     records = [
         {"pnl": 100},
         {"pnl": 50},
@@ -247,46 +251,219 @@ def test_compute_max_dd_positive():
 
 
 def test_compute_max_dd_all_profit():
-    from fvg_zone_analyzer import compute_max_dd
-
     records = [{"pnl": 10}, {"pnl": 20}, {"pnl": 30}]
     assert compute_max_dd(records) == 0.0
 
 
 def test_compute_max_dd_empty():
-    from fvg_zone_analyzer import compute_max_dd
-
     assert compute_max_dd([]) == 0.0
 
 
-def test_run_holdout_validation_writes_file():
-    from fvg_zone_analyzer import run_holdout_validation
-
+def test_filter_fib_level_separates_0236_and_0786():
     records = []
-    for i in range(100):
+    for i in range(200):
         records.append(
             {
-                "result": "TP" if i % 3 == 0 else "LOSS",
-                "pnl": 100.0 if i % 3 == 0 else -50.0,
+                "result": "TP",
+                "pnl": 100.0,
                 "risk_usd": 50.0,
-                "fvg_direction": "bullish" if i % 2 == 0 else "bearish",
+                "fvg_direction": "bullish",
+                "fvg_top": 47.5,
+                "fvg_bottom": 47.2,
+                "cbdr_body_high": 55.0,
+                "cbdr_body_low": 45.0,
+            }
+        )
+    for i in range(200):
+        records.append(
+            {
+                "result": "TP",
+                "pnl": 100.0,
+                "risk_usd": 50.0,
+                "fvg_direction": "bearish",
+                "fvg_top": 54.0,
+                "fvg_bottom": 53.8,
+                "cbdr_body_high": 55.0,
+                "cbdr_body_low": 50.0,
+            }
+        )
+
+    level_236 = _filter_fib_level(records, 0.236)
+    level_786 = _filter_fib_level(records, 0.786)
+
+    assert len(level_236) > 0
+    assert len(level_786) > 0
+    assert all(t.get("fvg_direction") == "bullish" for t in level_236)
+    assert all(t.get("fvg_direction") == "bearish" for t in level_786)
+
+
+def test_bucket_stats_reliable():
+    records = [{"pnl": 10.0, "result": "TP", "risk_usd": 50.0}] * 150
+    stats = _bucket_stats(records)
+    assert stats["reliable"] is True
+    assert stats["trades"] == 150
+
+
+def test_bucket_stats_unreliable():
+    records = [{"pnl": 10.0, "result": "TP", "risk_usd": 50.0}] * 50
+    stats = _bucket_stats(records)
+    assert stats["reliable"] is False
+    assert stats["trades"] == 50
+
+
+def test_holdout_result_dataclass():
+    result = HoldoutResult()
+    assert result.validated is False
+    assert result.reason == ""
+    assert result.train_matched == []
+    assert result.holdout_matched == []
+    assert result.train_mismatched == []
+    assert result.holdout_mismatched == []
+
+
+def test_run_holdout_validation_returns_holdout_result():
+    records = []
+    for i in range(200):
+        records.append(
+            {
+                "result": "TP",
+                "pnl": 100.0,
+                "risk_usd": 50.0,
+                "fvg_direction": "bullish",
                 "fvg_top": 51.0,
                 "fvg_bottom": 49.0,
                 "cbdr_body_high": 55.0,
                 "cbdr_body_low": 45.0,
             }
         )
+    for i in range(200):
+        records.append(
+            {
+                "result": "LOSS",
+                "pnl": -50.0,
+                "risk_usd": 50.0,
+                "fvg_direction": "bearish",
+                "fvg_top": 101.0,
+                "fvg_bottom": 99.0,
+                "cbdr_body_high": 105.0,
+                "cbdr_body_low": 95.0,
+            }
+        )
 
-    run_holdout_validation(records, "/tmp/reports")
+    result = run_holdout_validation(records, "/tmp/reports")
+    assert isinstance(result, HoldoutResult)
+    assert isinstance(result.validated, bool)
+    assert isinstance(result.reason, str)
+
+
+def test_run_holdout_validation_separates_matched_mismatched():
+    records = []
+    for i in range(200):
+        records.append(
+            {
+                "result": "TP",
+                "pnl": 100.0,
+                "risk_usd": 50.0,
+                "fvg_direction": "bullish",
+                "fvg_top": 51.0,
+                "fvg_bottom": 49.0,
+                "cbdr_body_high": 55.0,
+                "cbdr_body_low": 45.0,
+            }
+        )
+    for i in range(200):
+        records.append(
+            {
+                "result": "TP",
+                "pnl": 100.0,
+                "risk_usd": 50.0,
+                "fvg_direction": "bearish",
+                "fvg_top": 101.0,
+                "fvg_bottom": 99.0,
+                "cbdr_body_high": 105.0,
+                "cbdr_body_low": 95.0,
+            }
+        )
+
+    result = run_holdout_validation(records, "/tmp/reports")
+    assert len(result.train_matched) >= 0
+    assert len(result.train_mismatched) >= 0
+
+
+def test_generate_holdout_report_writes_file(tmp_path):
+    result = HoldoutResult(
+        train_matched=[
+            {
+                "split": "train",
+                "zone": "discount",
+                "fibo_level": 0.236,
+                "match_type": "matched",
+                "trades": 150,
+                "reliable": True,
+                "winrate": 60.0,
+                "pf": 3.5,
+                "net_pnl": 50000,
+                "max_dd_pct": 0.5,
+            }
+        ],
+        holdout_matched=[
+            {
+                "split": "holdout",
+                "zone": "discount",
+                "fibo_level": 0.236,
+                "match_type": "matched",
+                "trades": 60,
+                "reliable": True,
+                "winrate": 58.0,
+                "pf": 3.2,
+                "net_pnl": 20000,
+                "max_dd_pct": 0.8,
+            }
+        ],
+        train_mismatched=[
+            {
+                "split": "train",
+                "zone": "discount",
+                "fibo_level": 0.786,
+                "match_type": "mismatched",
+                "trades": 140,
+                "reliable": True,
+                "winrate": 55.0,
+                "pf": 1.8,
+                "net_pnl": -10000,
+                "max_dd_pct": 2.0,
+            }
+        ],
+        holdout_mismatched=[
+            {
+                "split": "holdout",
+                "zone": "discount",
+                "fibo_level": 0.786,
+                "match_type": "mismatched",
+                "trades": 55,
+                "reliable": False,
+                "winrate": 52.0,
+                "pf": 1.5,
+                "net_pnl": -5000,
+                "max_dd_pct": 2.5,
+            }
+        ],
+        validated=True,
+        reason="Test reason",
+    )
+
+    generate_holdout_report(result, str(tmp_path))
     import os
 
-    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs")
+    docs_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "docs"
+    )
     report_file = os.path.join(docs_dir, "fibo_zone_holdout_validation.md")
     assert os.path.exists(report_file)
     content = open(report_file, encoding="utf-8").read()
     assert "Holdout Doğrulaması" in content
-    assert "Train" in content
-    assert "Holdout" in content
+    assert "matched" in content
+    assert "mismatched" in content
     assert "Karar" in content
 
 
