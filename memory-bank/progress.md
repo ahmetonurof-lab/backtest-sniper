@@ -1,5 +1,10 @@
 # backtest-sniper — Progress
 
+## ✅ Canlı Backtest Senkronizasyonu (2026-07-31)
+- **Trailing (canlı → backtest):** `sniper/src/trading/trailing_manager.py` — `_fvg_multihop` static method: detect_fvgs(lookback 50) + `_fvg_close_confirmed` + `ATR_TRAIL_MULT(0.25)` buffer + `TRAIL_MIN_MOVE_MULT(0.2)` + delta-shift TP + çoklu-hop. `TrailLevel.sl_buffered` çift-buffer'ı önler (extractor ATR buffer'ı uygular, `compute_trail_candidate` tick×2 offset atlar, sadece tick normalizasyonu kalır). `risk_pts = abs(initial_sl - entry_price)` (backtest temeli). `sniper/src/bot.py` `_build_fvg_scan_trail_extractor`: `len<4` guard, `_atr_state` ATR + `DEFAULT_ATR_FALLBACK_PCT` fallback, `FVG_SIZE_MAP/FVG_MIN_SIZE_ATR_MULT` min boyut.
+- **FVG Expiry (canlı → backtest):** 45-bar `is_fvg_valid`/`GLOBAL_FVG_EXPIRY_BARS` kaldırıldı; `fvg_is_alive()` (fvg.py) — backtest `get_fvg_status` INVALIDATED/ALIVE semantiği (zaman bazlı ölüm yok, dokunma/invalid olunca ölür).
+- **Testler:** full suite 700 passed / 74 failed — baz ile birebir aynı (tüm hatalar pre-existing: `check_exit` imza, `mark_trade_closed`/`_stage` mock uyumsuzlukları, DD_GUARD, `orchestrate_trail` await mock). Sıfır yeni regresyon. `ruff check` clean.
+
 ## ✅ Working
 - V4 live-identical engine (analyzer_v4.py) — CBDR→Sweep→RSM→FVG→Entry→Trail→Exit
 - V5 profil (fvg_profile_v5.py) — V4 motor + 16 bölümlü karakterizasyon + rapor

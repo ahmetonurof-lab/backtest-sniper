@@ -1,9 +1,13 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-07-16: Bucket data extractor + risk engine fix: boş bucket'lar sessizce atlanıp config'de eksik kalarak CBDR eşleşmeyen günlerde 1.0x (serbest) dönmesine yol açıyordu. Extractor artık boş bucket'ları n=0 ile yazar, risk engine n=0 → 0.0x atar.
+2026-07-31: Canlı (sniper) bot artık backtest ile birebir strateji:
+1. **Trailing:** `rsm.trigger_fvg` yerine post-entry taze FVG taraması + `fvg_close_confirmed` + ATR×0.25 buffer + delta-shift TP + çoklu-hop (analyzer_v5 ile aynı).
+2. **FVG expiry:** 45-bar zaman bazlı `is_fvg_valid` KALDIRILDI → `fvg_is_alive` (dokunulmamış + invalid değilse FVG sınırsız yaşar).
 
 ## Recently Completed
+- **FVG Expiry Kaldırma (2026-07-31):** `sniper/src/session_router.py` `is_fvg_valid()` ve `sniper/src/config.py` `GLOBAL_FVG_EXPIRY_BARS=45` silindi. `sniper/src/fvg.py`'ye `fvg_is_alive(direction, top, bottom, formation_index, bars)` eklendi — backtest `get_fvg_status` INVALIDATED semantiği: gap içine close (dokunma/fill) veya far-side close (invalid) görmüşse ölü, aksi halde yaşı ne olursa olsun canlı. `sniper/src/bot.py` trigger bloğunda `is_fvg_valid` → `fvg_is_alive(tf.direction, tf.top, tf.bottom, tf.bar_index, bars_15m[:-1])` (trigger barı scan dışında). Eski kod FVG'yi 45 bar sonra öldürüyordu — mıknatıs etkisi yaştan bağımsız, dokunulmadıkça sürer.
+- **Canlı Trailing Backtest Konsepti (2026-07-31):** `TrailLevel.sl_buffered` flag + `_fvg_multihop` (trailing_manager.py) + `_build_fvg_scan_trail_extractor` (bot.py). Detay: backtest-sniper ile birebir.
 - **Empty Bucket Fix (2026-07-16):** `bucket_data_extractor_v2.py:89-101` — boş bucket'ları n=0 ile JSON'a yaz. `bucket_risk_engine.py:160-194` — n=0 → 0.0x (skip normalize). Öncesinde: extractor boş bucket'ı atlıyordu → config'de eksik bucket → session_router fallback 1.0x.
 - **load_data Optimizasyonu (2026-07-15):** `analyze_cbdr_thresholds.py` ve `_analyze_all_20.py` — `_make_bar()` bypass (frozen dataclass __post_init__), list comprehension, numpy direkt okuma. ~10x hız.
 - **bar_index=None Fix (2026-07-15):** `analyze_cbdr_thresholds.py:396` — `bar_index=sb` → `bar_index=None` (sweep dedup bypass, analyzer_v5.py ile uyumlu).
