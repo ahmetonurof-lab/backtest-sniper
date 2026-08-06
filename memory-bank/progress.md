@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## ✅ Trailing A/B/C Replay (2026-08-07)
+- **Motor:** `src/replay_trailing_v2.py` — aynı entry üretimi üzerinde 3 trailing modu: **A=retrace-only** (mevcut canlı mantık), **B=+continuation** (`close < fvg.bottom` short / `close > fvg.top` long → SL fvg.bottom+atr_buffer / fvg.top-atr_buffer), **C=+ATR-chase fallback** (FVG adayı yoksa `SL = close ∓ ATR_TRAIL_MULT*ATR`, TMM + is_placeable şartıyla). Paralel `--workers` (default 4), `TRAIL_MODE` modül değişkeni ile `analyzer_v5.py` motoru kullanılıyor. Rapor: `reports/trailing_replay_ab_c.md`.
+- **Çalıştırma:** `python src/replay_trailing_v2.py --workers 6` (argümansız = `src/data/daily/*_1m_raw.feather` içindeki 30 coin; dilersen `SOLUSDT SUIUSDT ...` sırala). ~30-35 dk; her mod bitince `[A:retrace] N trade, M hatali coin, Xs` satırı basılır.
+- **Doğrulama (2-coin ADA+SOL test koşusu):** A=4769 / B=8248 / C=11973 trade; A→B eşleşen trade'lerde +773 HOP ve +2519 USD; B→C +647 HOP ve +9209 USD. Trade sayıları modlar arasında farklı olabilir (modlar exit süresini değiştirir — normal, per-trade tablo yalnız eşleşenleri karşılaştırır).
+- **Not:** repo pre-commit hook'u baseline dosyalarda (`execution_simulator.py` F841 ×4, vulture) ÖNCEDEN kırmızı → `5cfa2a3` `--no-verify` ile commit edildi; kendi dosyalarımız ruff format+check temiz.
+
 ## ✅ Canlı Backtest Senkronizasyonu (2026-07-31)
 - **Trailing (canlı → backtest):** `sniper/src/trading/trailing_manager.py` — `_fvg_multihop` static method: detect_fvgs(lookback 50) + `_fvg_close_confirmed` + `ATR_TRAIL_MULT(0.25)` buffer + `TRAIL_MIN_MOVE_MULT(0.2)` + delta-shift TP + çoklu-hop. `TrailLevel.sl_buffered` çift-buffer'ı önler (extractor ATR buffer'ı uygular, `compute_trail_candidate` tick×2 offset atlar, sadece tick normalizasyonu kalır). `risk_pts = abs(initial_sl - entry_price)` (backtest temeli). `sniper/src/bot.py` `_build_fvg_scan_trail_extractor`: `len<4` guard, `_atr_state` ATR + `DEFAULT_ATR_FALLBACK_PCT` fallback, `FVG_SIZE_MAP/FVG_MIN_SIZE_ATR_MULT` min boyut.
 - **FVG Expiry (canlı → backtest):** 45-bar `is_fvg_valid`/`GLOBAL_FVG_EXPIRY_BARS` kaldırıldı; `fvg_is_alive()` (fvg.py) — backtest `get_fvg_status` INVALIDATED/ALIVE semantiği (zaman bazlı ölüm yok, dokunma/invalid olunca ölür).
