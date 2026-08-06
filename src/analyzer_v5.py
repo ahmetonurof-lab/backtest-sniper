@@ -148,23 +148,41 @@ def get_fvg_status(top, bottom, direction, b):
     return "ALIVE"
 
 
-# ─── FVG close-confirmed helper (trailing için) ─────────
-def fvg_close_confirmed(fvg, all_bars):
+# ─── Trailing replikasyon modu (replay_trailing_v2.py kullanır) ──
+# "retrace"      : yalnizca gap ici kapanis onaylar (eski davranis)
+# "continuation" : gap ici VEYA pozisyon lehine far-side kapanis (varsayilan)
+# "atr_chase"    : + FVG aday kullanilamazsa SL = close ∓ K*ATR fallback
+TRAIL_MODE = "continuation"
+
+
+# ─── FVG confirm-mode helper (trailing için) ─────────
+def fvg_confirm_mode(fvg, all_bars):
+    """FVG icin onay modu: 'retrace' | 'continuation' | None.
+
+    'continuation': pozisyon lehine far-side kapanis (bullish: close > top,
+    bearish: close < bottom). Aksi yon (bullish: close < bottom,
+    bearish: close > top) invalidation sayilir ve None doner.
+    Ilk gorulen onay kazanir (retrace/continuation birbirini ezmez).
+    """
     scan_from = fvg.real_index + 2
     for b in all_bars:
         if b.index < scan_from:
             continue
         if fvg.direction == "bullish":
-            if b.close < fvg.bottom:
-                return False
-            if fvg.bottom <= b.close <= fvg.top:
-                return True
-        else:
             if b.close > fvg.top:
-                return False
+                return "continuation"
+            if b.close < fvg.bottom:
+                return None
             if fvg.bottom <= b.close <= fvg.top:
-                return True
-    return False
+                return "retrace"
+        else:
+            if b.close < fvg.bottom:
+                return "continuation"
+            if b.close > fvg.top:
+                return None
+            if fvg.bottom <= b.close <= fvg.top:
+                return "retrace"
+    return None
 
 
 _LOGGER = None
@@ -194,6 +212,7 @@ def _collect_fvg_profile_impl(symbol: str):
     rpt = cfg.RISK_PER_TRADE
     sam = cfg.SL_ATR_MULT
     tpr = cfg.TP_RR
+    TP_FIXED = getattr(cfg, "TRAIL_TP_FIXED", False)
     fbm = cfg.FVG_BUFFER_MULT
     ATM = cfg.ATR_TRAIL_MULT
     TMM = cfg.TRAIL_MIN_MOVE_MULT
@@ -476,23 +495,62 @@ def _collect_fvg_profile_impl(symbol: str):
                         continue
                     if s2 == "short" and fvg.direction != "bearish":
                         continue
-                    if not fvg_close_confirmed(fvg, tc):
+                    mode = fvg_confirm_mode(fvg, tc)
+                    if TRAIL_MODE == "retrace" and mode == "continuation":
+                        continue
+                    if mode is None:
                         continue
                     ab2 = atr * ATM
+                    # is_placeable: SL, current price'tan uygun tarafta kalmalı
+                    # (stale candidate uretme). cur = en son kapalı bar.
+                    cur_price = cur.close
                     if s2 == "long":
-                        ns = fvg.bottom - ab2
-                        if ns > csl and (ns - csl) > rpt2 * TMM:
+                        ns = (
+                            (fvg.top - ab2)
+                            if mode == "continuation"
+                            else (fvg.bottom - ab2)
+                        )
+                        if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
                             sd2 = ns - csl
                             csl = ns
-                            ctp += sd2
+                            if not TP_FIXED:
+                                ctp += sd2
                             ltc += 1
                             upd = True
                     else:
-                        ns = fvg.top + ab2
-                        if ns < csl and (csl - ns) > rpt2 * TMM:
+                        ns = (
+                            (fvg.bottom + ab2)
+                            if mode == "continuation"
+                            else (fvg.top + ab2)
+                        )
+                        if ns < csl and (csl - ns) > rpt2 * TMM and ns > cur_price:
                             sd2 = csl - ns
                             csl = ns
-                            ctp -= sd2
+                            if not TP_FIXED:
+                                ctp -= sd2
+                            ltc += 1
+                            upd = True
+                if TRAIL_MODE == "atr_chase" and not upd:
+                    # ATR-chase fallback: FVG aday kullanilamadiginda
+                    # SL = close ∓ K*ATR (K = ATR_TRAIL_MULT) ile chase et.
+                    cur_price = cur.close
+                    ab2 = atr * ATM
+                    if s2 == "long":
+                        ns = cur_price - ab2
+                        if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
+                            sd2 = ns - csl
+                            csl = ns
+                            if not TP_FIXED:
+                                ctp += sd2
+                            ltc += 1
+                            upd = True
+                    else:
+                        ns = cur_price + ab2
+                        if ns < csl and (csl - ns) > rpt2 * TMM and ns > cur_price:
+                            sd2 = csl - ns
+                            csl = ns
+                            if not TP_FIXED:
+                                ctp -= sd2
                             ltc += 1
                             upd = True
                 if upd:
