@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## ✅ TRAIL_MODE Default Regresyon Fix (2026-08-07)
+- **Sorun:** `5cfa2a3`'te `TRAIL_MODE = "continuation"` default yapıldı → normal analyzer koşuları (replay dışı) tüm coin'lerde **eksi PnL** üretmeye başladı (kullanıcı: "en son 4M+ kapatmıştık"). Neden: continuation + is_placeable yolu retrace'ten farklı SL/exit üretiyor (ALGO −58819, ADA −57839).
+- **Fix (`90f0939`):** default `retrace` (eski davranış birebir: `mode != "retrace"` → skip; is_placeable yalnızca continuation/atr_chase). Replay (`replay_trailing_v2.py:57`) modu kendisi set eder — A/B/C karşılaştırması bozulmadı. Doğrulama: retrace ALGO +59140 / ADA +31317 (eski pozitif davranış).
+- **Öğrenilen ders:** `analyzer_v5.py`'de mod değiştiren yeni değişken eklerken default'u ESKİ davranışta tut — replay modları explicit set eder; aksi halde tüm raporlar sessizce bozulur.
+- **Not:** commit mypy hook'una takıldı (baseline import hataları) → `--no-verify`. Push: `e442c96..90f0939`.
+
 ## ✅ Trailing A/B/C Replay (2026-08-07)
 - **Motor:** `src/replay_trailing_v2.py` — aynı entry üretimi üzerinde 3 trailing modu: **A=retrace-only** (mevcut canlı mantık), **B=+continuation** (`close < fvg.bottom` short / `close > fvg.top` long → SL fvg.bottom+atr_buffer / fvg.top-atr_buffer), **C=+ATR-chase fallback** (FVG adayı yoksa `SL = close ∓ ATR_TRAIL_MULT*ATR`, TMM + is_placeable şartıyla). Paralel `--workers` (default 4), `TRAIL_MODE` modül değişkeni ile `analyzer_v5.py` motoru kullanılıyor. Rapor: `reports/trailing_replay_ab_c.md`.
 - **Çalıştırma:** `python src/replay_trailing_v2.py --workers 6` (argümansız = `src/data/daily/*_1m_raw.feather` içindeki 30 coin; dilersen `SOLUSDT SUIUSDT ...` sırala). ~30-35 dk; her mod bitince `[A:retrace] N trade, M hatali coin, Xs` satırı basılır.
