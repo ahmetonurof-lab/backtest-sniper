@@ -1,5 +1,12 @@
 # backtest-sniper — Progress
 
+## ✅ Continuation K/N Fix — Baş Mühendis Direktifi Uygulandı (2026-08-07)
+- **Direktif:** (1) continuation'a özel geniş K tampon (`ATR_TRAIL_MULT_CONTINUATION=0.5`), (2) N-bar teyit (`CONTINUATION_CONFIRM_BARS=2`), (3) replay'de K∈{0.3,0.5,1.0} × N∈{1,2,3} taraması, (4) sonra canlıya.
+- **Canlı (`sniper`):** `config.py`'ye iki yeni alan (ENV override'lı). `trailing_manager._fvg_confirm_mode` → N-bar streak sürümü (baş mühendisin kodu birebir; far-side ard arda N bar → continuation, araya gap içi kapanış → retrace, invalidation → None, is_closed break). `_fvg_multihop` → `atr_buffer_retrace` (0.10×ATR) / `atr_buffer_continuation` (K×ATR) ayrımı; mode'a göre yerel `atr_buffer`; global satır silindi.
+- **Backtest (`analyzer_v5.py`):** `CONT_BUFFER_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.1)`, `CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 1)` — analyzer canlı `sniper/src`'ten import ettiği için parite otomatik sağlanıyor. `fvg_confirm_mode` canlıdakiyle birebir.
+- **Doğrulama:** `src/_verify_confirm_parity.py` — canlı/backtest confirm paritesi 7/7. `src/_verify_retrace_fix.py` — retrace baseline korundu (ADA 3942 / TP:585 PTrail:1737 LOSS:1620 / PE=58.9% / +111746.88, 08-03 birebir). Sniper testleri: trailing 55 + fvg/retrace 112 geçti. Ruff temiz. Commit'ler: sniper `3e51e64`, backtest `6c9b128` (push edildi).
+- **Replay taraması:** `replay_trailing_v2.py`'ye `--cont-only` bayrağı eklendi (C/atr_chase canlıda yok — atlanır, süre ~2/3'e iner). Arka planda (persistent) 30 coin, A + 12 B koşusu sürüyor: `--workers 8 --cont-only --cont-k 0.1 0.3 0.5 1.0 --cont-bars 1 2 3`. Rapor: `reports/trailing_replay_ab_c.md`.
+
 ## 🐛 Retrace 80K Regresyonu — Kök Neden + Fix (2026-08-07)
 - **Belirti:** Kullanıcı 08-03 21:13 SUMMARY'sında ADA 3942 trade +111747 gösterdi; benim 90f0939+c39ec04 sonrası koşum 2821 trade +31317 üretiyordu (~80K düşüş, trade %40 azaldı).
 - **Kök neden:** `fvg_confirm_mode` retrace yolunda far-side kapanışta (bullish close>top) hemen `"continuation"` dönüp döngüyü kırıyor → `TRAIL_MODE=="retrace"` ile bu FVG skip → trailing hop'ları azalıyor → SL/TP exit zinciri değişiyor. Orijinal `fvg_close_confirmed` (1469454) far-side kapanışta FVG'yi ELİMİYOR, döngüye devam ediyor, sonraki gap-içi kapanış onay verebiliyor. (90f0939'da "retrace eski davranışı aynen korur" iddiası bu noktada yanlıştı.)
