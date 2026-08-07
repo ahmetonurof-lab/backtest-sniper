@@ -7,6 +7,7 @@ __pycache__/
 data/
 .coverage
 .ruff_cache/
+.mypy_cache/
 nul
 
 # Auto-generated logs & temp files

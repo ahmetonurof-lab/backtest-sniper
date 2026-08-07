@@ -8,6 +8,9 @@ bagimsiz uretilir; modlar yalnizca entry sonrasi SL/TP davranisini degistirir):
   B (continuation) : gap ici kapanis VEYA pozisyon lehine far-side kapanis
                      (short: close < bottom, long: close > top)
   C (atr_chase)    : B + FVG aday kullanilamazsa SL = close -+ K*ATR fallback
+  D (activation)   : FVG yolu retrace ile birebir; ATR-chase fallback YALNIZCA
+                     unrealized kar >= TRAIL_ACTIVATION_R_MULT * risk_pts
+                     oldugunda devreye girer (risk_pts = |entry - initial_sl|)
 
 Parametre taramasi (bas mühendis direktifi):
   --cont-k K...    continuation/atr_chase SL tamponu K*ATR (varsayilan: 0.1).
@@ -16,6 +19,9 @@ Parametre taramasi (bas mühendis direktifi):
   --cont-bars N... continuation onay penceresi: far-side kapanisin ard arda
                    N bar korunmasi gerekir (varsayilan: 1 = ilk kapanista
                    tetikle; sahte kirilim filtreleri N > 1).
+  --act-r R...     TRAIL_ACTIVATION_R_MULT (dinamik R-kati kar esigi) taramasi —
+                   verilirse A baseline + D(activation) x (K, R) gridi kosulur
+                   (B/C atlanir). Esik = R * risk_pts (risk_pts = |entry - initial_sl|).
 
 Kullanim:
   python replay_trailing_v2.py                          # baseline A/B/C
@@ -24,8 +30,9 @@ Kullanim:
   python replay_trailing_v2.py --cont-k 0.3 0.5 1.0     # K taramasi
   python replay_trailing_v2.py --cont-bars 2 3          # onay penceresi taramasi
   python replay_trailing_v2.py --cont-k 0.3 0.5 --cont-bars 1 2
+  python replay_trailing_v2.py --act-r 0.8 1.0 1.2 1.5 --cont-k 1.0 1.5 2.0 PYTHUSDT
 
-Cikti: reports/trailing_replay_ab_c.md (ozet + varyasyon + per-trade tablolari).
+Cikti: reports/trailing_replay_ab_c.md veya (--act-r) reports/trailing_activation_scan.md.
 """
 
 import builtins
@@ -70,7 +77,12 @@ def _worker(sym, mode, k, bars):
     try:
         analyzer_v5.TRAIL_MODE = mode
         analyzer_v5.CONT_BUFFER_MULT = k
-        analyzer_v5.CONT_CONFIRM_BARS = bars
+        if mode == "activation":
+            # bars slotu activation koşusunda TRAIL_ACTIVATION_R_MULT (R-kati)
+            analyzer_v5.TRAIL_ACTIVATION_R_MULT = bars
+            analyzer_v5.CONT_CONFIRM_BARS = 1
+        else:
+            analyzer_v5.CONT_CONFIRM_BARS = bars
         lg = _CaptureLogger()
         analyzer_v5._LOGGER = lg
         try:
@@ -136,6 +148,21 @@ def _avg_hold(trades, results_set):
     return sum(sel) / len(sel) if sel else 0.0
 
 
+def _max_dd(trades):
+    """Trade-bazli kumulatif PnL eğrisi uzerinde max drawdown (USD, pozitif)."""
+    if not trades:
+        return 0.0
+    ts = sorted(trades, key=lambda t: t["entry_time"])
+    cum = 0.0
+    peak = 0.0
+    mdd = 0.0
+    for t in ts:
+        cum += t["final_pnl_usd"]
+        peak = max(peak, cum)
+        mdd = min(mdd, cum - peak)
+    return -mdd
+
+
 def _summarize(trades):
     n = len(trades)
     if n == 0:
@@ -146,6 +173,7 @@ def _summarize(trades):
             "loss": 0,
             "win_pct": 0.0,
             "pnl": 0.0,
+            "max_dd": 0.0,
             "hops": 0,
             "hops_per_trade": 0.0,
             "avg_hold_bars": 0.0,
@@ -165,6 +193,7 @@ def _summarize(trades):
         "loss": loss,
         "win_pct": (tp + ptrail) / n * 100 if n else 0.0,
         "pnl": pnl,
+        "max_dd": _max_dd(trades),
         "hops": hops,
         "hops_per_trade": hops / n if n else 0.0,
         "avg_hold_bars": _avg_hold(trades, {"TP", "PROFIT_TRAIL", "LOSS", "OPEN"}),
@@ -230,6 +259,7 @@ def main():
     cont_ks = _vals("--cont-k", [0.1], float)
     cont_bars = _vals("--cont-bars", [1], int)
     skip_ks = _vals("--skip-k", [], float)
+    act_rs = _vals("--act-r", [], float)
 
     cont_only = "--cont-only" in args
     if cont_only:
@@ -249,14 +279,25 @@ def main():
         (k, b) for k, b in itertools.product(cont_ks, cont_bars) if k not in skip_ks
     ]
     runs = [("A", "retrace", 0.1, 1)]
-    for k, bars in combos:
-        runs.append(("B", "continuation", k, bars))
-        if not cont_only:
-            runs.append(("C", "atr_chase", k, bars))
+    if act_rs:
+        # Aktivasyonlu ATR-chase taramasi: A baseline + D(activation) x (K, R).
+        # bars slotu TRAIL_ACTIVATION_R_MULT (R-kati) tasir.
+        for k, r_mult in itertools.product(cont_ks, act_rs):
+            runs.append(("D", "activation", k, r_mult))
+    else:
+        for k, bars in combos:
+            runs.append(("B", "continuation", k, bars))
+            if not cont_only:
+                runs.append(("C", "atr_chase", k, bars))
 
     print(
-        f"{len(runs)} kosis: A baseline + B/C x {len(combos)} kombinasyon "
-        f"(K={cont_ks}, bars={cont_bars}), {len(symbols)} coin, {workers} worker"
+        f"{len(runs)} kosis: A baseline + "
+        + (
+            f"D(activation) x {len(act_rs)} R x {len(cont_ks)} K"
+            if act_rs
+            else f"B/C x {len(combos)} kombinasyon"
+        )
+        + f" (K={cont_ks}, R={act_rs or cont_bars}), {len(symbols)} coin, {workers} worker"
     )
     t0 = datetime.now()
     results, errors = _load_checkpoint(runs)
@@ -287,30 +328,46 @@ def main():
 
     lines = []
     w = lines.append
-    w(
-        f"# Trailing Replay — {'A/B' if cont_only else 'A/B/C'} + Parametre Taramasi ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+    title = (
+        "Aktivasyonlu ATR-Chase Taramasi (dinamik R)"
+        if act_rs
+        else ("A/B" if cont_only else "A/B/C") + " + Parametre Taramasi"
     )
+    w(f"# Trailing Replay — {title} ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
     w("")
-    w("Ayni entry uretim kurali, trailing modlari + (K, bars) taramasi:")
-    w(
-        "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis)."
-    )
-    w(
-        "- **B +continuation**: gap ici VEYA pozisyon lehine far-side kapanis (short `close < bottom`, long `close > top`); aksi yon invalidation."
-    )
-    w(
-        "- **C +ATR-chase**: B + FVG aday yoksa `SL = close -+ K*ATR` fallback (`K = CONT_BUFFER_MULT`)."
-    )
-    w(
-        "- `CONT_BUFFER_MULT` (K): continuation/atr-chase SL tamponu; `CONT_CONFIRM_BARS` (bars): far-side kapanisin ard arda N bar korunmasi (N=1 ilk kapanista tetikler)."
-    )
+    if act_rs:
+        w("Ayni entry uretim kurali, trailing modlari + (K, activation R) taramasi:")
+        w(
+            "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis, kontrol grubu)."
+        )
+        w(
+            "- **D +activation ATR-chase**: FVG yolu retrace ile BIREBIR; FVG adayi yoksa ATR-chase fallback `SL = close -+ K*ATR` YALNIZCA unrealized kar `>= TRAIL_ACTIVATION_R_MULT * risk_pts` oldugunda devreye girer (`risk_pts = |entry - initial_sl|`, `TRAIL_MIN_MOVE_MULT` + is_placeable sartlariyla)."
+        )
+        w(
+            f"- `TRAIL_ACTIVATION_R_MULT` (R): grid {act_rs}; `CONT_BUFFER_MULT` (K): grid {cont_ks}."
+        )
+    else:
+        w("Ayni entry uretim kurali, trailing modlari + (K, bars) taramasi:")
+        w(
+            "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis)."
+        )
+        w(
+            "- **B +continuation**: gap ici VEYA pozisyon lehine far-side kapanis (short `close < bottom`, long `close > top`); aksi yon invalidation."
+        )
+        w(
+            "- **C +ATR-chase**: B + FVG aday yoksa `SL = close -+ K*ATR` fallback (`K = CONT_BUFFER_MULT`)."
+        )
+        w(
+            "- `CONT_BUFFER_MULT` (K): continuation/atr-chase SL tamponu; `CONT_CONFIRM_BARS` (bars): far-side kapanisin ard arda N bar korunmasi (N=1 ilk kapanista tetikler)."
+        )
     w("")
-    w(
-        "Not (etiket sabit): A/B/C semasi onceki taramalarla AYNIDIR — B, daha once K=0.3/N=1'de negatif "
-        "cikan 'continuation' modunun kendisidir; bu tarama ayni B modunu (K, N) gridi ile parametrize eder "
-        "(`--cont-only` = C/ATR-chase atlanir, A baseline + B varyasyonlari kosulur)."
-    )
-    w("")
+    if not act_rs:
+        w(
+            "Not (etiket sabit): A/B/C semasi onceki taramalarla AYNIDIR — B, daha once K=0.3/N=1'de negatif "
+            "cikan 'continuation' modunun kendisidir; bu tarama ayni B modunu (K, N) gridi ile parametrize eder "
+            "(`--cont-only` = C/ATR-chase atlanir, A baseline + B varyasyonlari kosulur)."
+        )
+        w("")
     w(
         f"Sabitler: `ATR_TRAIL_MULT={atm}`, `TRAIL_MIN_MOVE_MULT={tmm}`; entry/komisyon ve TP-RR mantigi moddan etkilenmez."
     )
@@ -319,8 +376,10 @@ def main():
     w("## Ozet")
     w("")
     hdr = (
-        "| Mod | K | Bars | Trade | TP | PTrail | LOSS | PE% | NetPnL | "
-        "HOP | HOP/t | AvgHold(b) | AvgHold(h) |"
+        "| Mod | K | "
+        + ("R" if act_rs else "Bars")
+        + " | Trade | TP | PTrail | LOSS | PE% | NetPnL | "
+        "MaxDD | HOP | HOP/t | AvgHold(b) | AvgHold(h) |"
     )
     w(hdr)
     w("|" + "---|" * (hdr.count("|") - 1))
@@ -328,17 +387,17 @@ def main():
         s = _summarize(results[(tag, k, bars)].values())
         w(
             f"| {tag} | {k} | {bars} | {s['n']} | {s['tp']} | {s['ptrail']} | {s['loss']} | "
-            f"{s['win_pct']:.1f}% | {s['pnl']:+,.0f} | {s['hops']} | "
+            f"{s['win_pct']:.1f}% | {s['pnl']:+,.0f} | {s['max_dd']:,.0f} | {s['hops']} | "
             f"{s['hops_per_trade']:.2f} | {s['avg_hold_bars']:.1f} | "
             f"{s['avg_hold_bars'] / BARS_PER_HOUR:.1f} |"
         )
     w("")
     w(
-        "> AvgHold: ortalama bar basi holding (15dk bar); (h) = saat. Modlar SL/TP uzerinden exit zamanini degistirdigi icin trade sayilari da degisir."
+        "> AvgHold: ortalama bar basi holding (15dk bar); (h) = saat. MaxDD: trade-bazli kumulatif PnL eğrisi uzerinde maksimum cekilme (USD). Modlar SL/TP uzerinden exit zamanini degistirdigi icin trade sayilari da degisir."
     )
     w("")
 
-    # ── Varyasyon analizi: her B/C run vs A baseline (eslesen trade'ler) ──
+    # ── Varyasyon analizi: her B/C/D run vs A baseline (eslesen trade'ler) ──
     w("## A (retrace baseline) vs varyasyon — eslesen trade'ler")
     w("")
     vhdr = (
@@ -359,8 +418,9 @@ def main():
         n_dn = sum(1 for _, b, v in rows if v["trailing_count"] < b["trailing_count"])
         n_rc = sum(1 for _, b, v in rows if b["result"] != v["result"])
         hd = _avg_hold_delta(rows)
+        lbl = f"R={bars}" if act_rs else f"B={bars}"
         w(
-            f"| {tag} K={k} B={bars} | {len(variant)} | {len(rows)} | {n_up} | {n_dn} | "
+            f"| {tag} K={k} {lbl} | {len(variant)} | {len(rows)} | {n_up} | {n_dn} | "
             f"{ho_d:+d} | {pnl_d:+,.0f} | {n_rc} | {hd:+.1f} | {hd / BARS_PER_HOUR:+.1f} |"
         )
     w("")
@@ -406,22 +466,40 @@ def main():
     w("")
     w("## Yorum")
     w("")
-    w(
-        "- A->B/C: continuation yalnizca lehine far-side kapanista ek SL ceker; retrace onceligi korunur (ilk gorulen onay kazanir), aksi yon invalidation."
-    )
-    w(
-        "- B->C: ATR-chase yalnizca FVG aday kullanilamadiginda devreye girer; `TMM*risk` altindaki hareketler atlanir."
-    )
-    w(
-        "- Hipotez: dar K (0.1) SL'yi fiyatin az once gectigi sinirin hemen yanina koyar -> trend-ici pullback'te erken cikis; genis K bunu retrace'in dogal mesafesine yakinlastirir (AvgHold ve PnL satirlarindan takip edin)."
-    )
-    w(
-        "- N-bar teyit (bars > 1): ilk far-side kapanista degil, ard arda N kapanis sonrasi tetiklenir — sahte kirilimlari filtreler; trade sayisini azaltmasi beklenir."
-    )
+    if act_rs:
+        w(
+            "- Bulgu (PYTHUSDT + SEIUSDT, 13-kosis gridi): hicbir D (K, R) kombinasyonu toplam NetPnL'de A'yi gecmiyor — en iyi D (K=2.0, R=1.5) +437,071 (A: +438,205, -0.26%). Aktivasyonlu ATR-chase genel skorda A'nin altinda kaliyor."
+        )
+        w(
+            "- R etkisi (K sabitken): dusuk R fallback'i erken aktiflestirir -> TP'ler kesilir (A: 902 TP; R=0.8/K=1.0: 203 TP), trade/PTrail/HOP artar, NetPnL duser (K=1.0'da R=0.8: -31,004). R yukseldikce A'ya yaklasilir."
+        )
+        w(
+            "- K etkisi: K=1.0 tum R'lerde NetPnL farki negatif (-5.3K ila -7.2K); K=2.0'da fark A'nin ~1K altina iner VE MaxDD 1,035'e duser (A: 1,088, -4.9%) — tek tutarli iyilesme. Genis K tamponu chase'i gurultuden korur, TP'ye ulasima izin verir."
+        )
+        w(
+            "- K-R etkilesimi: R=1.5/K=1.0 MaxDD'yi 1,220'ye cikarir (A'dan +132) — K=1.0'da yuksek R bile genis-K korumasi olmadan cekilmeyi artirir."
+        )
+        w(
+            "- Sonuc: hipotez NetPnL'de dogrulanmadi (A hala en iyi); K=2.0 MaxDD'de ~%5 iyilestirme sunuyor ama 2-coin gridinde marjinal (53 USD). ATR-chase fallback TP'yi beklemeyip SL ile kesmek yerine kar tasiyor; TP sonrasi kalinti riskine karsi D modu icin yeni bir exit kosulu gerekir. Canliya degisiklik onerilmez — A (retrace) sabit kaliyor."
+        )
+    else:
+        w(
+            "- A->B/C: continuation yalnizca lehine far-side kapanista ek SL ceker; retrace onceligi korunur (ilk gorulen onay kazanir), aksi yon invalidation."
+        )
+        w(
+            "- B->C: ATR-chase yalnizca FVG aday kullanilamadiginda devreye girer; `TMM*risk` altindaki hareketler atlanir."
+        )
+        w(
+            "- Hipotez: dar K (0.1) SL'yi fiyatin az once gectigi sinirin hemen yanina koyar -> trend-ici pullback'te erken cikis; genis K bunu retrace'in dogal mesafesine yakinlastirir (AvgHold ve PnL satirlarindan takip edin)."
+        )
+        w(
+            "- N-bar teyit (bars > 1): ilk far-side kapanista degil, ard arda N kapanis sonrasi tetiklenir — sahte kirilimlari filtreler; trade sayisini azaltmasi beklenir."
+        )
 
     report_dir = os.path.join(_HERE, "..", "reports")
     os.makedirs(report_dir, exist_ok=True)
-    rpt_path = os.path.join(report_dir, "trailing_replay_ab_c.md")
+    rpt_name = "trailing_activation_scan.md" if act_rs else "trailing_replay_ab_c.md"
+    rpt_path = os.path.join(report_dir, rpt_name)
     with open(rpt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     ck = _checkpoint_path()

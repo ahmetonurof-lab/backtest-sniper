@@ -152,7 +152,17 @@ def get_fvg_status(top, bottom, direction, b):
 # "retrace"      : yalnizca gap ici kapanis onaylar (eski davranis, DEFAULTS)
 # "continuation" : gap ici VEYA pozisyon lehine far-side kapanis
 # "atr_chase"    : + FVG aday kullanilamazsa SL = close ∓ K*ATR fallback
+# "activation"   : FVG yolu retrace ile BIREBIR; ATR-chase fallback YALNIZCA
+#                  unrealized kar >= TRAIL_ACTIVATION_R_MULT * risk_pts
+#                  (dinamik R-kati esik) oldugunda devreye girer
 TRAIL_MODE = "retrace"
+
+# Aktivasyonlu ATR-chase (TRAIL_MODE="activation") kar esigi — dinamik R-kati.
+# Esik = TRAIL_ACTIVATION_R_MULT * risk_pts (risk_pts = |entry - initial_sl|).
+# Anlik kar (pts) bu esige ulasmadan ATR-chase PASIFTIR (yalniz FVG takibi).
+# Coin/bucket bazli risk-pts degisken oldugu icin sabit % yerine R-kati
+# endekslenir: 1.0 = 1R kar seviyesinde aktiflesir.
+TRAIL_ACTIVATION_R_MULT = 1.0
 
 # Continuation/Atr-chase SL tamponu: K * ATR. Canli config'ten okunur
 # (ATR_TRAIL_MULT_CONTINUATION) — backtest-canli paritesi icin. Genis K,
@@ -544,9 +554,10 @@ def _collect_fvg_profile_impl(symbol: str):
                         continue
                     if s2 == "short" and fvg.direction != "bearish":
                         continue
-                    if TRAIL_MODE == "retrace":
+                    if TRAIL_MODE in ("retrace", "activation"):
                         # Orijinal davranis (1469454 oncesi): far-side kapanis
                         # FVG'yi elemez, sonraki gap ici kapanis onay verebilir.
+                        # activation modunda FVG yolu retrace ile BIREBIR.
                         if not fvg_close_confirmed(fvg, tc):
                             continue
                         mode = "retrace"
@@ -561,7 +572,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     ab2 = atr * (CONT_BUFFER_MULT if mode == "continuation" else ATM)
                     # is_placeable yalnizca continuation/atr_chase'te uygulanir
                     # (retrace modu eski davranisi aynen korur). cur = son kapanis.
-                    placeable = TRAIL_MODE != "retrace"
+                    placeable = TRAIL_MODE not in ("retrace", "activation")
                     cur_price = cur.close
                     if s2 == "long":
                         ns = (
@@ -597,29 +608,41 @@ def _collect_fvg_profile_impl(symbol: str):
                                 ctp -= sd2
                             ltc += 1
                             upd = True
-                if TRAIL_MODE == "atr_chase" and not upd:
+                if TRAIL_MODE in ("atr_chase", "activation") and not upd:
                     # ATR-chase fallback: FVG aday kullanilamadiginda
                     # SL = close ∓ K*ATR (K = CONT_BUFFER_MULT) ile chase et.
+                    # activation modunda YALNIZCA unrealized kar >=
+                    # TRAIL_ACTIVATION_PCT iken devreye girer; erken gurultude
+                    # (esik altinda) ATR-chase PASIFTIR, yalniz FVG takibi yapilir.
                     cur_price = cur.close
-                    ab2 = atr * CONT_BUFFER_MULT
-                    if s2 == "long":
-                        ns = cur_price - ab2
-                        if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
-                            sd2 = ns - csl
-                            csl = ns
-                            if not TP_FIXED:
-                                ctp += sd2
-                            ltc += 1
-                            upd = True
-                    else:
-                        ns = cur_price + ab2
-                        if ns < csl and (csl - ns) > rpt2 * TMM and ns > cur_price:
-                            sd2 = csl - ns
-                            csl = ns
-                            if not TP_FIXED:
-                                ctp -= sd2
-                            ltc += 1
-                            upd = True
+                    if TRAIL_MODE == "activation":
+                        entry = t["entry_price"]
+                        risk_pts = abs(entry - t["initial_sl"])
+                        upnl_pts = (
+                            cur_price - entry if s2 == "long" else entry - cur_price
+                        )
+                        if upnl_pts < TRAIL_ACTIVATION_R_MULT * risk_pts:
+                            cur_price = None  # esik altinda fallback'i devre disi birak
+                    if cur_price is not None:
+                        ab2 = atr * CONT_BUFFER_MULT
+                        if s2 == "long":
+                            ns = cur_price - ab2
+                            if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
+                                sd2 = ns - csl
+                                csl = ns
+                                if not TP_FIXED:
+                                    ctp += sd2
+                                ltc += 1
+                                upd = True
+                        else:
+                            ns = cur_price + ab2
+                            if ns < csl and (csl - ns) > rpt2 * TMM and ns > cur_price:
+                                sd2 = csl - ns
+                                csl = ns
+                                if not TP_FIXED:
+                                    ctp -= sd2
+                                ltc += 1
+                                upd = True
                 if upd:
                     t["sl"] = csl
                     t["tp"] = ctp
