@@ -149,10 +149,10 @@ def get_fvg_status(top, bottom, direction, b):
 
 
 # ─── Trailing replikasyon modu (replay_trailing_v2.py kullanır) ──
-# "retrace"      : yalnizca gap ici kapanis onaylar (eski davranis)
-# "continuation" : gap ici VEYA pozisyon lehine far-side kapanis (varsayilan)
+# "retrace"      : yalnizca gap ici kapanis onaylar (eski davranis, DEFAULTS)
+# "continuation" : gap ici VEYA pozisyon lehine far-side kapanis
 # "atr_chase"    : + FVG aday kullanilamazsa SL = close ∓ K*ATR fallback
-TRAIL_MODE = "continuation"
+TRAIL_MODE = "retrace"
 
 
 # ─── FVG confirm-mode helper (trailing için) ─────────
@@ -496,13 +496,14 @@ def _collect_fvg_profile_impl(symbol: str):
                     if s2 == "short" and fvg.direction != "bearish":
                         continue
                     mode = fvg_confirm_mode(fvg, tc)
-                    if TRAIL_MODE == "retrace" and mode == "continuation":
+                    if TRAIL_MODE == "retrace" and mode != "retrace":
                         continue
                     if mode is None:
                         continue
                     ab2 = atr * ATM
-                    # is_placeable: SL, current price'tan uygun tarafta kalmalı
-                    # (stale candidate uretme). cur = en son kapalı bar.
+                    # is_placeable yalnizca continuation/atr_chase'te uygulanir
+                    # (retrace modu eski davranisi aynen korur). cur = son kapanis.
+                    placeable = TRAIL_MODE != "retrace"
                     cur_price = cur.close
                     if s2 == "long":
                         ns = (
@@ -510,7 +511,11 @@ def _collect_fvg_profile_impl(symbol: str):
                             if mode == "continuation"
                             else (fvg.bottom - ab2)
                         )
-                        if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
+                        if (
+                            ns > csl
+                            and (ns - csl) > rpt2 * TMM
+                            and (not placeable or ns < cur_price)
+                        ):
                             sd2 = ns - csl
                             csl = ns
                             if not TP_FIXED:
@@ -523,7 +528,11 @@ def _collect_fvg_profile_impl(symbol: str):
                             if mode == "continuation"
                             else (fvg.top + ab2)
                         )
-                        if ns < csl and (csl - ns) > rpt2 * TMM and ns > cur_price:
+                        if (
+                            ns < csl
+                            and (csl - ns) > rpt2 * TMM
+                            and (not placeable or ns > cur_price)
+                        ):
                             sd2 = csl - ns
                             csl = ns
                             if not TP_FIXED:
