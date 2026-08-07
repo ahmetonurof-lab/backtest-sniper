@@ -109,10 +109,10 @@ def _load_checkpoint(runs):
     try:
         with open(path, "rb") as f:
             data = pickle.load(f)
-        if data.get("runs") != runs:
-            print("Checkpoint config uyusmuyor — temiz basliyorum.")
-            return {}, {}
-        return data.get("results", {}), data.get("errors", {})
+        wanted = {(r[0], r[2], r[3]) for r in runs}
+        results = {k: v for k, v in data.get("results", {}).items() if k in wanted}
+        errors = {k: v for k, v in data.get("errors", {}).items() if k in wanted}
+        return results, errors
     except Exception as e:  # noqa: BLE001
         print(f"Checkpoint okunamadi ({e}) — temiz basliyorum.")
         return {}, {}
@@ -227,6 +227,7 @@ def main():
 
     cont_ks = _vals("--cont-k", [0.1], float)
     cont_bars = _vals("--cont-bars", [1], int)
+    skip_ks = _vals("--skip-k", [], float)
 
     cont_only = "--cont-only" in args
     if cont_only:
@@ -242,7 +243,9 @@ def main():
     if not symbols:
         symbols = all_syms
 
-    combos = list(itertools.product(cont_ks, cont_bars))
+    combos = [
+        (k, b) for k, b in itertools.product(cont_ks, cont_bars) if k not in skip_ks
+    ]
     runs = [("A", "retrace", 0.1, 1)]
     for k, bars in combos:
         runs.append(("B", "continuation", k, bars))
