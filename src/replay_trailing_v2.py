@@ -121,8 +121,10 @@ def _load_checkpoint(runs):
 def _save_checkpoint(runs, results, errors):
     path = _checkpoint_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
         pickle.dump({"runs": runs, "results": results, "errors": errors}, f)
+    os.replace(tmp, path)
 
 
 def _key(t):
