@@ -199,6 +199,10 @@ def main():
     cont_ks = _vals("--cont-k", [0.1], float)
     cont_bars = _vals("--cont-bars", [1], int)
 
+    cont_only = "--cont-only" in args
+    if cont_only:
+        args.remove("--cont-only")
+
     feather_dir = os.path.join(_HERE, "data", "daily")
     all_syms = sorted(
         f[: -len("_1m_raw.feather")]
@@ -213,7 +217,8 @@ def main():
     runs = [("A", "retrace", 0.1, 1)]
     for k, bars in combos:
         runs.append(("B", "continuation", k, bars))
-        runs.append(("C", "atr_chase", k, bars))
+        if not cont_only:
+            runs.append(("C", "atr_chase", k, bars))
 
     print(
         f"{len(runs)} kosis: A baseline + B/C x {len(combos)} kombinasyon "
@@ -242,7 +247,7 @@ def main():
     lines = []
     w = lines.append
     w(
-        f"# Trailing Replay — A/B/C + Parametre Taramasi ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+        f"# Trailing Replay — {'A/B' if cont_only else 'A/B/C'} + Parametre Taramasi ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
     )
     w("")
     w("Ayni entry uretim kurali, trailing modlari + (K, bars) taramasi:")

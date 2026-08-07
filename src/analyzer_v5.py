@@ -154,15 +154,15 @@ def get_fvg_status(top, bottom, direction, b):
 # "atr_chase"    : + FVG aday kullanilamazsa SL = close ∓ K*ATR fallback
 TRAIL_MODE = "retrace"
 
-# Continuation/Atr-chase SL tamponu: K * ATR. Default 0.1 = canli ile birebir
-# (trailing_manager ATR_TRAIL_MULT). Daha genis K (0.3/0.5/1.0) retrace'in
-# dogal mesafesine yakinlasip trend-ici noise'a karsi dayanikliligi artirir.
-CONT_BUFFER_MULT = 0.1
+# Continuation/Atr-chase SL tamponu: K * ATR. Canli config'ten okunur
+# (ATR_TRAIL_MULT_CONTINUATION) — backtest-canli paritesi icin. Genis K,
+# trend-ici noise'a karsi retrace'in dogal mesafesine yakinlasir.
+CONT_BUFFER_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.1)
 
 # Continuation onay penceresi: far-side kaparisan ard arda N bar boyunca
 # korunmali (ara kapanis gap icinde olursa retrace kazanir, invalidation
-# olursa None). Default 1 = ilk kapanista tetikle (canli ile birebir).
-CONT_CONFIRM_BARS = 1
+# olursa None). Canli config'ten okunur (CONTINUATION_CONFIRM_BARS).
+CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 1)
 
 
 # ─── FVG retrace-only confirm helper (orijinal davranis, birebir) ──
@@ -192,41 +192,45 @@ def fvg_close_confirmed(fvg, all_bars):
 # Continuation/atr_chase modlari icin: 'retrace' | 'continuation' | None.
 # Dikkat: far-side kapanis hemen 'continuation' doner (sonraki barlara
 # bakmaz); retrace modu bu fonksiyonu KULLANMAZ, fvg_close_confirmed kullanir.
-def fvg_confirm_mode(fvg, all_bars, confirm_bars: int = 1):
-    """FVG icin onay modu: 'retrace' | 'continuation' | None.
+def fvg_confirm_mode(fvg, all_bars, continuation_confirm_bars: int = 1):
+    """FVG icin onay modunu dondurur: "retrace" veya "continuation".
 
-    'continuation': pozisyon lehine far-side kapanis (bullish: close > top,
-    bearish: close < bottom). Aksi yon (bullish: close < bottom,
-    bearish: close > top) invalidation sayilir ve None doner.
-    Ilk gorulen onay kazanir (retrace/continuation birbirini ezmez).
+    - "retrace": fiyat gap icinde kapandi (mevcut davranis).
+    - "continuation": fiyat pozisyon lehine far-side'da ustuste
+      `continuation_confirm_bars` bar kapandi (sahte kirilimlari filtreler).
+    - None: invalidation veya henuz onay yok.
 
-    confirm_bars > 1: continuation yalnizca far-side kapanisin ard arda N bar
-    boyunca korunmasiyla tetiklenir (sahte kirilim filtresi). Araya gap ici
-    kapanis girerse o an retrace kazanir; invalidation olursa None.
+    trailing_manager._fvg_confirm_mode ile birebir ayni (canli paritesi).
     """
     scan_from = fvg.real_index + 2
-    cont = 0
+    streak = 0
     for b in all_bars:
         if b.index < scan_from:
             continue
+        if not b.is_closed:
+            break
         if fvg.direction == "bullish":
             if b.close > fvg.top:
-                cont += 1
-                if cont >= confirm_bars:
+                streak += 1
+                if streak >= continuation_confirm_bars:
                     return "continuation"
                 continue
+            streak = 0
             if b.close < fvg.bottom:
                 return None
-            return "retrace"
+            if fvg.bottom <= b.close <= fvg.top:
+                return "retrace"
         else:
             if b.close < fvg.bottom:
-                cont += 1
-                if cont >= confirm_bars:
+                streak += 1
+                if streak >= continuation_confirm_bars:
                     return "continuation"
                 continue
+            streak = 0
             if b.close > fvg.top:
                 return None
-            return "retrace"
+            if fvg.bottom <= b.close <= fvg.top:
+                return "retrace"
     return None
 
 
