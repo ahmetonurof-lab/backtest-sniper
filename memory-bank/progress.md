@@ -1,5 +1,12 @@
 # backtest-sniper — Progress
 
+## 🐛 Retrace 80K Regresyonu — Kök Neden + Fix (2026-08-07)
+- **Belirti:** Kullanıcı 08-03 21:13 SUMMARY'sında ADA 3942 trade +111747 gösterdi; benim 90f0939+c39ec04 sonrası koşum 2821 trade +31317 üretiyordu (~80K düşüş, trade %40 azaldı).
+- **Kök neden:** `fvg_confirm_mode` retrace yolunda far-side kapanışta (bullish close>top) hemen `"continuation"` dönüp döngüyü kırıyor → `TRAIL_MODE=="retrace"` ile bu FVG skip → trailing hop'ları azalıyor → SL/TP exit zinciri değişiyor. Orijinal `fvg_close_confirmed` (1469454) far-side kapanışta FVG'yi ELİMİYOR, döngüye devam ediyor, sonraki gap-içi kapanış onay verebiliyor. (90f0939'da "retrace eski davranışı aynen korur" iddiası bu noktada yanlıştı.)
+- **Fix:** `fvg_close_confirmed` orijinal haliyle geri eklendi; `TRAIL_MODE=="retrace"` → onu kullanır (mode="retrace" sabit); `fvg_confirm_mode` yalnız continuation/atr_chase'te. Continuation/atr_chase davranışı (K tampon + N-bar teyit + is_placeable) değişmedi.
+- **Doğrulama:** ADA 3942 trade | TP:585 PTrail:1737 LOSS:1620 | PE=58.9% | net PnL=+111746.88 — 08-03 21:13 ile birebir (TP% 14.8/PTrail 44.1/Loss 41.1). Kök neden kesinleşti.
+- **Canlı analizi:** Canlıda TRAIL_MODE yok → hata canlıya bulaşmadı. AMA canlı 08-07 01:26 `b9c2d53` ile continuation+is_placeable'a geçti (ATR_TRAIL_MULT=0.10) = backtest `TRAIL_MODE="continuation"` ile birebir → o mod full koşuda EKSİ PnL (ALGO −58819 / ADA −57839). **Canlı şu an 08-03 +4.1M davranışında değil.** Bekleyen karar: canlıyı retrace-only'a çekmek vs K/bars taramasıyla continuation'ı iyileştirip canlıya sabitlemek (baş mühendis direktifi yönünde).
+
 ## 🔧 Continuation Yapısal Mesafe — Baş Mühendis Direktifi (2026-08-07)
 - **Hipotez:** Retrace'te SL gap'in uzak sınırına konur (gap kendisi mesafe tamponu); continuation'da SL fiyatın az önce kırdığı en yakın sınıra (`fvg.top − 0.1×ATR`) konur → 0.1×ATR tampon trend-ici noise'a yapısal savunmasız → trade'ler TP'ye ulaşmadan ufak kâr kilitleriyle erken kapanır (trade sayısı +%40-55 kanıtı) → fee yükü + büyük TP edge'i kesilir.
 - **Direktif:** (1) K=0.3/0.5/1.0 tampon, (2) N-bar teyit penceresi, (3) holding ölçümü, (4) sonra tam backtest.

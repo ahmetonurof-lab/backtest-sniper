@@ -165,7 +165,33 @@ CONT_BUFFER_MULT = 0.1
 CONT_CONFIRM_BARS = 1
 
 
+# ─── FVG retrace-only confirm helper (orijinal davranis, birebir) ──
+# Retrace modu (default) bu fonksiyonu kullanir: yalnizca gap ici kapanis
+# onaylar; pozisyon lehine far-side kapanis (bullish: close > top) FVG'yi
+# ELIMINE ETMEZ, donguye devam eder (sonraki gap ici kapanis onay verebilir).
+# Aksi yon (bullish: close < bottom) invalidation = False.
+def fvg_close_confirmed(fvg, all_bars):
+    scan_from = fvg.real_index + 2
+    for b in all_bars:
+        if b.index < scan_from:
+            continue
+        if fvg.direction == "bullish":
+            if b.close < fvg.bottom:
+                return False
+            if fvg.bottom <= b.close <= fvg.top:
+                return True
+        else:
+            if b.close > fvg.top:
+                return False
+            if fvg.bottom <= b.close <= fvg.top:
+                return True
+    return False
+
+
 # ─── FVG confirm-mode helper (trailing için) ─────────
+# Continuation/atr_chase modlari icin: 'retrace' | 'continuation' | None.
+# Dikkat: far-side kapanis hemen 'continuation' doner (sonraki barlara
+# bakmaz); retrace modu bu fonksiyonu KULLANMAZ, fvg_close_confirmed kullanir.
 def fvg_confirm_mode(fvg, all_bars, confirm_bars: int = 1):
     """FVG icin onay modu: 'retrace' | 'continuation' | None.
 
@@ -177,7 +203,6 @@ def fvg_confirm_mode(fvg, all_bars, confirm_bars: int = 1):
     confirm_bars > 1: continuation yalnizca far-side kapanisin ard arda N bar
     boyunca korunmasiyla tetiklenir (sahte kirilim filtresi). Araya gap ici
     kapanis girerse o an retrace kazanir; invalidation olursa None.
-    confirm_bars=1 ile eski davranis birebir.
     """
     scan_from = fvg.real_index + 2
     cont = 0
@@ -515,11 +540,16 @@ def _collect_fvg_profile_impl(symbol: str):
                         continue
                     if s2 == "short" and fvg.direction != "bearish":
                         continue
-                    mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
-                    if TRAIL_MODE == "retrace" and mode != "retrace":
-                        continue
-                    if mode is None:
-                        continue
+                    if TRAIL_MODE == "retrace":
+                        # Orijinal davranis (1469454 oncesi): far-side kapanis
+                        # FVG'yi elemez, sonraki gap ici kapanis onay verebilir.
+                        if not fvg_close_confirmed(fvg, tc):
+                            continue
+                        mode = "retrace"
+                    else:
+                        mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
+                        if mode is None:
+                            continue
                     # Continuation/atr-chase SL tamponu K*ATR (CONT_BUFFER_MULT),
                     # retrace tamponu ATR_TRAIL_MULT*ATR. Kapsam: far-side hop'u
                     # fiyatin yeni gectigi sinirin hemen yanina SL koyar; genis K,
