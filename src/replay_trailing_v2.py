@@ -1,25 +1,36 @@
 """
-replay_trailing_v2.py — A/B/C trailing replay karsilastirmasi.
+replay_trailing_v2.py — A/B/C trailing replay karsilastirmasi + parametre taramasi.
 
-Ayni entry uretim kurali uzerinde 3 trailing modu kosar (entry'ler trailing'den
+Ayni entry uretim kurali uzerinde trailing modlari kosar (entry'ler trailing'den
 bagimsiz uretilir; modlar yalnizca entry sonrasi SL/TP davranisini degistirir):
 
   A (retrace)      : yalnizca FVG gap'i icinde kapanis onaylar (eski davranis)
   B (continuation) : gap ici kapanis VEYA pozisyon lehine far-side kapanis
-                     (short: close < bottom, long: close > top) — varsayilan
+                     (short: close < bottom, long: close > top)
   C (atr_chase)    : B + FVG aday kullanilamazsa SL = close -+ K*ATR fallback
-                     (K = ATR_TRAIL_MULT) ve is_placeable sartiyla.
+
+Parametre taramasi (bas mühendis direktifi):
+  --cont-k K...    continuation/atr_chase SL tamponu K*ATR (varsayilan: 0.1).
+                   Daha genis K (0.3/0.5/1.0) retrace'in dogal mesafesine
+                   yakinlasir -> trend-ici noise'a dayaniklilik.
+  --cont-bars N... continuation onay penceresi: far-side kapanisin ard arda
+                   N bar korunmasi gerekir (varsayilan: 1 = ilk kapanista
+                   tetikle; sahte kirilim filtreleri N > 1).
 
 Kullanim:
-  python replay_trailing_v2.py                 # tum 30 coin
-  python replay_trailing_v2.py ADAUSDT SOLUSDT  # secili coinler
-  python replay_trailing_v2.py --workers 6     # paralel worker sayisi
+  python replay_trailing_v2.py                          # baseline A/B/C
+  python replay_trailing_v2.py ADAUSDT SOLUSDT          # secili coinler
+  python replay_trailing_v2.py --workers 6              # paralel worker sayisi
+  python replay_trailing_v2.py --cont-k 0.3 0.5 1.0     # K taramasi
+  python replay_trailing_v2.py --cont-bars 2 3          # onay penceresi taramasi
+  python replay_trailing_v2.py --cont-k 0.3 0.5 --cont-bars 1 2
 
-Cikti: reports/trailing_replay_ab_c.md (per-trade + ozet tablo).
+Cikti: reports/trailing_replay_ab_c.md (ozet + varyasyon + per-trade tablolari).
 """
 
 import builtins
 import concurrent.futures
+import itertools
 import os
 import sys
 from datetime import datetime
@@ -35,9 +46,11 @@ import config as cfg  # noqa: E402
 
 MODES = [("A", "retrace"), ("B", "continuation"), ("C", "atr_chase")]
 
+BARS_PER_HOUR = 4  # 15dk bar
+
 
 class _CaptureLogger:
-    """Engine'in log_trade cagrilarini toplar (trailing_count dahil)."""
+    """Engine'in log_trade cagrilarini toplar (trailing_count + hold_bars dahil)."""
 
     def __init__(self):
         self.trades = []
@@ -49,12 +62,14 @@ class _CaptureLogger:
         pass
 
 
-def _worker(sym, mode):
-    """Tek coin + tek mod (paralel worker). Sessiz calisir."""
+def _worker(sym, mode, k, bars):
+    """Tek coin + tek mod + tek (K, bars) (paralel worker). Sessiz calisir."""
     real_print = builtins.print
     builtins.print = lambda *a, **k: None
     try:
         analyzer_v5.TRAIL_MODE = mode
+        analyzer_v5.CONT_BUFFER_MULT = k
+        analyzer_v5.CONT_CONFIRM_BARS = bars
         lg = _CaptureLogger()
         analyzer_v5._LOGGER = lg
         try:
@@ -68,9 +83,9 @@ def _worker(sym, mode):
         builtins.print = real_print
 
 
-def run_mode(mode, symbols, workers):
+def run_mode(mode, symbols, workers, k, bars):
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
-        fut_map = {ex.submit(_worker, sym, mode): sym for sym in symbols}
+        fut_map = {ex.submit(_worker, sym, mode, k, bars): sym for sym in symbols}
         trades = []
         errors = []
         for fut in concurrent.futures.as_completed(fut_map):
@@ -85,6 +100,11 @@ def _key(t):
     return (t["symbol"], t["entry_time"], t["side"], t["entry_price"])
 
 
+def _avg_hold(trades, results_set):
+    sel = [t.get("hold_bars", 0) for t in trades if t["result"] in results_set]
+    return sum(sel) / len(sel) if sel else 0.0
+
+
 def _summarize(trades):
     n = len(trades)
     if n == 0:
@@ -97,6 +117,10 @@ def _summarize(trades):
             "pnl": 0.0,
             "hops": 0,
             "hops_per_trade": 0.0,
+            "avg_hold_bars": 0.0,
+            "avg_hold_tp": 0.0,
+            "avg_hold_ptrail": 0.0,
+            "avg_hold_loss": 0.0,
         }
     tp = sum(1 for t in trades if t["result"] == "TP")
     ptrail = sum(1 for t in trades if t["result"] == "PROFIT_TRAIL")
@@ -112,6 +136,10 @@ def _summarize(trades):
         "pnl": pnl,
         "hops": hops,
         "hops_per_trade": hops / n if n else 0.0,
+        "avg_hold_bars": _avg_hold(trades, {"TP", "PROFIT_TRAIL", "LOSS", "OPEN"}),
+        "avg_hold_tp": _avg_hold(trades, {"TP"}),
+        "avg_hold_ptrail": _avg_hold(trades, {"PROFIT_TRAIL"}),
+        "avg_hold_loss": _avg_hold(trades, {"LOSS"}),
     }
 
 
@@ -131,6 +159,17 @@ def _diff_rows(base, variant):
     return rows
 
 
+def _avg_hold_delta(rows):
+    ds = [v.get("hold_bars", 0) - b.get("hold_bars", 0) for _, b, v in rows]
+    return sum(ds) / len(ds) if ds else 0.0
+
+
+def _fmt_time(ts):
+    if isinstance(ts, datetime):
+        return ts.strftime("%Y-%m-%d %H:%M")
+    return str(ts)
+
+
 def main():
     args = sys.argv[1:]
     workers = 4
@@ -141,6 +180,25 @@ def main():
             del args[i : i + 2]
         except (ValueError, IndexError):
             pass
+
+    def _vals(flag, default, cast):
+        if flag not in args:
+            return list(default)
+        i = args.index(flag)
+        out = []
+        j = i + 1
+        while j < len(args) and not args[j].startswith("-"):
+            try:
+                out.append(cast(args[j]))
+            except ValueError:
+                break
+            j += 1
+        del args[i:j]
+        return out or list(default)
+
+    cont_ks = _vals("--cont-k", [0.1], float)
+    cont_bars = _vals("--cont-bars", [1], int)
+
     feather_dir = os.path.join(_HERE, "data", "daily")
     all_syms = sorted(
         f[: -len("_1m_raw.feather")]
@@ -151,29 +209,32 @@ def main():
     if not symbols:
         symbols = all_syms
 
+    combos = list(itertools.product(cont_ks, cont_bars))
+    runs = [("A", "retrace", 0.1, 1)]
+    for k, bars in combos:
+        runs.append(("B", "continuation", k, bars))
+        runs.append(("C", "atr_chase", k, bars))
+
+    print(
+        f"{len(runs)} kosis: A baseline + B/C x {len(combos)} kombinasyon "
+        f"(K={cont_ks}, bars={cont_bars}), {len(symbols)} coin, {workers} worker"
+    )
     t0 = datetime.now()
     results = {}
     errors = {}
-    for tag, mode in MODES:
-        trades, errs = run_mode(mode, symbols, workers)
-        results[tag] = {_key(t): t for t in trades}
-        errors[tag] = errs
+    for tag, mode, k, bars in runs:
+        key = (tag, k, bars)
+        trades, errs = run_mode(mode, symbols, workers, k, bars)
+        results[key] = {_key(t): t for t in trades}
+        errors[key] = errs
         dt = (datetime.now() - t0).total_seconds()
-        print(f"[{tag}:{mode}] {len(trades)} trade, {len(errs)} hatali coin, {dt:.0f}s")
+        print(
+            f"[{tag}:{mode} K={k} bars={bars}] {len(trades)} trade, "
+            f"{len(errs)} hatali coin, {dt:.0f}s"
+        )
 
-    base_a = results["A"]
-    base_b = results["B"]
-    base_c = results["C"]
-
-    sum_a = _summarize(base_a.values())
-    sum_b = _summarize(base_b.values())
-    sum_c = _summarize(base_c.values())
-    ab_rows = _diff_rows(base_a, base_b)
-    bc_rows = _diff_rows(base_b, base_c)
-    ab_pnl_delta = sum(v["final_pnl_usd"] - b["final_pnl_usd"] for _, b, v in ab_rows)
-    bc_pnl_delta = sum(v["final_pnl_usd"] - b["final_pnl_usd"] for _, b, v in bc_rows)
-    ab_hop_delta = sum(v["trailing_count"] - b["trailing_count"] for _, b, v in ab_rows)
-    bc_hop_delta = sum(v["trailing_count"] - b["trailing_count"] for _, b, v in bc_rows)
+    base_key = ("A", 0.1, 1)
+    base_a = results[base_key]
 
     atm = getattr(cfg, "ATR_TRAIL_MULT", None)
     tmm = getattr(cfg, "TRAIL_MIN_MOVE_MULT", None)
@@ -181,10 +242,10 @@ def main():
     lines = []
     w = lines.append
     w(
-        f"# Trailing Replay — A/B/C Karsilastirma ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+        f"# Trailing Replay — A/B/C + Parametre Taramasi ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
     )
     w("")
-    w("Ayni entry uretim kurali, 3 trailing modu:")
+    w("Ayni entry uretim kurali, trailing modlari + (K, bars) taramasi:")
     w(
         "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis)."
     )
@@ -192,109 +253,118 @@ def main():
         "- **B +continuation**: gap ici VEYA pozisyon lehine far-side kapanis (short `close < bottom`, long `close > top`); aksi yon invalidation."
     )
     w(
-        "- **C +ATR-chase**: B + FVG aday yoksa `SL = close -+ ATR_TRAIL_MULT*ATR` fallback."
+        "- **C +ATR-chase**: B + FVG aday yoksa `SL = close -+ K*ATR` fallback (`K = CONT_BUFFER_MULT`)."
+    )
+    w(
+        "- `CONT_BUFFER_MULT` (K): continuation/atr-chase SL tamponu; `CONT_CONFIRM_BARS` (bars): far-side kapanisin ard arda N bar korunmasi (N=1 ilk kapanista tetikler)."
     )
     w("")
     w(
-        f"Parametreler: `ATR_TRAIL_MULT={atm}`, `TRAIL_MIN_MOVE_MULT={tmm}`; entry/komisyon ve TP-RR mantigi moddan etkilenmez (TP degisimi yalnizca trail kaymasi kadar)."
+        f"Sabitler: `ATR_TRAIL_MULT={atm}`, `TRAIL_MIN_MOVE_MULT={tmm}`; entry/komisyon ve TP-RR mantigi moddan etkilenmez."
     )
     w(f"Coinler ({len(symbols)}): {', '.join(symbols)}")
-    w(
-        f"Hatali coin: A={','.join(errors['A']) or '-'} | B={','.join(errors['B']) or '-'} | C={','.join(errors['C']) or '-'}"
-    )
-    w("")
-    w(
-        "> Not: Modlar farkli SL/TP uzerinden exit zamanini degistirdigi icin trade sayilari modlar arasinda farklidir"
-    )
-    w(
-        "> (bir trade'in exit'i, bir sonraki entry'nin zamanlamasini kaydirir). Ozet satirlari mod-ic toplamlardir;"
-    )
-    w(
-        "> per-trade tablosu yalnizca ayni (coin, entry) ile eslesen trade'leri karsilastirir."
-    )
     w("")
     w("## Ozet")
     w("")
-    hdr = "| Mod | Trade | TP | PTrail | LOSS | PE% | NetPnL | ToplamHOP | HOP/trade |"
+    hdr = (
+        "| Mod | K | Bars | Trade | TP | PTrail | LOSS | PE% | NetPnL | "
+        "HOP | HOP/t | AvgHold(b) | AvgHold(h) |"
+    )
     w(hdr)
     w("|" + "---|" * (hdr.count("|") - 1))
-    for tag, s in (("A", sum_a), ("B", sum_b), ("C", sum_c)):
+    for tag, _mode, k, bars in runs:
+        s = _summarize(results[(tag, k, bars)].values())
         w(
-            f"| {tag} | {s['n']} | {s['tp']} | {s['ptrail']} | {s['loss']} | "
-            f"{s['win_pct']:.1f}% | {s['pnl']:+,.0f} | {s['hops']} | {s['hops_per_trade']:.2f} |"
+            f"| {tag} | {k} | {bars} | {s['n']} | {s['tp']} | {s['ptrail']} | {s['loss']} | "
+            f"{s['win_pct']:.1f}% | {s['pnl']:+,.0f} | {s['hops']} | "
+            f"{s['hops_per_trade']:.2f} | {s['avg_hold_bars']:.1f} | "
+            f"{s['avg_hold_bars'] / BARS_PER_HOUR:.1f} |"
         )
     w("")
-    w("## A → B (continuation eklenince)")
-    w(f"- Farkli sonuclanan (eslesen) trade: **{len(ab_rows)}**")
-    w(f"- Toplam HOP degisimi: **{ab_hop_delta:+d}**")
-    w(f"- Toplam PnL degisimi: **{ab_pnl_delta:+,.0f} USD**")
     w(
-        f"- HOP artan trade sayisi: {sum(1 for _, b, v in ab_rows if v['trailing_count'] > b['trailing_count'])}"
-    )
-    w(
-        f"- HOP azalan trade sayisi: {sum(1 for _, b, v in ab_rows if v['trailing_count'] < b['trailing_count'])}"
-    )
-    w(
-        f"- Sonuc degisen trade sayisi: {sum(1 for _, b, v in ab_rows if b['result'] != v['result'])}"
+        "> AvgHold: ortalama bar basi holding (15dk bar); (h) = saat. Modlar SL/TP uzerinden exit zamanini degistirdigi icin trade sayilari da degisir."
     )
     w("")
-    w("## B → C (ATR-chase fallback eklenince)")
-    w(f"- Farkli sonuclanan (eslesen) trade: **{len(bc_rows)}**")
-    w(f"- Toplam HOP degisimi: **{bc_hop_delta:+d}**")
-    w(f"- Toplam PnL degisimi: **{bc_pnl_delta:+,.0f} USD**")
-    w(
-        f"- HOP artan trade sayisi: {sum(1 for _, b, v in bc_rows if v['trailing_count'] > b['trailing_count'])}"
+
+    # ── Varyasyon analizi: her B/C run vs A baseline (eslesen trade'ler) ──
+    w("## A (retrace baseline) vs varyasyon — eslesen trade'ler")
+    w("")
+    vhdr = (
+        "| Varyasyon | Matched | Farkli | HOP + | HOP - | HOP Delta | "
+        "PnL Delta | Sonuc Degisen | AvgHold Delta(b) | AvgHold Delta(h) |"
     )
+    w(vhdr)
+    w("|" + "---|" * (vhdr.count("|") - 1))
+    for tag, _mode, k, bars in runs:
+        if tag == "A":
+            continue
+        key = (tag, k, bars)
+        variant = results[key]
+        rows = _diff_rows(base_a, variant)
+        ho_d = sum(v["trailing_count"] - b["trailing_count"] for _, b, v in rows)
+        pnl_d = sum(v["final_pnl_usd"] - b["final_pnl_usd"] for _, b, v in rows)
+        n_up = sum(1 for _, b, v in rows if v["trailing_count"] > b["trailing_count"])
+        n_dn = sum(1 for _, b, v in rows if v["trailing_count"] < b["trailing_count"])
+        n_rc = sum(1 for _, b, v in rows if b["result"] != v["result"])
+        hd = _avg_hold_delta(rows)
+        w(
+            f"| {tag} K={k} B={bars} | {len(variant)} | {len(rows)} | {n_up} | {n_dn} | "
+            f"{ho_d:+d} | {pnl_d:+,.0f} | {n_rc} | {hd:+.1f} | {hd / BARS_PER_HOUR:+.1f} |"
+        )
+    w("")
     w(
-        f"- HOP azalan trade sayisi: {sum(1 for _, b, v in bc_rows if v['trailing_count'] < b['trailing_count'])}"
-    )
-    w(
-        f"- Sonuc degisen trade sayisi: {sum(1 for _, b, v in bc_rows if b['result'] != v['result'])}"
+        "> Hipotez kontrolu: AvgHold Delta > 0, genis K / teyit penceresi SL'yi gec kaydirdigi icin holding'i uzatir (erken kesmeyi onler)."
     )
 
-    def _fmt_time(ts):
-        if isinstance(ts, datetime):
-            return ts.strftime("%Y-%m-%d %H:%M")
-        return str(ts)
-
-    for title, rows, tag_a, tag_b in (
-        ("## A vs B — Per-trade fark (eslesen)", ab_rows, "A", "B"),
-        ("## B vs C — Per-trade fark (eslesen)", bc_rows, "B", "C"),
-    ):
-        if not rows:
+    # ── A/B/C per-trade detay yalnizca tek kombinasyon varsa (eski davranis) ──
+    if len(runs) == 3:
+        base_b = results[("B", combos[0][0], combos[0][1])]
+        base_c = results[("C", combos[0][0], combos[0][1])]
+        ab_rows = _diff_rows(base_a, base_b)
+        bc_rows = _diff_rows(base_b, base_c)
+        for title, rows, tag_a, tag_b in (
+            ("## A vs B — Per-trade fark (eslesen)", ab_rows, "A", "B"),
+            ("## B vs C — Per-trade fark (eslesen)", bc_rows, "B", "C"),
+        ):
+            if not rows:
+                w("")
+                w(title)
+                w("")
+                w("*(Fark yok)*")
+                continue
             w("")
             w(title)
             w("")
-            w("*(Fark yok)*")
-            continue
-        w("")
-        w(title)
-        w("")
-        hdr2 = (
-            f"| Coin | Side | Entry | Sonuc {tag_a} | Sonuc {tag_b} | "
-            f"HOP {tag_a} | HOP {tag_b} | PnL {tag_a} | PnL {tag_b} |"
-        )
-        w(hdr2)
-        w("|" + "---|" * (hdr2.count("|") - 1))
-        for k, b, v in rows:
-            sym, et, side, _ep = k
-            w(
-                f"| {sym} | {side} | {_fmt_time(et)} | {b['result']} | {v['result']} | "
-                f"{b['trailing_count']} | {v['trailing_count']} | "
-                f"{b['final_pnl_usd']:+,.0f} | {v['final_pnl_usd']:+,.0f} |"
+            hdr2 = (
+                f"| Coin | Side | Entry | Sonuc {tag_a} | Sonuc {tag_b} | "
+                f"HOP {tag_a} | HOP {tag_b} | PnL {tag_a} | PnL {tag_b} | "
+                f"Hold {tag_a}(b) | Hold {tag_b}(b) |"
             )
+            w(hdr2)
+            w("|" + "---|" * (hdr2.count("|") - 1))
+            for k2, b, v in rows:
+                sym, et, side, _ep = k2
+                w(
+                    f"| {sym} | {side} | {_fmt_time(et)} | {b['result']} | {v['result']} | "
+                    f"{b['trailing_count']} | {v['trailing_count']} | "
+                    f"{b['final_pnl_usd']:+,.0f} | {v['final_pnl_usd']:+,.0f} | "
+                    f"{b.get('hold_bars', 0)} | {v.get('hold_bars', 0)} |"
+                )
 
     w("")
     w("## Yorum")
     w("")
     w(
-        "- A->B: continuation yalnizca lehine far-side kapanista ek SL ceker; retrace onceligi korunur (ilk gorulen onay kazanir), aksi yon invalidation."
+        "- A->B/C: continuation yalnizca lehine far-side kapanista ek SL ceker; retrace onceligi korunur (ilk gorulen onay kazanir), aksi yon invalidation."
     )
     w(
         "- B->C: ATR-chase yalnizca FVG aday kullanilamadiginda devreye girer; `TMM*risk` altindaki hareketler atlanir."
     )
     w(
-        "- Per-trade eslesen karsilastirma yalnizca ayni entry anina sahip trade'leri kapsar; toplam farklar ayni zamanda trade devir hizi etkisini icerir."
+        "- Hipotez: dar K (0.1) SL'yi fiyatin az once gectigi sinirin hemen yanina koyar -> trend-ici pullback'te erken cikis; genis K bunu retrace'in dogal mesafesine yakinlastirir (AvgHold ve PnL satirlarindan takip edin)."
+    )
+    w(
+        "- N-bar teyit (bars > 1): ilk far-side kapanista degil, ard arda N kapanis sonrasi tetiklenir — sahte kirilimlari filtreler; trade sayisini azaltmasi beklenir."
     )
 
     report_dir = os.path.join(_HERE, "..", "reports")

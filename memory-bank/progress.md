@@ -1,5 +1,12 @@
 # backtest-sniper — Progress
 
+## 🔧 Continuation Yapısal Mesafe — Baş Mühendis Direktifi (2026-08-07)
+- **Hipotez:** Retrace'te SL gap'in uzak sınırına konur (gap kendisi mesafe tamponu); continuation'da SL fiyatın az önce kırdığı en yakın sınıra (`fvg.top − 0.1×ATR`) konur → 0.1×ATR tampon trend-ici noise'a yapısal savunmasız → trade'ler TP'ye ulaşmadan ufak kâr kilitleriyle erken kapanır (trade sayısı +%40-55 kanıtı) → fee yükü + büyük TP edge'i kesilir.
+- **Direktif:** (1) K=0.3/0.5/1.0 tampon, (2) N-bar teyit penceresi, (3) holding ölçümü, (4) sonra tam backtest.
+- **Uygulama:** `analyzer_v5.py` — `CONT_BUFFER_MULT` (K, default 0.1), `CONT_CONFIRM_BARS` (N, default 1); `fvg_confirm_mode(fvg, bars, confirm_bars)` (N>1: ard arda far-side kapanış, araya gap içi kapanış → retrace kazanır); trailing `ab2 = atr * (CONT_BUFFER_MULT if continuation else ATM)`; atr_chase fallback `ab2 = atr * CONT_BUFFER_MULT`; `log_trade`'e `hold_bars`. `replay_trailing_v2.py` — `--cont-k/--cont-bars` tarama, AvgHold (TP/PTrail/LOSS ayrı), "A vs varyasyon" tablosu (AvgHoldΔ hipotez testi). Default'lar canlı `trailing_manager._fvg_multihop` ile birebir (K=0.1, N=1).
+- **Doğrulama:** default'lar retrace/K=0.1/bars=1 teyit edildi; ADA retrace `2821 islem | PE=47.8% net PnL=+31317` (eski baseline birebir). 2-coin sweep smoke test timeout'a takıldı (makine meşguldü) — bekliyor.
+- **Serial mod PnL print fix:** `analyzer_v5.py` serial özet satırına `net PnL={total_pnl:+0f}` eklendi (paralel modla tutarlı).
+
 ## ✅ TRAIL_MODE Default Regresyon Fix (2026-08-07)
 - **Sorun:** `5cfa2a3`'te `TRAIL_MODE = "continuation"` default yapıldı → normal analyzer koşuları (replay dışı) tüm coin'lerde **eksi PnL** üretmeye başladı (kullanıcı: "en son 4M+ kapatmıştık"). Neden: continuation + is_placeable yolu retrace'ten farklı SL/exit üretiyor (ALGO −58819, ADA −57839).
 - **Fix (`90f0939`):** default `retrace` (eski davranış birebir: `mode != "retrace"` → skip; is_placeable yalnızca continuation/atr_chase). Replay (`replay_trailing_v2.py:57`) modu kendisi set eder — A/B/C karşılaştırması bozulmadı. Doğrulama: retrace ALGO +59140 / ADA +31317 (eski pozitif davranış).

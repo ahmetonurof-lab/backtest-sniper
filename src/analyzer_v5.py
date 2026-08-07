@@ -154,34 +154,54 @@ def get_fvg_status(top, bottom, direction, b):
 # "atr_chase"    : + FVG aday kullanilamazsa SL = close ∓ K*ATR fallback
 TRAIL_MODE = "retrace"
 
+# Continuation/Atr-chase SL tamponu: K * ATR. Default 0.1 = canli ile birebir
+# (trailing_manager ATR_TRAIL_MULT). Daha genis K (0.3/0.5/1.0) retrace'in
+# dogal mesafesine yakinlasip trend-ici noise'a karsi dayanikliligi artirir.
+CONT_BUFFER_MULT = 0.1
+
+# Continuation onay penceresi: far-side kaparisan ard arda N bar boyunca
+# korunmali (ara kapanis gap icinde olursa retrace kazanir, invalidation
+# olursa None). Default 1 = ilk kapanista tetikle (canli ile birebir).
+CONT_CONFIRM_BARS = 1
+
 
 # ─── FVG confirm-mode helper (trailing için) ─────────
-def fvg_confirm_mode(fvg, all_bars):
+def fvg_confirm_mode(fvg, all_bars, confirm_bars: int = 1):
     """FVG icin onay modu: 'retrace' | 'continuation' | None.
 
     'continuation': pozisyon lehine far-side kapanis (bullish: close > top,
     bearish: close < bottom). Aksi yon (bullish: close < bottom,
     bearish: close > top) invalidation sayilir ve None doner.
     Ilk gorulen onay kazanir (retrace/continuation birbirini ezmez).
+
+    confirm_bars > 1: continuation yalnizca far-side kapanisin ard arda N bar
+    boyunca korunmasiyla tetiklenir (sahte kirilim filtresi). Araya gap ici
+    kapanis girerse o an retrace kazanir; invalidation olursa None.
+    confirm_bars=1 ile eski davranis birebir.
     """
     scan_from = fvg.real_index + 2
+    cont = 0
     for b in all_bars:
         if b.index < scan_from:
             continue
         if fvg.direction == "bullish":
             if b.close > fvg.top:
-                return "continuation"
+                cont += 1
+                if cont >= confirm_bars:
+                    return "continuation"
+                continue
             if b.close < fvg.bottom:
                 return None
-            if fvg.bottom <= b.close <= fvg.top:
-                return "retrace"
+            return "retrace"
         else:
             if b.close < fvg.bottom:
-                return "continuation"
+                cont += 1
+                if cont >= confirm_bars:
+                    return "continuation"
+                continue
             if b.close > fvg.top:
                 return None
-            if fvg.bottom <= b.close <= fvg.top:
-                return "retrace"
+            return "retrace"
     return None
 
 
@@ -495,12 +515,16 @@ def _collect_fvg_profile_impl(symbol: str):
                         continue
                     if s2 == "short" and fvg.direction != "bearish":
                         continue
-                    mode = fvg_confirm_mode(fvg, tc)
+                    mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
                     if TRAIL_MODE == "retrace" and mode != "retrace":
                         continue
                     if mode is None:
                         continue
-                    ab2 = atr * ATM
+                    # Continuation/atr-chase SL tamponu K*ATR (CONT_BUFFER_MULT),
+                    # retrace tamponu ATR_TRAIL_MULT*ATR. Kapsam: far-side hop'u
+                    # fiyatin yeni gectigi sinirin hemen yanina SL koyar; genis K,
+                    # trend-ici noise'a karsi retrace'in dogal mesafesine yakinlasir.
+                    ab2 = atr * (CONT_BUFFER_MULT if mode == "continuation" else ATM)
                     # is_placeable yalnizca continuation/atr_chase'te uygulanir
                     # (retrace modu eski davranisi aynen korur). cur = son kapanis.
                     placeable = TRAIL_MODE != "retrace"
@@ -541,9 +565,9 @@ def _collect_fvg_profile_impl(symbol: str):
                             upd = True
                 if TRAIL_MODE == "atr_chase" and not upd:
                     # ATR-chase fallback: FVG aday kullanilamadiginda
-                    # SL = close ∓ K*ATR (K = ATR_TRAIL_MULT) ile chase et.
+                    # SL = close ∓ K*ATR (K = CONT_BUFFER_MULT) ile chase et.
                     cur_price = cur.close
-                    ab2 = atr * ATM
+                    ab2 = atr * CONT_BUFFER_MULT
                     if s2 == "long":
                         ns = cur_price - ab2
                         if ns > csl and (ns - csl) > rpt2 * TMM and ns < cur_price:
@@ -689,6 +713,7 @@ def _collect_fvg_profile_impl(symbol: str):
                             "trailing_count": t.get("trailing_count", 0),
                             "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
                             "atr": round(atr, 6),
+                            "hold_bars": t.get("exit_bar", 0) - t.get("entry_bar", 0),
                         }
                     )
             else:
@@ -788,6 +813,7 @@ def _collect_fvg_profile_impl(symbol: str):
                             "trailing_count": t.get("trailing_count", 0),
                             "fvg_size_pips": round(fvg_sz, 6) if fvg_sz else None,
                             "atr": round(atr, 6),
+                            "hold_bars": t.get("exit_bar", 0) - t.get("entry_bar", 0),
                         }
                     )
 
@@ -1021,7 +1047,7 @@ def main():
                 print(
                     f"    [{sym}] {stats['total_trades']} islem | "
                     f"TP:{tp_c} PTrail:{pt_c} LOSS:{ls_c} | "
-                    f"PE={stats['positive_exit_pct']:.1f}%"
+                    f"PE={stats['positive_exit_pct']:.1f}% net PnL={stats['total_pnl']:+0f}"
                 )
             except Exception as e:
                 import traceback
