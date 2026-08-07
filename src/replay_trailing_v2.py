@@ -32,6 +32,7 @@ import builtins
 import concurrent.futures
 import itertools
 import os
+import pickle
 import sys
 from datetime import datetime
 
@@ -94,6 +95,34 @@ def run_mode(mode, symbols, workers, k, bars):
                 errors.append(sym)
             trades.extend(ts)
     return trades, errors
+
+
+def _checkpoint_path():
+    return os.path.join(_HERE, "..", "reports", "_replay_checkpoint.pkl")
+
+
+def _load_checkpoint(runs):
+    """Onceki yarim kalmis taramayi yukler (runs listesi birebir eslesmeli)."""
+    path = _checkpoint_path()
+    if not os.path.exists(path):
+        return {}, {}
+    try:
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        if data.get("runs") != runs:
+            print("Checkpoint config uyusmuyor — temiz basliyorum.")
+            return {}, {}
+        return data.get("results", {}), data.get("errors", {})
+    except Exception as e:  # noqa: BLE001
+        print(f"Checkpoint okunamadi ({e}) — temiz basliyorum.")
+        return {}, {}
+
+
+def _save_checkpoint(runs, results, errors):
+    path = _checkpoint_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump({"runs": runs, "results": results, "errors": errors}, f)
 
 
 def _key(t):
@@ -225,17 +254,24 @@ def main():
         f"(K={cont_ks}, bars={cont_bars}), {len(symbols)} coin, {workers} worker"
     )
     t0 = datetime.now()
-    results = {}
-    errors = {}
-    for tag, mode, k, bars in runs:
+    results, errors = _load_checkpoint(runs)
+    done = set(results)
+    pending = [r for r in runs if (r[0], r[2], r[3]) not in done]
+    if results:
+        print(
+            f"Checkpoint'ten {len(results)}/{len(runs)} kosis yuklendi, "
+            f"{len(pending)} kalan: {[f'{t}:{k}/{b}' for t, _m, k, b in pending]}"
+        )
+    for tag, mode, k, bars in pending:
         key = (tag, k, bars)
         trades, errs = run_mode(mode, symbols, workers, k, bars)
         results[key] = {_key(t): t for t in trades}
         errors[key] = errs
+        _save_checkpoint(runs, results, errors)
         dt = (datetime.now() - t0).total_seconds()
         print(
             f"[{tag}:{mode} K={k} bars={bars}] {len(trades)} trade, "
-            f"{len(errs)} hatali coin, {dt:.0f}s"
+            f"{len(errs)} hatali coin, {dt:.0f}s (checkpoint kaydedildi)"
         )
 
     base_key = ("A", 0.1, 1)
@@ -383,6 +419,9 @@ def main():
     rpt_path = os.path.join(report_dir, "trailing_replay_ab_c.md")
     with open(rpt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+    ck = _checkpoint_path()
+    if os.path.exists(ck):
+        os.remove(ck)
     print(f"\nRapor: {rpt_path}")
     print(f"Toplam sure: {(datetime.now() - t0).total_seconds():.0f}s")
 
