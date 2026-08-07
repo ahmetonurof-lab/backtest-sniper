@@ -1001,9 +1001,16 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
 
 # ─── Main ─────────────────────────────────────────────────────
 # ─── Worker: tek sembol analizi (paralel surec) ──────────────
-def _analyze_one_sym_v5(sym: str) -> dict | None:
+def _analyze_one_sym_v5(
+    sym: str,
+    mode: str | None = None,
+    cont_k: float | None = None,
+    act_r: float | None = None,
+) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
-    Ayri ProcessPoolExecutor worker'inda calisir."""
+    Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
+    trailing modu + (K, R) parametreleri worker icinde set edilir
+    (spawn altinda main() global seti worker'a tasinmaz)."""
     import os
     import sys
 
@@ -1022,6 +1029,14 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
 
     # Import engine from same module
     from analyzer_v5 import collect_fvg_profile, compute_session_stats
+    import analyzer_v5 as _eng
+
+    if mode is not None:
+        _eng.TRAIL_MODE = mode
+    if cont_k is not None:
+        _eng.CONT_BUFFER_MULT = cont_k
+    if act_r is not None:
+        _eng.TRAIL_ACTIVATION_R_MULT = act_r
 
     try:
         result = collect_fvg_profile(sym)
@@ -1042,9 +1057,180 @@ def _analyze_one_sym_v5(sym: str) -> dict | None:
         return {"sym": sym, "error": str(e)}
 
 
+def run_compare_ad(symbols, workers, serial, cont_k, act_r):
+    """A (retrace baseline) vs D (activation K, R) karsilastirmasi.
+
+    Her coin icin A ve D modlarini ayri worker'da kosar, coin-bazli
+    PnL / Win Rate (PE%) / MaxDD / Trade sayisi dokumunu ve D'nin A'yi
+    yendigi (NetPnL bazinda outperform) coin listesini uretir.
+    Rapor: reports/analyzer_v5_d_compare.md
+    """
+    import concurrent.futures
+
+    syms = sorted(symbols)
+    tasks = []
+    for sym in syms:
+        tasks.append((sym, "A", None, None))
+        tasks.append((sym, "D", cont_k, act_r))
+
+    results = {}
+    if serial or workers <= 1:
+        for sym, mode, k, r in tasks:
+            results[(sym, mode)] = _analyze_one_sym_v5(sym, mode, k, r)
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+            fut_map = {
+                ex.submit(_analyze_one_sym_v5, sym, mode, k, r): (sym, mode)
+                for sym, mode, k, r in tasks
+            }
+            for fut in concurrent.futures.as_completed(fut_map):
+                key = fut_map[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as e:
+                    results[key] = {"sym": key[0], "error": str(e)}
+
+    rows = []
+    for sym in syms:
+        ra = results.get((sym, "A"), {})
+        rd = results.get((sym, "D"), {})
+        if "error" in ra or "error" in rd:
+            rows.append((sym, None, None, None, None, None, None, None, None, None))
+            continue
+        sa, sd = ra["stats"], rd["stats"]
+        d_pnl = sd["total_pnl"] - sa["total_pnl"]
+        rows.append(
+            (
+                sym,
+                sa["total_trades"],
+                sa["positive_exit_pct"],
+                sa["max_dd_pct"],
+                sa["total_pnl"],
+                sd["total_trades"],
+                sd["positive_exit_pct"],
+                sd["max_dd_pct"],
+                sd["total_pnl"],
+                d_pnl,
+            )
+        )
+
+    t_a = {"n": 0, "pe": 0.0, "dd": 0.0, "pnl": 0.0}
+    t_d = {"n": 0, "pe": 0.0, "dd": 0.0, "pnl": 0.0}
+    for r in rows:
+        if r[1] is None:
+            continue
+        t_a["n"] += r[1]
+        t_a["pe"] += r[2] * r[1]
+        t_a["dd"] = max(t_a["dd"], r[3])
+        t_a["pnl"] += r[4]
+        t_d["n"] += r[5]
+        t_d["pe"] += r[6] * r[5]
+        t_d["dd"] = max(t_d["dd"], r[7])
+        t_d["pnl"] += r[8]
+    t_a["pe"] = t_a["pe"] / t_a["n"] if t_a["n"] else 0.0
+    t_d["pe"] = t_d["pe"] / t_d["n"] if t_d["n"] else 0.0
+
+    out_win = [r for r in rows if r[1] is not None and r[8] > 0]
+    out_win.sort(key=lambda r: r[8], reverse=True)
+
+    lines = []
+    w = lines.append
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    w(f"# A (retrace) vs D (activation K={cont_k}, R={act_r}) — {ts}")
+    w("")
+    w(
+        "- **A (retrace baseline)**: yalnizca FVG gap'i icinde kapanis onaylar; SL/TP eski davranis (ATR_TRAIL_MULT)."
+    )
+    w(
+        f"- **D (activation K={cont_k}, R={act_r})**: FVG yolu retrace ile birebir; FVG adayi yoksa ATR-chase fallback `SL = close -+ K*ATR` YALNIZCA unrealized kar `>= R * risk_pts` (`risk_pts = |entry - initial_sl|`) oldugunda devreye girer; SL/TP paralel tasinir (PTrail)."
+    )
+    w(
+        f"- Sabitler: `ATR_TRAIL_MULT={getattr(cfg, 'ATR_TRAIL_MULT', None)}`, `TRAIL_MIN_MOVE_MULT={getattr(cfg, 'TRAIL_MIN_MOVE_MULT', None)}`; entry/komisyon/TP-RR moddan etkilenmez."
+    )
+    w("")
+
+    w("## Ozet (toplam)")
+    w("")
+    hdr = "| Mod | Trade | PE% | MaxDD% | NetPnL |"
+    w(hdr)
+    w("|" + "---|" * (hdr.count("|") - 1))
+    w(f"| A | {t_a['n']} | {t_a['pe']:.1f}% | {t_a['dd']:.1f}% | {t_a['pnl']:+,.0f} |")
+    w(f"| D | {t_d['n']} | {t_d['pe']:.1f}% | {t_d['dd']:.1f}% | {t_d['pnl']:+,.0f} |")
+    w("")
+
+    w("## Coin bazli dokum")
+    w("")
+    hdr2 = "| Symbol | Tr(A) | PE%(A) | DD%(A) | PnL(A) | Tr(D) | PE%(D) | DD%(D) | PnL(D) | ΔPnL(D-A) |"
+    w(hdr2)
+    w("|" + "---|" * (hdr2.count("|") - 1))
+    for r in rows:
+        if r[1] is None:
+            w(f"| {r[0]} | — | — | — | — | — | — | — | — | HATA |")
+            continue
+        w(
+            f"| {r[0]} | {r[1]} | {r[2]:.1f}% | {r[3]:.1f}% | {r[4]:+,.0f} | "
+            f"{r[5]} | {r[6]:.1f}% | {r[7]:.1f}% | {r[8]:+,.0f} | {r[9]:+,.0f} |"
+        )
+    w("")
+
+    w(f"## D'nin A'yi yendigi coinler ({len(out_win)}/{len(syms)})")
+    w("")
+    if out_win:
+        w("| Symbol | PnL A | PnL D | ΔPnL |")
+        w("|---|--:|--:|--:|")
+        for r in out_win:
+            w(f"| {r[0]} | {r[4]:+,.0f} | {r[8]:+,.0f} | {r[9]:+,.0f} |")
+    else:
+        w("*(Hicbir coinde D, A'yi NetPnL'de gecmedi)*")
+    w("")
+
+    w("## Sonuc")
+    w("")
+    verdict = (
+        "D, toplam NetPnL'de A'yi geciyor"
+        if t_d["pnl"] > t_a["pnl"]
+        else "A, toplam NetPnL'de D'den onde"
+    )
+    w(
+        f"- {verdict} (A: {t_a['pnl']:+,.0f} vs D: {t_d['pnl']:+,.0f}, fark {t_d['pnl'] - t_a['pnl']:+,.0f})."
+    )
+    w(
+        f"- D, {len(out_win)}/{len(syms)} coinde A'ya ustun geldi; toplam MaxDD A: {t_a['dd']:.1f}% / D: {t_d['dd']:.1f}%."
+    )
+
+    report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+    os.makedirs(report_dir, exist_ok=True)
+    rpt_path = os.path.join(report_dir, "analyzer_v5_d_compare.md")
+    with open(rpt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print(f"\n{'=' * 100}")
+    print("  A vs D (K, R) KARSILASTIRMA")
+    print(f"{'=' * 100}")
+    print(
+        f"  {'Symbol':<10} {'TrA':>5} {'PEA%':>7} {'PnLA':>10} {'TrD':>5} {'PED%':>7} {'PnLD':>10} {'ΔPnL':>10}"
+    )
+    for r in rows:
+        if r[1] is None:
+            print(f"  {r[0]:<10} HATA")
+            continue
+        print(
+            f"  {r[0]:<10} {r[1]:>5} {r[2]:>6.1f}% {r[4]:>+10,.0f} "
+            f"{r[5]:>5} {r[6]:>6.1f}% {r[8]:>+10,.0f} {r[9]:>+10,.0f}"
+        )
+    print(
+        f"\n  TOPLAM  A: {t_a['n']} trade {t_a['pe']:.1f}% {t_a['pnl']:+,.0f} | "
+        f"D: {t_d['n']} trade {t_d['pe']:.1f}% {t_d['pnl']:+,.0f}"
+    )
+    print(
+        f"  D > A (NetPnL): {len(out_win)}/{len(syms)} coin -> {', '.join(r[0] for r in out_win)}"
+    )
+    print(f"\n  Rapor: {rpt_path}")
+
+
 def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
-    global _LOGGER
+    global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1055,12 +1241,53 @@ def main():
         help="Paralel worker sayisi (1=serial, default=1)",
     )
     parser.add_argument("--serial", action="store_true", help="Serial mod")
+    parser.add_argument(
+        "--mode",
+        choices=["A", "D"],
+        default="A",
+        help="Trailing modu: A=retrace (default), D=activation ATR-chase",
+    )
+    parser.add_argument(
+        "--cont-k",
+        type=float,
+        default=2.0,
+        help="CONT_BUFFER_MULT (K) — D modunda SL = close -+ K*ATR (default=2.0)",
+    )
+    parser.add_argument(
+        "--act-r",
+        type=float,
+        default=1.5,
+        help="TRAIL_ACTIVATION_R_MULT (R) — D modu aktivasyon esigi R*risk_pts (default=1.5)",
+    )
+    parser.add_argument(
+        "--compare-ad",
+        action="store_true",
+        help="A vs D (K, R) coin-bazli karsilastirma raporu uret (28 coin)",
+    )
     args = parser.parse_args()
 
     use_serial = args.serial or args.workers <= 1
     n_workers = args.workers if not use_serial else 1
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # ── Kalici/seçenekli trailing modu: --compare-ad veya --mode D ──
+    if args.compare_ad:
+        t0c = time.time()
+        run_compare_ad(cfg.SYMBOLS, n_workers, use_serial, args.cont_k, args.act_r)
+        print(f"Sure: {time.time() - t0c:.0f}s")
+        return
+
+    if args.mode == "D":
+        TRAIL_MODE = "activation"
+        CONT_BUFFER_MULT = args.cont_k
+        TRAIL_ACTIVATION_R_MULT = args.act_r
+        print(
+            f"  D MODU (activation): K={CONT_BUFFER_MULT}, "
+            f"R={TRAIL_ACTIVATION_R_MULT}, TRAIL_MODE={TRAIL_MODE}",
+            flush=True,
+        )
+
     t0 = time.time()
     results_data = []
     all_trade_records = []
@@ -1119,7 +1346,16 @@ def main():
         syms = sorted(cfg.SYMBOLS)
         print(f"\n  {len(syms)} coin {n_workers} worker ile isleniyor...\n", flush=True)
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-            fut_map = {executor.submit(_analyze_one_sym_v5, sym): sym for sym in syms}
+            fut_map = {
+                executor.submit(
+                    _analyze_one_sym_v5,
+                    sym,
+                    args.mode,
+                    args.cont_k if args.mode == "D" else None,
+                    args.act_r if args.mode == "D" else None,
+                ): sym
+                for sym in syms
+            }
             for future in concurrent.futures.as_completed(fut_map):
                 sym = fut_map[future]
                 try:
