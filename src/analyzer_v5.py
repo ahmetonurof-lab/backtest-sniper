@@ -1070,18 +1070,18 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
     syms = sorted(symbols)
     tasks = []
     for sym in syms:
-        tasks.append((sym, "A", None, None))
-        tasks.append((sym, "D", cont_k, act_r))
+        tasks.append((sym, "A", "retrace", None, None))
+        tasks.append((sym, "D", "activation", cont_k, act_r))
 
     results = {}
     if serial or workers <= 1:
-        for sym, mode, k, r in tasks:
-            results[(sym, mode)] = _analyze_one_sym_v5(sym, mode, k, r)
+        for sym, tag, mode, k, r in tasks:
+            results[(sym, tag)] = _analyze_one_sym_v5(sym, mode, k, r)
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
             fut_map = {
-                ex.submit(_analyze_one_sym_v5, sym, mode, k, r): (sym, mode)
-                for sym, mode, k, r in tasks
+                ex.submit(_analyze_one_sym_v5, sym, mode, k, r): (sym, tag)
+                for sym, tag, mode, k, r in tasks
             }
             for fut in concurrent.futures.as_completed(fut_map):
                 key = fut_map[fut]
@@ -1130,8 +1130,8 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
     t_a["pe"] = t_a["pe"] / t_a["n"] if t_a["n"] else 0.0
     t_d["pe"] = t_d["pe"] / t_d["n"] if t_d["n"] else 0.0
 
-    out_win = [r for r in rows if r[1] is not None and r[8] > 0]
-    out_win.sort(key=lambda r: r[8], reverse=True)
+    out_win = [r for r in rows if r[1] is not None and r[9] > 0]
+    out_win.sort(key=lambda r: r[9], reverse=True)
 
     lines = []
     w = lines.append
@@ -1242,24 +1242,6 @@ def main():
     )
     parser.add_argument("--serial", action="store_true", help="Serial mod")
     parser.add_argument(
-        "--mode",
-        choices=["A", "D"],
-        default="A",
-        help="Trailing modu: A=retrace (default), D=activation ATR-chase",
-    )
-    parser.add_argument(
-        "--cont-k",
-        type=float,
-        default=2.0,
-        help="CONT_BUFFER_MULT (K) — D modunda SL = close -+ K*ATR (default=2.0)",
-    )
-    parser.add_argument(
-        "--act-r",
-        type=float,
-        default=1.5,
-        help="TRAIL_ACTIVATION_R_MULT (R) — D modu aktivasyon esigi R*risk_pts (default=1.5)",
-    )
-    parser.add_argument(
         "--compare-ad",
         action="store_true",
         help="A vs D (K, R) coin-bazli karsilastirma raporu uret (28 coin)",
@@ -1271,22 +1253,27 @@ def main():
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    # ── Kalici/seçenekli trailing modu: --compare-ad veya --mode D ──
+    # ── Sabit fallback modu: D (activation K=2.0, R=1.5) ──
+    TRAIL_MODE = "activation"
+    CONT_BUFFER_MULT = 2.0
+    TRAIL_ACTIVATION_R_MULT = 1.5
+    print(
+        f"  D MODU (activation): K={CONT_BUFFER_MULT}, "
+        f"R={TRAIL_ACTIVATION_R_MULT}, TRAIL_MODE={TRAIL_MODE}",
+        flush=True,
+    )
+
     if args.compare_ad:
         t0c = time.time()
-        run_compare_ad(cfg.SYMBOLS, n_workers, use_serial, args.cont_k, args.act_r)
+        run_compare_ad(
+            cfg.SYMBOLS,
+            n_workers,
+            use_serial,
+            CONT_BUFFER_MULT,
+            TRAIL_ACTIVATION_R_MULT,
+        )
         print(f"Sure: {time.time() - t0c:.0f}s")
         return
-
-    if args.mode == "D":
-        TRAIL_MODE = "activation"
-        CONT_BUFFER_MULT = args.cont_k
-        TRAIL_ACTIVATION_R_MULT = args.act_r
-        print(
-            f"  D MODU (activation): K={CONT_BUFFER_MULT}, "
-            f"R={TRAIL_ACTIVATION_R_MULT}, TRAIL_MODE={TRAIL_MODE}",
-            flush=True,
-        )
 
     t0 = time.time()
     results_data = []
@@ -1350,9 +1337,9 @@ def main():
                 executor.submit(
                     _analyze_one_sym_v5,
                     sym,
-                    args.mode,
-                    args.cont_k if args.mode == "D" else None,
-                    args.act_r if args.mode == "D" else None,
+                    TRAIL_MODE,
+                    CONT_BUFFER_MULT,
+                    TRAIL_ACTIVATION_R_MULT,
                 ): sym
                 for sym in syms
             }
