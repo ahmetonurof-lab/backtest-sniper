@@ -1,5 +1,13 @@
 # backtest-sniper — Progress
 
+## ✅ Continuation Tarama SONUCU — ÖLÜ (2026-08-07 FINAL)
+- **Nihai sonuç: continuation (B) 9/9 varyasyonda derin negatif.** K=0.1 N=1/2/3 → -1.53M/-1.43M/-1.35M; K=0.3 → -1.41M/-1.35M/-1.30M; K=1.0 → -1.21M/-1.19M/-1.18M. A retrace **+4,100,540** (PE 60.9%, 111,246 trade) — baseline birebir.
+- **N-bar teyit (N=3) marjinal kazandırır ama PE'yi düzeltmez:** B içinde LOSS 65,038→63,692 (K=1.0), NetPnL -1.21M→-1.18M; PE% 32.7-33.8'de takılı (A: 60.9). Geniş K=1.0 tampon AvgHold'i uzatır (2.9→3.8 bar), erken kesmeyi önler ama HOP -15.5K / PnL Delta -2.5M telafi edilemez.
+- **Karar:** A/retrace canlıda sabit kalır; continuation deploy edilmez. `ATR_TRAIL_MULT_CONTINUATION=0.50`/`CONTINUATION_CONFIRM_BARS=2` yalnızca repo'da kalır (canlı restart yok).
+- **Rapor:** `reports/trailing_replay_ab_c.md` FINAL (tüm 10 koşu). Tam NetPnL tablosu progress'in üstünde.
+- **Checkpoint dersi:** `taskkill /F` checkpoint'i bozdu (yarım yazım, 161MB EOFError) → 7 koşuluk veri kayboldu, tarama baştan başladı. **Fix:** `_save_checkpoint` atomik yazıma geçti (tmp+rename) — commit `ea3629f`. Kullanıcı RAM uyarısı: aslında boş RAM 7.7GB, tarama bitmişti (bekleyen komut çıktıları kaybolduğu için "takıldın" sanıldı).
+- Tarama sırası sorunları: 2. koşu (workers 6) 7 koşu yaptı, kullanıcı kararıyla durduruldu; 3. koşu `--skip-k 0.5` checkpoint bozuk diye baştan A+B0.1+B0.3'ü yeniden koştu → fark edilip durduruldu; son koşu yalnız `--cont-k 1.0` (checkpoint'ten A yüklendi) → bitti.
+
 ## ✅ Continuation K/N Fix — Baş Mühendis Direktifi Uygulandı (2026-08-07)
 - **Direktif:** (1) continuation'a özel geniş K tampon (`ATR_TRAIL_MULT_CONTINUATION=0.5`), (2) N-bar teyit (`CONTINUATION_CONFIRM_BARS=2`), (3) replay'de K∈{0.3,0.5,1.0} × N∈{1,2,3} taraması, (4) sonra canlıya.
 - **Canlı (`sniper`):** `config.py`'ye iki yeni alan (ENV override'lı). `trailing_manager._fvg_confirm_mode` → N-bar streak sürümü (baş mühendisin kodu birebir; far-side ard arda N bar → continuation, araya gap içi kapanış → retrace, invalidation → None, is_closed break). `_fvg_multihop` → `atr_buffer_retrace` (0.10×ATR) / `atr_buffer_continuation` (K×ATR) ayrımı; mode'a göre yerel `atr_buffer`; global satır silindi.

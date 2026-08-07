@@ -1,11 +1,10 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-08-07: **Baş mühendis direktifi (continuation ayrı/geniş K tampon + N-bar teyit) canlıya ve backtest'e uygulandı, commit'ler push edildi.** Canlı `sniper`: `config.py`'ye `ATR_TRAIL_MULT_CONTINUATION=0.5` + `CONTINUATION_CONFIRM_BARS=2`; `trailing_manager.py` `_fvg_confirm_mode` N-bar streak sürümüne (baş mühendisin kodu birebir), `_fvg_multihop` `atr_buffer_retrace`/`atr_buffer_continuation` ayrımına geçti. Backtest `analyzer_v5.py`: `CONT_BUFFER_MULT`/`CONT_CONFIRM_BARS` artık canlı config'ten `getattr` ile okunuyor (import canlı sniper/src'ten), `fvg_confirm_mode` canlıdaki ile birebir (streak + is_closed break). Parite doğrulaması 7/7 (`src/_verify_confirm_parity.py`). Retrace baseline korundu: ADA 3942 trade / TP:585 PTrail:1737 LOSS:1620 / PE=58.9% / net PnL=+111746.88 (08-03 birebir, `src/_verify_retrace_fix.py`). Testler: trailing 55 + fvg/retrace 112 geçti; ruff temiz. Commit'ler: sniper `3e51e64`, backtest `6c9b128` (ikisi push edildi).
-**K/N taraması arka planda sürüyor (persistent):** `python src/replay_trailing_v2.py --workers 8 --cont-only --cont-k 0.1 0.3 0.5 1.0 --cont-bars 1 2 3` — 30 coin, A baseline + 12 B (continuation) koşusu, `--cont-only` replay script'ine eklendi (C/atr_chase canlıda yok, atlanır). Sonuç raporu: `reports/trailing_replay_ab_c.md`. En iyi (K, N) kombinasyonu bulununca canlıya sabitlenecek.
+2026-08-07: **K/N taraması TAMAMLANDI — continuation (B) ölü, A/retrace canlıda sabit kalır.** 9/9 B varyasyonu derin negatif (K=0.1: -1.53M/-1.43M/-1.35M; K=0.3: -1.41M/-1.35M/-1.30M; K=1.0: -1.21M/-1.19M/-1.18M; N=1/2/3). A retrace **+4,100,540** (PE 60.9%, 111,246 trade) — baseline birebir. N-bar teyit LOSS'u marjinal azaltır (65K→63.7K) ama PE% 33'te takılı (A: 60.9). Rapor FINAL: `reports/trailing_replay_ab_c.md`. Continuation deploy edilmez; canlı config değerleri (`ATR_TRAIL_MULT_CONTINUATION=0.50`, `CONTINUATION_CONFIRM_BARS=2`) yalnızca repo'da kalır. Checkpoint atomik yazıma geçirildi (commit `ea3629f` — taskkill'de bozulma dersi).
 
 ## Current Status
-- **K/N taraması YENİDEN başlatıldı (17:47, checkpoint'li):** İlk koşu (14:38) sistem reboot'unda (16:41) öldü — rapor en sona yazıldığı için ~2 saatlik iş kayboldu. `replay_trailing_v2.py`'ye checkpoint/resume eklendi (her koşu sonrası `reports/_replay_checkpoint.pkl`; config eşleşmesi kontrolü; bitince checkpoint silinir; gitignore'a eklendi). Commit `6b34620` push edildi. Yeni koşu: `bgp_fdcb201be001Q7ZAS3zAwOa9Px` (pid 4260, persistent, `--workers 8 --cont-only --cont-k 0.1 0.3 0.5 1.0 --cont-bars 1 2 3`, 30 coin). Reboot olursa checkpoint'ten devam edilebilir.
+- **TARAMA BİTTİ (21:21).** Son koşu yalnız `--cont-k 1.0` idi (checkpoint'ten A yüklendi, B1.0×3 koşuldu). Checkpoint hâlâ diskte (106MB) — rapor FINAL olduğu için silinebilir.
 
 ## Recently Completed
 - **Baş mühendis incelemesi — N-bar teyit testleri + etiket netleştirme (2026-08-07):** `test_trailing_manager.py`'ye `TestConfirmModeNBar` sınıfı eklendi (10 yeni test): N=1 ilk bar anında tetikleme (off-by-one yok), N=2 ard arda far-side kesintisiz streak → continuation, araya gap-içi kapanış → retrace (streak sıfırlanır), invalidation → None, N=3 üç bar şartı, bearish simetri (far-side/gap/invalidation), ayrı geniş continuation buffer entegre testi (K=0.5 → SL=98.15 vs retrace 0.25 → 98.075). Suite: trailing+fvg+retrace 122 passed (önceden 112), ruff temiz. Sniper commit `b919fe2` push edildi. `replay_trailing_v2.py` rapor başlığına etiket netleştirme satırı eklendi (B aynı continuation modu, `--cont-only` C'yi atlar) — backtest commit `e076b54` push edildi. Ayrıca doğrulandı: **canlı bot process'i şu an çalışmıyor** → K=0.5/N=2 yalnızca repo'da, canlıda aktif değil (restart yok).
@@ -27,11 +26,11 @@
 - **New Coin Data Download (2026-07-15):** 10 new coins downloaded via `dl_newcoins.py`. All feather files in `src/data/daily/`.
 
 ## Next Actions
-1. **K/N taraması sonuçlarını bekle (arka planda, persistent):** `bgp_fdcb201be001Q7ZAS3zAwOa9Px` — 30 coin, A + 12 B koşusu (K∈{0.1,0.3,0.5,1.0} × N∈{1,2,3}). Rapor `reports/trailing_replay_ab_c.md`. Not: canlı bot şu an çalışmıyor — tarama sonucu gelmeden restart/deploy YOK (K=0.5/N=2 sadece repo'da). Reboot'a karşı checkpoint aktif (her koşu sonrası `_replay_checkpoint.pkl`).
-2. **Holding hipotezini sayısal doğrula:** raporun "A vs varyasyon" tablosundaki AvgHold Δ satırlarından geniş K / N-bar'ın holding'i uzatıp uzatmadığını ve PnL'yi döndürüp döndürmediğini oku.
-3. **En iyi (K, bars) kombinasyonunu bul:** trade sayısı artışı azalmalı, HOP yapısı korunmalı, net PnL baseline'a (A, retrace) yakın veya üstünde olmalı. Seçilen değer canlı config'e yazılacak (şu an 0.5/2 tahmin — doğrulanmadı).
-4. **En iyi (K, N) seçilince tam backtest:** `python src/analyzer_v5.py` (tüm coinler) — canlıya geçiş kararı bu sonuçlarla.
-5. **Canlıya Geçiş:** tarama sonucu onaylanınca (baş mühendis ile) 10 yeni coin'i canlı bot listesine ekle, paper trade başlat.
+1. ~~K/N taramasını bekle~~ **TAMAMLANDI:** A +4,100,540; B 9/9 negatif (K=0.1/0.3/1.0 × N=1/2/3). **Karar: A/retrace canlıda sabit kalır, continuation deploy edilmez.**
+2. Checkpoint'i sil (`reports/_replay_checkpoint.pkl`, 106MB) — rapor FINAL.
+3. Baş mühendise nihai raporu sun: `reports/trailing_replay_ab_c.md` (tüm 10 koşu tablosu + yorum).
+4. Canlıya restart/deploy YOK — config'deki continuation değerleri repo'da kalır, aktif edilmez.
+5. **Bekleyen (başka konu):** 10 yeni coin'i canlı bot listesine ekleme / paper trade kararı — taramadan bağımsız.
 
 ## Notlar
 - `FVG_SIZE_MAP` optimum değerleri: DYDX=0.040, ENA/GMX/LDO=0.020, ONDO=0.040, PYTH=0.130, RENDER/SEI/TIA=0.070, STRK=0.060.
