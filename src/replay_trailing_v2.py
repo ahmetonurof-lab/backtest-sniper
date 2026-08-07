@@ -265,6 +265,12 @@ def main():
     )
     w("")
     w(
+        "Not (etiket sabit): A/B/C semasi onceki taramalarla AYNIDIR — B, daha once K=0.3/N=1'de negatif "
+        "cikan 'continuation' modunun kendisidir; bu tarama ayni B modunu (K, N) gridi ile parametrize eder "
+        "(`--cont-only` = C/ATR-chase atlanir, A baseline + B varyasyonlari kosulur)."
+    )
+    w("")
+    w(
         f"Sabitler: `ATR_TRAIL_MULT={atm}`, `TRAIL_MIN_MOVE_MULT={tmm}`; entry/komisyon ve TP-RR mantigi moddan etkilenmez."
     )
     w(f"Coinler ({len(symbols)}): {', '.join(symbols)}")
