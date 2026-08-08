@@ -155,24 +155,38 @@ def get_fvg_status(top, bottom, direction, b):
 # "activation"   : FVG yolu retrace ile BIREBIR; ATR-chase fallback YALNIZCA
 #                  unrealized kar >= TRAIL_ACTIVATION_R_MULT * risk_pts
 #                  (dinamik R-kati esik) oldugunda devreye girer
-TRAIL_MODE = "retrace"
+# D-2 parite fixi: modul sabiti artik canli config default'undan turetilir
+# (canli: SNIPER_TRAIL_MODE env yoksa "activation"). "retrace" sabit yazimi
+# canli default'tan sapiyordu — default'a guvenip explicit override yapmadan
+# calisan kod yanlis senaryoyu test ediyordu.
+TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "activation")
 
 # Aktivasyonlu ATR-chase (TRAIL_MODE="activation") kar esigi — dinamik R-kati.
 # Esik = TRAIL_ACTIVATION_R_MULT * risk_pts (risk_pts = |entry - initial_sl|).
 # Anlik kar (pts) bu esige ulasmadan ATR-chase PASIFTIR (yalniz FVG takibi).
 # Coin/bucket bazli risk-pts degisken oldugu icin sabit % yerine R-kati
 # endekslenir: 1.0 = 1R kar seviyesinde aktiflesir.
-TRAIL_ACTIVATION_R_MULT = 1.0
+# D-2 parite fixi: canli config default'undan turetilir (canli: 1.5).
+TRAIL_ACTIVATION_R_MULT = getattr(cfg, "TRAIL_ACTIVATION_R_MULT", 1.5)
 
-# Continuation/Atr-chase SL tamponu: K * ATR. Canli config'ten okunur
-# (ATR_TRAIL_MULT_CONTINUATION) — backtest-canli paritesi icin. Genis K,
-# trend-ici noise'a karsi retrace'in dogal mesafesine yakinlasir.
-CONT_BUFFER_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.1)
+# Continuation/Atr-chase SL tamponu: K * ATR. Canli config'ten okunur.
+# D-2 parite fixi: canli CONT_BUFFER_MULT anahtarindan okunur (activation
+# ATR-chase fallback K'si). ONCEKI HATA: ATR_TRAIL_MULT_CONTINUATION'dan
+# okunuyordu — canlida bunlar AYRI anahtarlar (CONT_BUFFER_MULT=2.0 fallback K,
+# ATR_TRAIL_MULT_CONTINUATION=0.50 continuation tamponu). Yanlis baglanti
+# main()'deki K=2.0 override'i tarafindan gizleniyordu.
+CONT_BUFFER_MULT = getattr(cfg, "CONT_BUFFER_MULT", 2.0)
+
+# Continuation far-side SL tamponu: ATR_TRAIL_MULT * ATR. Canli config'ten
+# okunur (canli: 0.50). D-2 parite fixi: ONCEKI kod continuation dalinda
+# CONT_BUFFER_MULT (fallback K=2.0) kullaniyordu — canlida continuation
+# tamponu ayri anahtar (0.50). Ayri degiskene baglandi.
+CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
 
 # Continuation onay penceresi: far-side kaparisan ard arda N bar boyunca
 # korunmali (ara kapanis gap icinde olursa retrace kazanir, invalidation
-# olursa None). Canli config'ten okunur (CONTINUATION_CONFIRM_BARS).
-CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 1)
+# olursa None). Canli config'ten okunur (CONTINUATION_CONFIRM_BARS, canli: 2).
+CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 2)
 
 
 # ─── FVG retrace-only confirm helper (orijinal davranis, birebir) ──
@@ -565,11 +579,12 @@ def _collect_fvg_profile_impl(symbol: str):
                         mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
                         if mode is None:
                             continue
-                    # Continuation/atr-chase SL tamponu K*ATR (CONT_BUFFER_MULT),
-                    # retrace tamponu ATR_TRAIL_MULT*ATR. Kapsam: far-side hop'u
+                    # Continuation/atr-chase SL tamponu: continuation icin
+                    # CONT_TRAIL_MULT*ATR (canli ATR_TRAIL_MULT_CONTINUATION),
+                    # retrace icin ATR_TRAIL_MULT*ATR. Kapsam: far-side hop'u
                     # fiyatin yeni gectigi sinirin hemen yanina SL koyar; genis K,
                     # trend-ici noise'a karsi retrace'in dogal mesafesine yakinlasir.
-                    ab2 = atr * (CONT_BUFFER_MULT if mode == "continuation" else ATM)
+                    ab2 = atr * (CONT_TRAIL_MULT if mode == "continuation" else ATM)
                     # is_placeable yalnizca continuation/atr_chase'te uygulanir
                     # (retrace modu eski davranisi aynen korur). cur = son kapanis.
                     placeable = TRAIL_MODE not in ("retrace", "activation")

@@ -13,7 +13,8 @@ Kapsam:
      ATR_TRAIL_MULT_CONTINUATION / CONTINUATION_CONFIRM_BARS /
      TRAIL_MIN_MOVE_MULT degerlerinin backtest module sabitleriyle
      tutarliligi (yapisal uyarilar).
-  3. risk_manager.py kopya sapmasi (canli BUG-25 fix'leri backtest'te yok).
+  3. risk_manager.py olu kopyasi: D-2 kapanisinda SILINDI; yeniden olusursa
+     bu kontrol yakalar (canli risk_manager.py tek kaynak).
 
 Kullanim:
     python parity_check.py            # rapor
@@ -26,7 +27,6 @@ Cikis kodu: 0 = parite tamam (PASS), 1 = sapma var (FAIL).
 import argparse
 import ast
 import copy
-import hashlib
 import os
 import re
 import sys
@@ -37,7 +37,6 @@ _BT_SRC = os.path.join(_HERE, "src")
 _SNIPER_TRAILING = os.path.join(_SNIPER_SRC, "trading", "trailing_manager.py")
 _SNIPER_CONFIG = os.path.join(_SNIPER_SRC, "config.py")
 _BT_ANALYZER = os.path.join(_BT_SRC, "analyzer_v5.py")
-_SNIPER_RISK = os.path.join(_SNIPER_SRC, "risk_manager.py")
 _BT_RISK = os.path.join(_BT_SRC, "risk_manager.py")
 
 # backtest fonksiyon adi -> canli metot adi
@@ -171,18 +170,12 @@ def _extract_config(path: str, keys: list[str]) -> dict[str, str]:
 def check_config_parity() -> list[str]:
     """Backtest module sabitlerinin canli config degerleriyle tutarliligini kontrol eder.
 
-    Bilinen mevcut degerler:
-      canli config.py: TRAIL_MODE=os.environ.get(...,'activation'),
-                       CONT_BUFFER_MULT=env('SNIPER_CONT_BUFFER_MULT','2.0'),
-                       TRAIL_ACTIVATION_R_MULT=env('SNIPER_TRAIL_ACTIVATION_R_MULT','1.5'),
-                       ATR_TRAIL_MULT=env('SNIPER_ATR_TRAIL_MULT','0.10'),
-                       ATR_TRAIL_MULT_CONTINUATION=env('SNIPER_ATR_TRAIL_MULT_CONT','0.50'),
-                       CONTINUATION_CONFIRM_BARS=env('SNIPER_CONT_CONFIRM_BARS','2'),
-                       TRAIL_MIN_MOVE_MULT=0.2
-      backtest analyzer_v5.py: TRAIL_MODE='retrace' (sabit, main() override),
-                       CONT_BUFFER_MULT=getattr(cfg,'ATR_TRAIL_MULT_CONTINUATION',0.1)
-                                       -> YANLIS: canli CONT_BUFFER_MULT=2.0 ayri anahtar.
-                       TRAIL_ACTIVATION_R_MULT=1.0 (sabit, main() override 1.5)
+    D-2 kapanis sonrasi: TRAIL_MODE / TRAIL_ACTIVATION_R_MULT / CONT_BUFFER_MULT /
+    CONT_TRAIL_MULT / CONT_CONFIRM_BARS module sabitleri artik getattr(cfg, ...)
+    ile canli config'ten turetilir (canli config.py'deki env-default degerlerle).
+    Bu kontrol, sabitlerin DOGRU canli anahtara baglanip baglanmadigini ve
+    default degerlerinin canli config default'lariyla eslesip eslemedigini
+    dogrular. Yanlis anahtar/eslesmeyen default = sapma.
     """
     problems = []
     live = _extract_config(_SNIPER_CONFIG, _CONFIG_KEYS)
@@ -193,27 +186,53 @@ def check_config_parity() -> list[str]:
             problems.append(f"[CONFIG] canli config.py'de '{key}' tanimi yok")
             continue
 
-    # CONT_BUFFER_MULT kopya-kaynak hatasi (en kritik): backtest, canlinin
-    # CONT_BUFFER_MULT anahtarini DEGIL ATR_TRAIL_MULT_CONTINUATION'i okuyor.
-    bt_cont = re.search(
-        r"CONT_BUFFER_MULT\s*=\s*getattr\(\s*cfg,\s*[\"']([^\"']+)[\"']", bt_src
-    )
-    if bt_cont and bt_cont.group(1) != "CONT_BUFFER_MULT":
-        problems.append(
-            f"[CONFIG] KRITIK: backtest CONT_BUFFER_MULT, canli '{bt_cont.group(1)}' anahtarindan "
-            f"okuyor. Canli CONT_BUFFER_MULT=2.0 (ATR-chase fallback K), "
-            f"ATR_TRAIL_MULT_CONTINUATION=0.50 (continuation tamponu) AYRI anahtarlar. "
-            f"Backtest getattr ile yanlis anahtara baglanmis — main()'deki K=2.0 override'i gizliyor."
+    # backtest getattr(..., "<canli_anahtar>", <default>) eslesmesi:
+    # bt anahtar, canli config'teki AYNI ada bagli olmali ve default degeri
+    # canli config'in env-default degeriyle ayni olmali.
+    bt_attrs = {
+        m.group(1): (m.group(2), m.group(3))
+        for m in re.finditer(
+            r"(\w+)\s*=\s*getattr\(\s*cfg,\s*[\"']([^\"']+)[\"'],\s*([^)]+)\)",
+            bt_src,
         )
-
-    # TRAIL_ACTIVATION_R_MULT sabit-1.0 vs canli 1.5
-    bt_r = re.search(r"TRAIL_ACTIVATION_R_MULT\s*=\s*([\d.]+)", bt_src)
-    live_r = re.search(r"\"1.5\"", live.get("TRAIL_ACTIVATION_R_MULT", ""))
-    if bt_r and live_r:
-        if bt_r.group(1) != "1.5":
+    }
+    # ATR_TRAIL_MULT gibi sabit kalanlar getattr degil; onlar icin eski kontrol
+    # devre disi (D-2 kapanisinda canli anahtarlara bagli olanlar dogrulandi).
+    expected_defaults = {
+        "TRAIL_MODE": "activation",
+        "TRAIL_ACTIVATION_R_MULT": "1.5",
+        "CONT_BUFFER_MULT": "2.0",
+        "ATR_TRAIL_MULT_CONTINUATION": "0.5",
+        "CONTINUATION_CONFIRM_BARS": "2",
+    }
+    # backtest degiskeni -> beklenen canli config anahtari
+    var_to_live_key = {
+        "CONT_BUFFER_MULT": "CONT_BUFFER_MULT",
+        "CONT_TRAIL_MULT": "ATR_TRAIL_MULT_CONTINUATION",
+        "CONT_CONFIRM_BARS": "CONTINUATION_CONFIRM_BARS",
+        "TRAIL_ACTIVATION_R_MULT": "TRAIL_ACTIVATION_R_MULT",
+        "TRAIL_MODE": "TRAIL_MODE",
+    }
+    for bt_var, live_key in var_to_live_key.items():
+        if bt_var not in bt_attrs:
             problems.append(
-                f"[CONFIG] backtest TRAIL_ACTIVATION_R_MULT={bt_r.group(1)} sabit; "
-                f"canli default 1.5. Modul import eden kod 1.0 ile calisir (main/worker override'i gizler)."
+                f"[CONFIG] backtest '{bt_var}' getattr(cfg, ...) deseninde bulunamadi — "
+                f"canli '{live_key}' anahtarina baglanmali."
+            )
+            continue
+        bt_key, bt_default = bt_attrs[bt_var]
+        if bt_key != live_key:
+            problems.append(
+                f"[CONFIG] KRITIK: backtest '{bt_var}', canli '{bt_key}' anahtarindan "
+                f"okuyor — '{live_key}' bekleniyor."
+            )
+        exp_default = expected_defaults.get(live_key)
+        bt_def_norm = bt_default.strip().strip("'\"")
+        if exp_default is not None and bt_def_norm != exp_default:
+            problems.append(
+                f"[CONFIG] backtest '{bt_var}' default={bt_default.strip()} — canli "
+                f"'{live_key}' default={exp_default}. Modul import eden kod yanlis "
+                f"varsayilanla calisir (main/worker override'i gizler)."
             )
     return problems
 
@@ -242,19 +261,24 @@ def check_trail_mode_default() -> list[str]:
 
 
 def check_risk_manager() -> list[str]:
+    """Backtest risk_manager.py olu kopyasi VAR MI kontrol eder (D-2 kapanis).
+
+    Karar: backtest tarafindan hicbir dosya import etmedigi icin olu kopyaydi;
+    canli BUG-25 fix'leri (initial_equity fallback, DD=100 guvenli taraf)
+    kopyaya hic yansimadi. Senkron kacirma riskini kokten kaldirmak icin
+    kopya TAMAMEN SILINDI — canli risk_manager.py tek kaynak oldu.
+    Backtest tarafinda yeniden risk_manager.py olusursa (eski kopya geri
+    getirilirse) bu kontrol YAKALAR: varligi basta sapma sayilir.
+    """
     problems = []
-    if not (os.path.isfile(_SNIPER_RISK) and os.path.isfile(_BT_RISK)):
+    if not os.path.isfile(_BT_RISK):
         return problems
-    h1 = hashlib.md5(open(_SNIPER_RISK, "rb").read()).hexdigest()
-    h2 = hashlib.md5(open(_BT_RISK, "rb").read()).hexdigest()
-    if h1 != h2:
-        n1 = sum(1 for _ in open(_SNIPER_RISK, "rb"))
-        n2 = sum(1 for _ in open(_BT_RISK, "rb"))
-        problems.append(
-            f"[RISK_MANAGER] SAPMA: canli risk_manager.py ({n1} satir) != backtest kopyasi ({n2} satir). "
-            f"Canli BUG-25 fix'leri (initial_equity fallback, DD=100 guvenli taraf) backtest'te yok. "
-            f"Backtest kopyasi import edilmiyor (olu) — silinmeli veya senkronlanmali."
-        )
+    problems.append(
+        "[RISK_MANAGER] backtest 'src/risk_manager.py' yeniden olusmus — "
+        "D-2 kapanisinda TAMAMEN SILINDI (olu kopya, canli BUG-25 fix'siz). "
+        "Backtest tarafindan import edilmiyordu; canli risk_manager.py tek "
+        "kaynaktir, kopya geri getirilmemeli (senkron kacirma riski)."
+    )
     return problems
 
 
