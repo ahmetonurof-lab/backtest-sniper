@@ -199,7 +199,7 @@ def check_config_parity() -> list[str]:
     # ATR_TRAIL_MULT gibi sabit kalanlar getattr degil; onlar icin eski kontrol
     # devre disi (D-2 kapanisinda canli anahtarlara bagli olanlar dogrulandi).
     expected_defaults = {
-        "TRAIL_MODE": "activation",
+        "TRAIL_MODE": "retrace",
         "TRAIL_ACTIVATION_R_MULT": "1.5",
         "CONT_BUFFER_MULT": "2.0",
         "ATR_TRAIL_MULT_CONTINUATION": "0.5",
@@ -248,13 +248,13 @@ def check_trail_mode_default() -> list[str]:
         if m:
             bt_default = m.group(1)
             break
-    if "activation" not in live_val:
+    if "retrace" not in live_val:
         problems.append(
-            f"[TRAIL_MODE] canli config default '{live_val}' — 'activation' bekleniyor"
+            f"[TRAIL_MODE] canli config default '{live_val}' — 'retrace' bekleniyor (D modu/continuation 2026-08-08 geri cekildi)"
         )
-    if bt_default and bt_default != "activation":
+    if bt_default and bt_default != "retrace":
         problems.append(
-            f"[TRAIL_MODE] backtest modul sabiti TRAIL_MODE='{bt_default}' — canli default 'activation'. "
+            f"[TRAIL_MODE] backtest modul sabiti TRAIL_MODE='{bt_default}' — canli default 'retrace'. "
             f"main()/worker override'i dısındaki import kullanimlari {bt_default} ile calisir (sessiz sapma)."
         )
     return problems

@@ -155,37 +155,29 @@ def get_fvg_status(top, bottom, direction, b):
 # "activation"   : FVG yolu retrace ile BIREBIR; ATR-chase fallback YALNIZCA
 #                  unrealized kar >= TRAIL_ACTIVATION_R_MULT * risk_pts
 #                  (dinamik R-kati esik) oldugunda devreye girer
-# D-2 parite fixi: modul sabiti artik canli config default'undan turetilir
-# (canli: SNIPER_TRAIL_MODE env yoksa "activation"). "retrace" sabit yazimi
-# canli default'tan sapiyordu — default'a guvenip explicit override yapmadan
-# calisan kod yanlis senaryoyu test ediyordu.
-TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "activation")
+# D-2 parite fixi: modul sabiti artik canli config default'undan turetilir.
+# KAPANIS (2026-08-08): canli config TRAIL_MODE="retrace" — D modu (activation
+# K=2.0/R=1.5) ve continuation-confirm tam evren taramasinda A/retrace'i
+# geceMEDI, geri cekildi. Asagidaki continuation/activation degiskenleri
+# DENEYSEL kalinti olarak tutulur (replay_trailing_v2.py grid taramasi icin
+# kullanilabilir); silinecekse canli trailing_manager ile senkron silinmeli.
+TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
 
-# Aktivasyonlu ATR-chase (TRAIL_MODE="activation") kar esigi — dinamik R-kati.
-# Esik = TRAIL_ACTIVATION_R_MULT * risk_pts (risk_pts = |entry - initial_sl|).
-# Anlik kar (pts) bu esige ulasmadan ATR-chase PASIFTIR (yalniz FVG takibi).
-# Coin/bucket bazli risk-pts degisken oldugu icin sabit % yerine R-kati
-# endekslenir: 1.0 = 1R kar seviyesinde aktiflesir.
-# D-2 parite fixi: canli config default'undan turetilir (canli: 1.5).
+# DENEYSEL (kullanilmiyor — TRAIL_MODE=retrace): activation ATR-chase kar
+# esigi — dinamik R-kati. Esik = TRAIL_ACTIVATION_R_MULT * risk_pts
+# (risk_pts = |entry - initial_sl|). D modu geri cekildi (2026-08-08).
 TRAIL_ACTIVATION_R_MULT = getattr(cfg, "TRAIL_ACTIVATION_R_MULT", 1.5)
 
-# Continuation/Atr-chase SL tamponu: K * ATR. Canli config'ten okunur.
-# D-2 parite fixi: canli CONT_BUFFER_MULT anahtarindan okunur (activation
-# ATR-chase fallback K'si). ONCEKI HATA: ATR_TRAIL_MULT_CONTINUATION'dan
-# okunuyordu — canlida bunlar AYRI anahtarlar (CONT_BUFFER_MULT=2.0 fallback K,
-# ATR_TRAIL_MULT_CONTINUATION=0.50 continuation tamponu). Yanlis baglanti
-# main()'deki K=2.0 override'i tarafindan gizleniyordu.
+# DENEYSEL (kullanilmiyor): ATR-chase fallback SL tamponu K * ATR (canli:
+# CONT_BUFFER_MULT=2.0). D modu geri cekildi (2026-08-08).
 CONT_BUFFER_MULT = getattr(cfg, "CONT_BUFFER_MULT", 2.0)
 
-# Continuation far-side SL tamponu: ATR_TRAIL_MULT * ATR. Canli config'ten
-# okunur (canli: 0.50). D-2 parite fixi: ONCEKI kod continuation dalinda
-# CONT_BUFFER_MULT (fallback K=2.0) kullaniyordu — canlida continuation
-# tamponu ayri anahtar (0.50). Ayri degiskene baglandi.
+# DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
+# (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
 CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
 
-# Continuation onay penceresi: far-side kaparisan ard arda N bar boyunca
-# korunmali (ara kapanis gap icinde olursa retrace kazanir, invalidation
-# olursa None). Canli config'ten okunur (CONTINUATION_CONFIRM_BARS, canli: 2).
+# DENEYSEL (kullanilmiyor): continuation onay penceresi N-bar teyit (canli:
+# CONTINUATION_CONFIRM_BARS=2). Continuation geri cekildi (2026-08-08).
 CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 2)
 
 
@@ -572,10 +564,13 @@ def _collect_fvg_profile_impl(symbol: str):
                         # Orijinal davranis (1469454 oncesi): far-side kapanis
                         # FVG'yi elemez, sonraki gap ici kapanis onay verebilir.
                         # activation modunda FVG yolu retrace ile BIREBIR.
+                        # KAPANIS (2026-08-08): canli TRAIL_MODE=retrace oldugu
+                        # icin retrace dali tek aktif yol; activation geri cekildi.
                         if not fvg_close_confirmed(fvg, tc):
                             continue
                         mode = "retrace"
                     else:
+                        # DENEYSEL: continuation/atr_chase (geri cekildi)
                         mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
                         if mode is None:
                             continue
@@ -624,11 +619,11 @@ def _collect_fvg_profile_impl(symbol: str):
                             ltc += 1
                             upd = True
                 if TRAIL_MODE in ("atr_chase", "activation") and not upd:
-                    # ATR-chase fallback: FVG aday kullanilamadiginda
-                    # SL = close ∓ K*ATR (K = CONT_BUFFER_MULT) ile chase et.
+                    # DENEYSEL (geri cekildi 2026-08-08): ATR-chase fallback —
+                    # FVG aday kullanilamadiginda SL = close ∓ K*ATR ile chase.
                     # activation modunda YALNIZCA unrealized kar >=
-                    # TRAIL_ACTIVATION_PCT iken devreye girer; erken gurultude
-                    # (esik altinda) ATR-chase PASIFTIR, yalniz FVG takibi yapilir.
+                    # TRAIL_ACTIVATION_R_MULT * risk_pts iken devreye girer.
+                    # TRAIL_MODE=retrace iken bu blok HIC calismaz.
                     cur_price = cur.close
                     if TRAIL_MODE == "activation":
                         entry = t["entry_price"]
@@ -1268,13 +1263,14 @@ def main():
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    # ── Sabit fallback modu: D (activation K=2.0, R=1.5) ──
-    TRAIL_MODE = "activation"
-    CONT_BUFFER_MULT = 2.0
-    TRAIL_ACTIVATION_R_MULT = 1.5
+    # KAPANIS (2026-08-08): D modu + continuation geri cekildi. Varsayilan kosu
+    # artik modul sabitini kullanir = canli config'ten turetilir (retrace).
+    # ONCEKI sabit override (TRAIL_MODE="activation", K=2.0, R=1.5) KALDIRILDI:
+    # backtest'i canli config'ten ayiran son gizli kaynak da boylece bitti.
     print(
-        f"  D MODU (activation): K={CONT_BUFFER_MULT}, "
-        f"R={TRAIL_ACTIVATION_R_MULT}, TRAIL_MODE={TRAIL_MODE}",
+        f"  TRAIL MODU: {TRAIL_MODE} "
+        f"(K={CONT_BUFFER_MULT}, R={TRAIL_ACTIVATION_R_MULT}) — "
+        f"canli config'ten (D modu/continuation 2026-08-08 geri cekildi)",
         flush=True,
     )
 
