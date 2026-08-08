@@ -1,22 +1,22 @@
 | Zone | Fibo Level | Confirmed | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
 |---|---|---|---|---|---|---|---|---|
-| discount | 0.236 | unconfirmed | 13618 | 60.92% | 4.78 | +674328 | 0.68% | yes |
-| discount | 0.236 | confirmed | 18427 | 63.81% | 4.63 | +845818 | 0.45% | yes |
-| discount | 0.382 | unconfirmed | 37 | 62.16% | 13.05 | +5459 | 0.21% | NO (n<100) |
-| discount | 0.382 | confirmed | 5097 | 55.9% | 2.59 | +129337 | 0.99% | yes |
-| discount | 0.5 | unconfirmed | 11 | 45.45% | 1.71 | +151 | 0.14% | NO (n<100) |
-| discount | 0.5 | confirmed | 3359 | 53.68% | 2.16 | +62694 | 0.77% | yes |
-| discount | 0.618 | unconfirmed | 15 | 80.0% | 9.27 | +908 | 0.07% | NO (n<100) |
-| discount | 0.618 | confirmed | 2691 | 51.99% | 1.78 | +36148 | 1.11% | yes |
-| discount | 0.786 | unconfirmed | 4067 | 53.58% | 2.04 | +58915 | 0.68% | yes |
-| discount | 0.786 | confirmed | 3454 | 52.58% | 1.81 | +42623 | 1.03% | yes |
-| premium | 0.236 | unconfirmed | 3991 | 52.29% | 2.03 | +60396 | 0.77% | yes |
-| premium | 0.236 | confirmed | 3335 | 50.4% | 1.59 | +32923 | 1.25% | yes |
-| premium | 0.382 | unconfirmed | 16 | 81.25% | 2.05 | +160 | 0.14% | NO (n<100) |
-| premium | 0.382 | confirmed | 2526 | 50.75% | 1.91 | +41516 | 1.06% | yes |
-| premium | 0.5 | unconfirmed | 13 | 76.92% | 22.98 | +1827 | 0.07% | NO (n<100) |
-| premium | 0.5 | confirmed | 3396 | 50.38% | 1.81 | +49134 | 1.27% | yes |
-| premium | 0.618 | unconfirmed | 44 | 56.82% | 2.83 | +1523 | 0.31% | NO (n<100) |
-| premium | 0.618 | confirmed | 5848 | 57.35% | 2.84 | +169261 | 0.52% | yes |
-| premium | 0.786 | unconfirmed | 13054 | 62.13% | 4.65 | +618639 | 0.47% | yes |
-| premium | 0.786 | confirmed | 20049 | 62.06% | 4.07 | +835158 | 0.71% | yes |
+| discount | 0.236 | unconfirmed | 13979 | 63.78% | 5.38 | +727528 | 2.94% | yes |
+| discount | 0.236 | confirmed | 19574 | 66.19% | 5.25 | +948758 | 1.94% | yes |
+| discount | 0.382 | unconfirmed | 38 | 57.89% | 10.81 | +5258 | 2.03% | NO (n<100) |
+| discount | 0.382 | confirmed | 5487 | 57.65% | 2.92 | +152027 | 5.2% | yes |
+| discount | 0.5 | unconfirmed | 9 | 33.33% | 1.34 | +59 | 1.71% | NO (n<100) |
+| discount | 0.5 | confirmed | 3603 | 56.26% | 2.39 | +73301 | 3.43% | yes |
+| discount | 0.618 | unconfirmed | 15 | 86.67% | 12.76 | +1147 | 0.61% | NO (n<100) |
+| discount | 0.618 | confirmed | 2961 | 54.58% | 1.96 | +44020 | 5.22% | yes |
+| discount | 0.786 | unconfirmed | 4587 | 54.92% | 2.16 | +69724 | 2.99% | yes |
+| discount | 0.786 | confirmed | 3924 | 54.33% | 1.96 | +53205 | 4.49% | yes |
+| premium | 0.236 | unconfirmed | 4472 | 53.4% | 2.17 | +71416 | 4.35% | yes |
+| premium | 0.236 | confirmed | 3756 | 52.0% | 1.69 | +40599 | 6.1% | yes |
+| premium | 0.382 | unconfirmed | 16 | 81.25% | 2.61 | +227 | 1.37% | NO (n<100) |
+| premium | 0.382 | confirmed | 2753 | 52.16% | 2.08 | +49353 | 7.51% | yes |
+| premium | 0.5 | unconfirmed | 13 | 76.92% | 20.59 | +2049 | 0.61% | NO (n<100) |
+| premium | 0.5 | confirmed | 3691 | 52.48% | 2.04 | +62398 | 10.63% | yes |
+| premium | 0.618 | unconfirmed | 44 | 65.91% | 3.93 | +1974 | 1.48% | NO (n<100) |
+| premium | 0.618 | confirmed | 6312 | 59.81% | 3.22 | +198001 | 3.86% | yes |
+| premium | 0.786 | unconfirmed | 13280 | 64.8% | 5.21 | +660165 | 3.55% | yes |
+| premium | 0.786 | confirmed | 21156 | 64.44% | 4.61 | +933753 | 2.46% | yes |
