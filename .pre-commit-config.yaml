@@ -29,3 +29,16 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-merge-conflict
+
+  # D-2: Canli/backtest kod parite kontrolu (analyzer_v5 kopyalari vs sniper/src)
+  # analyzer_v5.py / trailing_manager.py / config.py / risk_manager.py degisince
+  # elle kopyalanan trailing/FVG mantiginin canli ile birebir oldugunu dogrular.
+  - repo: local
+    hooks:
+      - id: parity-check
+        name: parity-check (canli/backtest parite)
+        entry: python parity_check.py --check
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: ^src/analyzer_v5\.py$|^src/risk_manager\.py$
