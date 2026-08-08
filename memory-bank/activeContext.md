@@ -1,12 +1,14 @@
 # backtest-sniper — Active Context
 
 ## Current State
-2026-08-07: **K/N taraması TAMAMLANDI — continuation (B) ölü, A/retrace canlıda sabit kalır.** 9/9 B varyasyonu derin negatif (K=0.1: -1.53M/-1.43M/-1.35M; K=0.3: -1.41M/-1.35M/-1.30M; K=1.0: -1.21M/-1.19M/-1.18M; N=1/2/3). A retrace **+4,100,540** (PE 60.9%, 111,246 trade) — baseline birebir. N-bar teyit LOSS'u marjinal azaltır (65K→63.7K) ama PE% 33'te takılı (A: 60.9). Rapor FINAL: `reports/trailing_replay_ab_c.md`. Continuation deploy edilmez; canlı config değerleri (`ATR_TRAIL_MULT_CONTINUATION=0.50`, `CONTINUATION_CONFIRM_BARS=2`) yalnızca repo'da kalır. Checkpoint atomik yazıma geçirildi (commit `ea3629f` — taskkill'de bozulma dersi).
+2026-08-08: **Baş mühendis raporu yazıldı (`reports/chief_engineer_rapor_2026-08-08.md`)** — continuation (B) ölü ilan edildi, D modu (ATR-chase activation K=2.0/R=1.5) canlıda (`sniper` commit `42de7d5`), canlı recovery tick_size fix'i `daaeeb0` ile doğrulandı (ALGO trail#1 +19.96). K/N taraması TAMAMLANMIŞTI: 9/9 B varyasyonu derin negatif (K=0.1: -1.53M/-1.43M/-1.35M; K=0.3: -1.41M/-1.35M/-1.30M; K=1.0: -1.21M/-1.19M/-1.18M; N=1/2/3). A retrace **+4,100,540** (PE 60.9%, 111,246 trade) — baseline birebir. N-bar teyit LOSS'u marjinal azaltır (65K→63.7K) ama PE% 33'te takılı (A: 60.9). Rapor FINAL: `reports/trailing_replay_ab_c.md`. Continuation deploy edilmez; canlı config değerleri (`ATR_TRAIL_MULT_CONTINUATION=0.50`, `CONTINUATION_CONFIRM_BARS=2`) yalnızca repo'da kalır. Checkpoint atomik yazıma geçirildi (commit `ea3629f` — taskkill'de bozulma dersi).
 
 ## Current Status
 - **TARAMA BİTTİ (21:21).** Son koşu yalnız `--cont-k 1.0` idi (checkpoint'ten A yüklendi, B1.0×3 koşuldu). Checkpoint hâlâ diskte (106MB) — rapor FINAL olduğu için silinebilir.
+- **Baş mühendis raporu** (2026-08-08, commit `a863a49`): `reports/chief_engineer_rapor_2026-08-08.md` — continuation kapalı, D modu canlıda, sıradaki ATR-chase replay parametre revizyonu.
 
 ## Recently Completed
+- **Baş mühendis raporu (2026-08-08, commit `a863a49`):** `reports/chief_engineer_rapor_2026-08-08.md` yazıldı — içerik: (1) continuation K=1.0 replay ölü (B 9/9 negatif, A +4.10M), (2) D modu activation K=2.0/R=1.5 canlıda (sniper `42de7d5`), (3) canlı durum: recovery tick_size fix `daaeeb0` + ALGO trail#1 +19.96 doğrulaması, (4) sıradaki adım: ATR-chase replay (K=0.5/1.0/1.5) parametre revizyonu.
 - **Baş mühendis incelemesi — N-bar teyit testleri + etiket netleştirme (2026-08-07):** `test_trailing_manager.py`'ye `TestConfirmModeNBar` sınıfı eklendi (10 yeni test): N=1 ilk bar anında tetikleme (off-by-one yok), N=2 ard arda far-side kesintisiz streak → continuation, araya gap-içi kapanış → retrace (streak sıfırlanır), invalidation → None, N=3 üç bar şartı, bearish simetri (far-side/gap/invalidation), ayrı geniş continuation buffer entegre testi (K=0.5 → SL=98.15 vs retrace 0.25 → 98.075). Suite: trailing+fvg+retrace 122 passed (önceden 112), ruff temiz. Sniper commit `b919fe2` push edildi. `replay_trailing_v2.py` rapor başlığına etiket netleştirme satırı eklendi (B aynı continuation modu, `--cont-only` C'yi atlar) — backtest commit `e076b54` push edildi. Ayrıca doğrulandı: **canlı bot process'i şu an çalışmıyor** → K=0.5/N=2 yalnızca repo'da, canlıda aktif değil (restart yok).
 - **Baş mühendis direktifi — continuation K/N fix canlı+backtest (2026-08-07, commit'ler push edildi):** Sniper `config.py`: `ATR_TRAIL_MULT_CONTINUATION=0.5` (ENV `SNIPER_ATR_TRAIL_MULT_CONT`), `CONTINUATION_CONFIRM_BARS=2` (ENV `SNIPER_CONT_CONFIRM_BARS`). `trailing_manager.py`: `_fvg_confirm_mode(fvg, bars, continuation_confirm_bars)` — streak mantığı (far-side ard arda N bar → continuation, araya gap içi kapanış → retrace, invalidation → None, is_closed break); `_fvg_multihop` — `atr_buffer_retrace = atr_val*ATR_TRAIL_MULT`, `atr_buffer_continuation = atr_val*ATR_TRAIL_MULT_CONTINUATION`, mode'a göre buffer seçimi (global `atr_buffer` silindi). Backtest `analyzer_v5.py`: `CONT_BUFFER_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.1)`, `CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 1)` (analyzer canlı sniper/src'ten import ediyor — parite otomatik); `fvg_confirm_mode` canlıdaki ile birebir. `replay_trailing_v2.py`'ye `--cont-only` bayrağı. Doğrulamalar: parite 7/7 (3'ü continuation yolu); retrace baseline ADA 3942/+111746.88 birebir.
 - **Retrace 80K regresyon fix'i (2026-08-07, commit `0bd5e25` push edildi):** `analyzer_v5.py` — orijinal `fvg_close_confirmed` geri eklendi; `TRAIL_MODE=="retrace"` → onu kullanır. Doğrulama: ADA 2821→3942 trade, +31317→+111746.88 (08-03 birebir).
@@ -27,10 +29,11 @@
 
 ## Next Actions
 1. ~~K/N taramasını bekle~~ **TAMAMLANDI:** A +4,100,540; B 9/9 negatif (K=0.1/0.3/1.0 × N=1/2/3). **Karar: A/retrace canlıda sabit kalır, continuation deploy edilmez.**
-2. Checkpoint'i sil (`reports/_replay_checkpoint.pkl`, 106MB) — rapor FINAL.
-3. Baş mühendise nihai raporu sun: `reports/trailing_replay_ab_c.md` (tüm 10 koşu tablosu + yorum).
+2. ~~Baş mühendise nihai raporu sun~~ **YAPILDI:** `reports/chief_engineer_rapor_2026-08-08.md` (commit `a863a49`).
+3. Checkpoint'i sil (`reports/_replay_checkpoint.pkl`, 106MB) — rapor FINAL.
 4. Canlıya restart/deploy YOK — config'deki continuation değerleri repo'da kalır, aktif edilmez.
-5. **Bekleyen (başka konu):** 10 yeni coin'i canlı bot listesine ekleme / paper trade kararı — taramadan bağımsız.
+5. **ATR-chase replay parametre revizyonu** — canlıda D modu K=2.0/R=1.5 aktif olduğu için planlanan K=0.5/1.0/1.5 seti baş mühendisle gözden geçirilecek.
+6. **Bekleyen (başka konu):** 10 yeni coin'i canlı bot listesine ekleme / paper trade kararı — taramadan bağımsız.
 
 ## Notlar
 - `FVG_SIZE_MAP` optimum değerleri: DYDX=0.040, ENA/GMX/LDO=0.020, ONDO=0.040, PYTH=0.130, RENDER/SEI/TIA=0.070, STRK=0.060.
