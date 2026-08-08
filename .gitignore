@@ -11,6 +11,7 @@ data/
 nul
 
 # Auto-generated logs & temp files
+index.json
 src/*.log
 src/sonuclar.txt
 src/kelly_calibration_report.md

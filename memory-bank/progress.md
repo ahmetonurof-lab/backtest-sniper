@@ -1,5 +1,14 @@
 # backtest-sniper — Progress
 
+## ✅ SUIUSDT D-MODE İNCELEMESİ — D Modu SUI'de Kurtarılamadı (2026-08-08 19:55)
+- **Görev:** D-2 kapanışından sonra memory-bank'te "Sıradaki" olarak bekleyen SUIUSDT D-mode incelemesi (bağlam: D modu activation K=2.0/R=1.5 canlıda; PYTH+SEI gridinde -0.26% ama MaxDD iyileşmesi tutarlıydı).
+- **Koşu 1 (tek koşu):** `replay_trailing_v2.py SUIUSDT --cont-k 2.0 --act-r 1.5` → A retrace **+113,069** (MaxDD 677) vs D **+107,476** (MaxDD 733). NetPnL -4.9%, MaxDD +8.3% kötü. PYTH+SEI bulgusunun tersi — D modu SUI'de MaxDD'yi bile iyileştirmiyor.
+- **Koşu 2 (R-grid, K=2.0 sabit):** `--cont-k 2.0 --act-r 0.8 1.0 1.2 1.5` → A +113,069 (4294 trade) / R=0.8: +110,676 / R=1.0: +110,901 / R=1.2: +111,417 (en iyi D, -1.5%) / R=1.5: +107,476 (**en kötü**, -4.9%). HİÇBİR R A'yı geçmiyor.
+- **Coin-bazlı farklılaşma kanıtı:** PYTH+SEI'de en iyi R=1.5; SUIUSDT'de R=1.5 ANADAN en kötü. "K=2.0 MaxDD'yi -4.9% iyileştirir" bulgusu SUI'de doğrulanmadı (tüm D'lerde MaxDD 731-733 vs A 677). D modu kabulü coin'e göre yeniden değerlendirilmeli.
+- **Yapısal kayıp mekanizması:** D modu TP'leri kesiyor (351-371 vs A 610), kar taşıyor (PTrail 2097-2136 vs 1892) ama kapanışta daha az bırakıyor (matched trade PnL Delta -315 ila -431). HOP tüm R'lerde artıyor (4201-4612 vs 3527).
+- **Karar:** Canlıya değişiklik önerilmez — A (retrace) SUIUSDT için de sabit kalıyor. Rapor: `reports/trailing_activation_scan.md` (SUI grid). Yedekler: `trailing_activation_scan_PYTH_SEI_backup.md` (eski 13-koşu grid), `trailing_activation_scan_SUI_K2_single_backup.md` (tek koşu).
+- **Not:** checkpoint (`reports/_replay_checkpoint.pkl`) yeni koşulardan sonra yeniden oluştu; Next Actions'da silme listesinde.
+
 ## ✅ D-2 KAPANDI — 3 Sapma Giderildi, PARITE_OK (2026-08-08 19:25)
 - **Karar:** Kullanıcı direktifi — sapmaları sırayla (2→3→1) gider, `parity_check.py --check` yeşile dönünce D-2'yi kapat.
 - **Adım 2 (TRAIL_MODE / TRAIL_ACTIVATION_R_MULT):** `analyzer_v5.py` modül sabitleri artık canlı config'ten türetiliyor: `TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "activation")`, `TRAIL_ACTIVATION_R_MULT = getattr(cfg, "TRAIL_ACTIVATION_R_MULT", 1.5)`. Main/worker explicit override'ları (`"activation"`/1.5) korundu. Sabit `"retrace"`/1.0 yazımı import eden kodu sessizce yanlış senaryoda çalıştırıyordu.
