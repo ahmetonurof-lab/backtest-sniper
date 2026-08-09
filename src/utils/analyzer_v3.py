@@ -22,7 +22,7 @@ if _SNIPER_SRC not in sys.path:
 import config as cfg
 from fvg import detect_fvgs
 from indicators import calculate_true_range, update_atr
-from models import Bar, ATR_PERIOD
+from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionPhase, SessionState, detect_phase_from_timestamp
 

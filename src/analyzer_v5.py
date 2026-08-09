@@ -32,6 +32,12 @@ from session_router import (
     should_trade,
     get_session_hours,
 )
+from mss import detect_mss
+from pivot import SwingStateManager
+
+# ── E varyanti (A/E1/E2): CHoCH giris filtresi ─────────────────
+# ENTRY_VARIANT config'ten gelir; degilse baseline "A" kullanilir.
+ENTRY_VARIANT = getattr(cfg, "ENTRY_VARIANT", "A")
 
 # ── Komisyon ───────────────────────────────────────────────────────
 COMMISSION_RATE = 0.0005  # %0.05 Binance futures taker fee (each leg)
@@ -253,6 +259,68 @@ def fvg_confirm_mode(fvg, all_bars, continuation_confirm_bars: int = 1):
 _LOGGER = None
 
 
+# ─── E varyanti yardimcilari (CHoCH tabanli giris) ──────────────
+def _latest_choch(bars_15m):
+    """Son 32 bar (8 saat, CHOCH_MAX_AGE_HOURS) icindeki en guncel CHoCH.
+
+    An-bazli: bars_15m gecmise kirpilmis segmenttir; en son bar teyit
+    (sfp_n=1 onay bari) bekledigi icin canli davranisla birebir yalnizca
+    onaylanmis CHoCH'lar gorulur. CHoCH yoksa None -> E, A ile birebir.
+    """
+    if bars_15m is None or len(bars_15m) < 4:
+        return None
+    mgr = SwingStateManager()
+    mgr.ingest(bars_15m)
+    try:
+        chochs = detect_mss(
+            bars_15m,
+            mgr,
+            lookback=None,
+            timeframe="15m",
+            atr_mult=getattr(cfg, "CHOCH_ATR_OVERSHOOT", 0.15),
+        )
+    except Exception:
+        return None
+    if not chochs:
+        return None
+    return max(chochs, key=lambda c: c.bar_index)
+
+
+def _pick_overlap_fvg(bars_15m, level, direction, atr_val, symbol):
+    """CHoCH.level'a en yakin, ayni yonlu FVG'yi secer.
+
+    Tolerans: |FVG_orta - CHoCH.level| <= max(band_genisligi,
+    atr * CHOCH_FVG_OVERLAP_ATR_MULT). Uygun FVG yoksa None dondurur;
+    cagiran A'nin trigger_fvg'sine duser (sadece tercih, zorunluluk degil).
+    """
+    if bars_15m is None or len(bars_15m) < 4:
+        return None
+    try:
+        atr_mult = getattr(cfg, "CHOCH_FVG_OVERLAP_ATR_MULT", 1.0)
+        size_mult = getattr(cfg, "FVG_SIZE_MAP", {}).get(
+            symbol, getattr(cfg, "FVG_MIN_SIZE_ATR_MULT", 0.06)
+        )
+        min_size = max(atr_val * size_mult, 1e-8) if atr_val > 0 else 1e-8
+        fvgs = detect_fvgs(
+            bars_15m,
+            lookback=50,
+            timeframe="15m",
+            min_fvg_size=min_size,
+            since_index=0,
+        )
+    except Exception:
+        return None
+    cands = [f for f in fvgs if f.direction == direction]
+    if not cands:
+        return None
+    best = min(cands, key=lambda f: abs((f.top + f.bottom) / 2 - level))
+    bw = best.top - best.bottom
+    tol = max(bw, atr_val * atr_mult) if atr_val > 0 else bw
+    if abs((best.top + best.bottom) / 2 - level) <= tol:
+        return best
+    return None
+
+
 def collect_fvg_profile(symbol: str):
     """V4 engine (live-identical) + captures every trigger-ready FVG with profiling data."""
     try:
@@ -369,7 +437,20 @@ def _collect_fvg_profile_impl(symbol: str):
                 rsm.reset()
                 continue
 
+            # ── E varyanti: CHoCH yon filtresi (config.ENTRY_VARIANT) ──
             v4_fvg = rsm.trigger_fvg
+            if ENTRY_VARIANT in ("E1", "E2"):
+                choch = _latest_choch(chunk)
+                if choch is not None and choch.direction != sd:
+                    if ENTRY_VARIANT == "E2":
+                        rejection_counts["CHOCH_CONTRA"] += 1
+                        rsm.reset()
+                        continue
+                elif choch is not None:
+                    ofvg = _pick_overlap_fvg(chunk, choch.level, sd, atr, symbol)
+                    if ofvg is not None:
+                        v4_fvg = ofvg
+
             classic_fvg = {
                 "direction": v4_fvg.direction if v4_fvg else "bullish",
                 "top": v4_fvg.top if v4_fvg else 0,
@@ -1016,6 +1097,7 @@ def _analyze_one_sym_v5(
     mode: str | None = None,
     cont_k: float | None = None,
     act_r: float | None = None,
+    entry_variant: str | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1047,6 +1129,8 @@ def _analyze_one_sym_v5(
         _eng.CONT_BUFFER_MULT = cont_k
     if act_r is not None:
         _eng.TRAIL_ACTIVATION_R_MULT = act_r
+    if entry_variant is not None:
+        _eng.ENTRY_VARIANT = entry_variant
 
     try:
         result = collect_fvg_profile(sym)
@@ -1238,6 +1322,181 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
     print(f"\n  Rapor: {rpt_path}")
 
 
+def run_compare_ae(symbols, workers, serial):
+    """A vs E1 (yumusak) vs E2 (sert) CHoCH giris filtresi karsilastirmasi.
+
+    Her coin icin A, E1 ve E2 modlarini ayri worker'da kosar; coin-bazli
+    Trade / PE% / MaxDD / NetPnL / CHOCH_CONTRA dokumu ve toplam NetPnL
+    bazinda kazanan varyanti belirler. Rapor: reports/analyzer_v5_ae_compare.md
+    """
+    import concurrent.futures
+
+    syms = sorted(symbols)
+    tasks = []
+    for sym in syms:
+        tasks.append((sym, "A", None))
+        tasks.append((sym, "E1", "E1"))
+        tasks.append((sym, "E2", "E2"))
+
+    results = {}
+    if serial or workers <= 1:
+        for sym, tag, ev in tasks:
+            results[(sym, tag)] = _analyze_one_sym_v5(sym, entry_variant=ev)
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+            fut_map = {
+                ex.submit(_analyze_one_sym_v5, sym, None, None, None, ev): (sym, tag)
+                for sym, tag, ev in tasks
+            }
+            for fut in concurrent.futures.as_completed(fut_map):
+                key = fut_map[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as e:
+                    results[key] = {"sym": key[0], "error": str(e)}
+
+    rows = []
+    for sym in syms:
+        ra = results.get((sym, "A"), {})
+        re1 = results.get((sym, "E1"), {})
+        re2 = results.get((sym, "E2"), {})
+        if "error" in ra or "error" in re1 or "error" in re2:
+            rows.append(
+                (sym, None, None, None, None, None, None, None, None, None, None)
+            )
+            continue
+        sa, se1, se2 = ra["stats"], re1["stats"], re2["stats"]
+        contra = re2["rejection_counts"].get("CHOCH_CONTRA", 0)
+        rows.append(
+            (
+                sym,
+                sa["total_trades"],
+                sa["positive_exit_pct"],
+                sa["max_dd_pct"],
+                sa["total_pnl"],
+                se1["total_trades"],
+                se1["positive_exit_pct"],
+                se1["max_dd_pct"],
+                se1["total_pnl"],
+                se2["total_trades"],
+                se2["positive_exit_pct"],
+                se2["max_dd_pct"],
+                se2["total_pnl"],
+                contra,
+            )
+        )
+
+    def _tot(idx):
+        n = sum(r[idx] for r in rows if r[1] is not None)
+        pe = sum(r[idx + 1] * r[idx] for r in rows if r[1] is not None)
+        dd = max((r[idx + 2] for r in rows if r[1] is not None), default=0.0)
+        pnl = sum(r[idx + 3] for r in rows if r[1] is not None)
+        return {"n": n, "pe": pe / n if n else 0.0, "dd": dd, "pnl": pnl}
+
+    t_a = _tot(1)
+    t_e1 = _tot(5)
+    t_e2 = _tot(9)
+    contra_total = sum(r[13] for r in rows if r[1] is not None)
+
+    best_tag, best_pnl = max(
+        (("A", t_a["pnl"]), ("E1", t_e1["pnl"]), ("E2", t_e2["pnl"])),
+        key=lambda x: x[1],
+    )
+
+    lines = []
+    w = lines.append
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    w(f"# A vs E1 (yumusak) vs E2 (sert) — CHoCH giris filtresi — {ts}")
+    w("")
+    w("- **A (baseline)**: mevcut sweep-FVG mantigi, CHoCH filtresi yok.")
+    w(
+        "- **E1 (yumusak)**: CHoCH yoksa A ile birebir; destekleyici CHoCH varsa CHoCH.level ile ortusen FVG tercih edilir; bias'a ters CHoCH yok sayilir (A'ya dusulur, engellenmez)."
+    )
+    w(
+        "- **E2 (sert)**: E1 ile ayni overlap-FVG tercihi; fark: bias'a ters CHoCH'ta trade atlanir (`CHOCH_CONTRA` reddi)."
+    )
+    w(
+        f"- Sabitler: `CHOCH_FVG_OVERLAP_ATR_MULT={getattr(cfg, 'CHOCH_FVG_OVERLAP_ATR_MULT', 1.0)}`, `CHOCH_MAX_AGE_HOURS={getattr(cfg, 'CHOCH_MAX_AGE_HOURS', 8)}`; trailing/SL/TP formulu moddan etkilenmez."
+    )
+    w("")
+
+    w("## Ozet (toplam)")
+    w("")
+    hdr = "| Mod | Trade | PE% | MaxDD% | NetPnL | CHOCH_CONTRA |"
+    w(hdr)
+    w("|" + "---|" * (hdr.count("|") - 1))
+    w(
+        f"| A  | {t_a['n']} | {t_a['pe']:.1f}% | {t_a['dd']:.1f}% | {t_a['pnl']:+,.0f} | — |"
+    )
+    w(
+        f"| E1 | {t_e1['n']} | {t_e1['pe']:.1f}% | {t_e1['dd']:.1f}% | {t_e1['pnl']:+,.0f} | — |"
+    )
+    w(
+        f"| E2 | {t_e2['n']} | {t_e2['pe']:.1f}% | {t_e2['dd']:.1f}% | {t_e2['pnl']:+,.0f} | {contra_total} |"
+    )
+    w("")
+
+    w("## Coin bazli dokum")
+    w("")
+    hdr2 = "| Symbol | TrA | PEA% | PnLA | TrE1 | PEE1% | PnLE1 | TrE2 | PEE2% | PnLE2 | Contra |"
+    w(hdr2)
+    w("|" + "---|" * (hdr2.count("|") - 1))
+    for r in rows:
+        if r[1] is None:
+            w(f"| {r[0]} | HATA | | | | | | | | | |")
+            continue
+        w(
+            f"| {r[0]} | {r[1]} | {r[2]:.1f}% | {r[4]:+,.0f} | {r[5]} | {r[6]:.1f}% | {r[8]:+,.0f} | {r[9]} | {r[10]:.1f}% | {r[12]:+,.0f} | {r[13]} |"
+        )
+    w("")
+
+    w("## Sonuc")
+    w("")
+    w(
+        f"- En yuksek toplam NetPnL: **{best_tag}** (A: {t_a['pnl']:+,.0f}, E1: {t_e1['pnl']:+,.0f}, E2: {t_e2['pnl']:+,.0f})."
+    )
+    w(
+        f"- E1 vs A: {t_e1['pnl'] - t_a['pnl']:+,.0f}; E2 vs A: {t_e2['pnl'] - t_a['pnl']:+,.0f}; E2 vs E1: {t_e2['pnl'] - t_e1['pnl']:+,.0f}."
+    )
+    w(
+        f"- Toplam MaxDD — A: {t_a['dd']:.1f}%, E1: {t_e1['dd']:.1f}%, E2: {t_e2['dd']:.1f}%; E2 `CHOCH_CONTRA` reddi: {contra_total} trade."
+    )
+
+    rpt_path = os.path.join(
+        os.path.dirname(__file__), "..", "reports", "analyzer_v5_ae_compare.md"
+    )
+    os.makedirs(os.path.dirname(rpt_path), exist_ok=True)
+    with open(rpt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print(f"{'=' * 100}", flush=True)
+    print("  A vs E1 vs E2 — CHoCH giris filtresi karsilastirmasi", flush=True)
+    print(f"{'=' * 100}", flush=True)
+    print(
+        f"  {'Symbol':<10} {'TrA':>6} {'PEA%':>6} {'PnLA':>10} "
+        f"{'TrE1':>6} {'PEE1%':>6} {'PnLE1':>10} "
+        f"{'TrE2':>6} {'PEE2%':>6} {'PnLE2':>10} {'Con':>7}",
+        flush=True,
+    )
+    for r in rows:
+        if r[1] is None:
+            print(f"  {r[0]:<10} HATA", flush=True)
+            continue
+        print(
+            f"  {r[0]:<10} {r[1]:>6} {r[2]:>5.1f}% {r[4]:>+10,.0f} "
+            f"{r[5]:>6} {r[6]:>5.1f}% {r[8]:>+10,.0f} "
+            f"{r[9]:>6} {r[10]:>5.1f}% {r[12]:>+10,.0f} {r[13]:>7}",
+            flush=True,
+        )
+    print(
+        f"  TOPLAM A: {t_a['n']} trade, PE={t_a['pe']:.1f}%, PnL={t_a['pnl']:+,.0f} | "
+        f"E1: {t_e1['n']} trade, PE={t_e1['pe']:.1f}%, PnL={t_e1['pnl']:+,.0f} | "
+        f"E2: {t_e2['n']} trade, PE={t_e2['pe']:.1f}%, PnL={t_e2['pnl']:+,.0f} | "
+        f"Kazanan: {best_tag} | Rapor: {rpt_path}",
+        flush=True,
+    )
+
+
 def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
@@ -1255,6 +1514,11 @@ def main():
         "--compare-ad",
         action="store_true",
         help="A vs D (K, R) coin-bazli karsilastirma raporu uret (28 coin)",
+    )
+    parser.add_argument(
+        "--compare-ae",
+        action="store_true",
+        help="A vs E1 (yumusak) vs E2 (sert) CHoCH giris filtresi karsilastirmasi (28 coin)",
     )
     args = parser.parse_args()
 
@@ -1283,6 +1547,12 @@ def main():
             CONT_BUFFER_MULT,
             TRAIL_ACTIVATION_R_MULT,
         )
+        print(f"Sure: {time.time() - t0c:.0f}s")
+        return
+
+    if args.compare_ae:
+        t0c = time.time()
+        run_compare_ae(cfg.SYMBOLS, n_workers, use_serial)
         print(f"Sure: {time.time() - t0c:.0f}s")
         return
 
