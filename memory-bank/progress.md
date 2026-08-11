@@ -1,5 +1,23 @@
 # backtest-sniper — Progress
 
+## ✅ A6-01 — SWEEP_CONFIRMED RESET FIX (izole modül sweep_sync.py, 2026-08-11)
+- **Görev:** Baş mühendis direktifi — analyzer_v5.py'nin sweep-tüketim mantığını izole bir modüle al, canlı `signal_engine.py:78-93` ile birebir yap (her iki dalda da `ss.sweep_confirmed = False`). A6-02 (next_bar.open) kapsam dışı.
+- **Yeni dosya `src/sweep_sync.py`:** tek fonksiyon `process_sweep(rsm, ss, bars_15m, current, atr_val, symbol)` — canlıyla birebir: ① `IDLE + sweep_confirmed` → `rsm.on_sweep(bar_index=current.index)` → bayrağı temizle; ② `SWEEP_DETECTED` → `on_sweep_confirmed(...)` → IDLE'ye dönerse bayrağı temizle. Canlıdaki "aynı sweep her 15m bar'da yeniden ölü sinyal üretmesin (SEIUSDT direction-fail)" yorumu korundu.
+- **`analyzer_v5.py` (tek değişiklik):** `from sweep_sync import process_sweep` import'u eklendi; eski 418-426 bloğu (`bar_index=None` içeren) `process_sweep(rsm, ss, chunk, cur, atr, symbol)` ile değiştirildi. Entry price mantığına (472-478) dokunulmadı.
+- **Golden testler `tests/test_cbdr_sweep.py` (4/4 pass):** ① fix özü — bayrak tüketimde temizlenir, aynı sweep tekrar beslenemez; ② ikinci sweep RSM meşgulken korunur (flat bar → FVG yok → reset yok); ③ aynı gün iki sweep — ilki tüketilince ikincisi KENDİ yön/seviyesiyle algılanır (bullish/90 vs ilk bearish/200); ④ fix-öncesi emulate — bayrak temizlenmezse aynı sweep yeniden tüketilir (ölü döngü regresyonu).
+- **Backtest sonucu (aynı veri, temiz state, 6 coin, trade sayısı):** toplam **22650 → 5837 (-%74)**.
+
+  | Coin | Baseline (fix öncesi) | Post-fix | Değişim |
+  |------|----------------------|----------|---------|
+  | SEIUSDT | 4013 | 1148 | -71% |
+  | DOTUSDT | 4240 | 1188 | -72% |
+  | BNBUSDT | 2608 | 652 | -75% |
+  | SOLUSDT | 3474 | 911 | -74% |
+  | AVAXUSDT | 4113 | 1005 | -76% |
+  | NEARUSDT | 4202 | 933 | -78% |
+- **Yan etkiler (kayıt):** canlı-özdeş dedup (`bar_index=cur.index`) her onayda `mark_sweep_used` → `backtest-sniper/output/trade_state.json`'a dosya yazımı → koşu süresi ~10x (243s→2630s) ve **re-run state kontaminasyonu** (aynı gün ikinci koşuda sweep'ler atlanır; SEIUSDT 1 trade'e düştü). **Çözüm:** her koşu öncesi `del output\trade_state.json`. Tek temiz koşuda dedup hiç engellemez (bar_index global benzersiz) — asıl azalış bayrak temizlemesinden.
+- **Doğrulama:** ruff check+format temiz; `python parity_check.py --check` → PARITE_OK (exit 0) — parity yalnızca fvg_close_confirmed/fvg_confirm_mode karşılaştırıyor, sweep bloğu kapsam dışı. Golden testler `python tests/test_cbdr_sweep.py` → OK (4 test, 0.016s).
+
 ## ✅ SUIUSDT D-MODE İNCELEMESİ — D Modu SUI'de Kurtarılamadı (2026-08-08 19:55)
 - **Görev:** D-2 kapanışından sonra memory-bank'te "Sıradaki" olarak bekleyen SUIUSDT D-mode incelemesi (bağlam: D modu activation K=2.0/R=1.5 canlıda; PYTH+SEI gridinde -0.26% ama MaxDD iyileşmesi tutarlıydı).
 - **Koşu 1 (tek koşu):** `replay_trailing_v2.py SUIUSDT --cont-k 2.0 --act-r 1.5` → A retrace **+113,069** (MaxDD 677) vs D **+107,476** (MaxDD 733). NetPnL -4.9%, MaxDD +8.3% kötü. PYTH+SEI bulgusunun tersi — D modu SUI'de MaxDD'yi bile iyileştirmiyor.

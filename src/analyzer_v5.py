@@ -27,6 +27,7 @@ from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
 from session import DailyBias, SessionState
+from sweep_sync import process_sweep
 from session_router import (
     get_cbdr_multiplier,
     should_trade,
@@ -415,15 +416,7 @@ def _collect_fvg_profile_impl(symbol: str):
             w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
-        if ss.sweep_confirmed and rsm.state_name == "IDLE":
-            rsm.on_sweep(
-                direction=ss.sweep_direction or "bullish",
-                level=ss.sweep_level or 0.0,
-                bar_index=None,
-            )
-
-        if rsm.state_name == "SWEEP_DETECTED":
-            rsm.on_sweep_confirmed(chunk, cur, atr, symbol)
+        process_sweep(rsm, ss, chunk, cur, atr, symbol)
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
