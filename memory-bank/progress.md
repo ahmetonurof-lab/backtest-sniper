@@ -1,5 +1,17 @@
 # backtest-sniper — Progress
 
+## 🔬 PLAN C — TRAILING DENEYLERİ (--trail-exp, c4edf98, 2026-08-15)
+- **Görev:** LUNA direktifi Plan C madde 4 — baseline'dan AYRI trailing karşılaştırma koşuları: PROFIT_GATE_0_8R, PROFIT_GATE_1_0R, ATR_TRAIL_0_5, ATR_TRAIL_0_75, HYBRID_FVG_PLUS_PROFIT_GATE. Her rapor: trade, win rate, PF, NetPnL, MaxDD, expectancy, avg hold, exit-reason dağılımı. Entry/state'e dokunmak YASAK (ayrı commit).
+- **`analyzer_v5.py` (tek dosya, +126/-6):**
+  - Yeni modül globalleri: `PROFIT_GATE_R` (0.0=kapalı) + `TRAIL_BE_ON_GATE` (BE). `main()`'e `--trail-exp` argümanı (6 choice), EXP etiketi rapora işleniyor (`[EXP_TAG]`).
+  - **PROFIT_GATE_xR:** retrace trail gövdesinin başında `upnl_r = unrealized kar / risk_pts`; kapı kapalıysa (`upnl_r < gate`) `continue` → SL/TP dokunulmaz. **HYBRID:** gate 1.0 + eşik aşılınca SL→entry BE taşıması (`be_triggered`).
+  - **ATR_TRAIL_0_5/0_75:** mevcut `atr_chase` chandelier (`SL = close ∓ K·ATR`, TMM+is_placeable) — K sadece `CONT_BUFFER_MULT` olarak veriliyor (canlı `trailing_manager` ATR-chase fallback K'sıyla aynı mekanizma).
+  - `_analyze_one_sym_v5`'e `profit_gate`/`trail_be` param'ları (spawn worker global taşımaz); paralel submit güncellendi.
+  - `trade_records`'a `entry_bar`/`exit_bar`; `compute_session_stats`'a `expectancy` ($/trade) + `avg_hold` (bar); markdown raporuna Exp$ + AvgHold sütunları + exit-reason satırı (TP/PTrail/LOSS dağılımı).
+- **Doğrulama:** 14/14 test OK; ruff/ruff-format/vulture/mypy/parity-check PASS. Baseline bit-bit korundu: gate=0 SOLUSDT **1503 / +39055** = bt_baseline.log ile aynı. Smoke: HYBRID SOLUSDT 1326/+681, ATR_TRAIL_0_75 SOLUSDT 1677/-23477 (motor crash'siz çalışıyor).
+- **Çalıştırma (kullanıcı terminali, workers):** `python src\analyzer_v5.py --workers N --trail-exp <EXP>` — her koşu `reports/analyzer_v5_summary.md`'ye `[EXP_TAG]` ile eklenir; her koşu TEMİZ state ile başlar (`_clean_backtest_state`).
+- **Önceki Plan C adımları:** baseline `55a15fa` (48943 trade / net +1602063, live-parity guard `if not active:` — eski 110k şişik sayının düzeltmesi), determinizm `07e3816` (28/28 sembol 0 farklı satır).
+
 ## ✅ A6-01 — SWEEP_CONFIRMED RESET FIX (izole modül sweep_sync.py, 2026-08-11)
 - **Görev:** Baş mühendis direktifi — analyzer_v5.py'nin sweep-tüketim mantığını izole bir modüle al, canlı `signal_engine.py:78-93` ile birebir yap (her iki dalda da `ss.sweep_confirmed = False`). A6-02 (next_bar.open) kapsam dışı.
 - **Yeni dosya `src/sweep_sync.py`:** tek fonksiyon `process_sweep(rsm, ss, bars_15m, current, atr_val, symbol)` — canlıyla birebir: ① `IDLE + sweep_confirmed` → `rsm.on_sweep(bar_index=current.index)` → bayrağı temizle; ② `SWEEP_DETECTED` → `on_sweep_confirmed(...)` → IDLE'ye dönerse bayrağı temizle. Canlıdaki "aynı sweep her 15m bar'da yeniden ölü sinyal üretmesin (SEIUSDT direction-fail)" yorumu korundu.
