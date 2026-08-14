@@ -179,6 +179,15 @@ TRAIL_ACTIVATION_R_MULT = getattr(cfg, "TRAIL_ACTIVATION_R_MULT", 1.5)
 # CONT_BUFFER_MULT=2.0). D modu geri cekildi (2026-08-08).
 CONT_BUFFER_MULT = getattr(cfg, "CONT_BUFFER_MULT", 2.0)
 
+# ─── Trailing deneyleri (LUNA direktifi Plan C madde 4: baseline'dan AYRI) ──
+# PROFIT_GATE_R > 0: FVG retrace trail YALNIZCA unrealized kar >= R*risk_pts
+# oldugunda devreye girer (R-kar kapisi). 0.0 = devre disi (baseline).
+PROFIT_GATE_R = 0.0
+
+# TRAIL_BE_ON_GATE: PROFIT_GATE_R esigi asilinca SL'yi once entry'ye (BE) tasir
+# (profit protection / breakeven buffer). HYBRID_FVG_PLUS_PROFIT_GATE deneyi.
+TRAIL_BE_ON_GATE = False
+
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
 CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
@@ -637,6 +646,29 @@ def _collect_fvg_profile_impl(symbol: str):
                 rpt2 = abs(t["initial_sl"] - t["entry_price"])
                 ltc = 0
                 upd = False
+                # ── R-kar kapisi (LUNA Plan C madde 4): PROFIT_GATE_R > 0 ise
+                # trailing yalnizca unrealized kar >= PROFIT_GATE_R * risk_pts
+                # oldugunda calisir. Kapinin altinda SL/TP oldugu gibi kalir.
+                # TRAIL_BE_ON_GATE: esik asilinca SL entry'ye (BE) tasinir.
+                if PROFIT_GATE_R > 0 and rpt2 > 0:
+                    _cpx = cur.close
+                    _upnl_r = (
+                        (_cpx - t["entry_price"]) / rpt2
+                        if s2 == "long"
+                        else (t["entry_price"] - _cpx) / rpt2
+                    )
+                    if _upnl_r < PROFIT_GATE_R:
+                        continue  # kapi kapali → bu bar trail yok
+                    if TRAIL_BE_ON_GATE and not t.get("be_triggered"):
+                        _be_sl = t["entry_price"]
+                        if (s2 == "long" and _be_sl > csl) or (
+                            s2 == "short" and _be_sl < csl
+                        ):
+                            csl = _be_sl
+                            t["be_triggered"] = True
+                            t["trailing_count"] = t.get("trailing_count", 0) + 1
+                            ltc += 1
+                            upd = True
                 for fvg in cfvgs:
                     if s2 == "long" and fvg.direction != "bullish":
                         continue
@@ -803,6 +835,8 @@ def _collect_fvg_profile_impl(symbol: str):
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
                         "risk_usd": risk_usd_rec,
+                        "entry_bar": t.get("entry_bar"),
+                        "exit_bar": t.get("exit_bar"),
                         "fvg_direction": t.get("trigger_fvg", {}).direction
                         if t.get("trigger_fvg")
                         else "",
@@ -903,6 +937,8 @@ def _collect_fvg_profile_impl(symbol: str):
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
                         "risk_usd": risk_usd_rec,
+                        "entry_bar": t.get("entry_bar"),
+                        "exit_bar": t.get("exit_bar"),
                         "fvg_direction": t.get("trigger_fvg", {}).direction
                         if t.get("trigger_fvg")
                         else "",
@@ -1026,6 +1062,8 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
             "total_pnl": 0,
             "total_fee": 0,
             "pnl_per_fee": 0,
+            "expectancy": 0,
+            "avg_hold": 0,
             "score": 0,
         }
     tp = sum(1 for r in trade_records if r["result"] == "TP")
@@ -1068,6 +1106,16 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
     total_pnl = sum(r["pnl"] for r in trade_records)
     total_fee = sum(r.get("fee", 0) for r in trade_records)
     pnl_per_fee = total_pnl / total_fee if total_fee > 0 else 0
+    # LUNA Plan C madde 4: expectancy + ortalama bar tutma suresi (direktif
+    # rapor zorunlulugu). avg_hold trade_records'a islenmis entry_bar/exit_bar
+    # kullanir (exit dahil, yari-open trade'ler count'lanmaz).
+    expectancy = total_pnl / n if n else 0
+    hold_bars = [
+        (r.get("exit_bar", 0) - r.get("entry_bar", 0))
+        for r in trade_records
+        if r.get("entry_bar") is not None and r.get("exit_bar") is not None
+    ]
+    avg_hold = sum(hold_bars) / len(hold_bars) if hold_bars else 0.0
     score = (
         (profit_factor * positive_exit_pct / 100 * pnl_per_fee)
         / (1 + max_dd_pct / 100)
@@ -1087,6 +1135,8 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         "total_pnl": total_pnl,
         "total_fee": total_fee,
         "pnl_per_fee": pnl_per_fee,
+        "expectancy": expectancy,
+        "avg_hold": avg_hold,
         "score": round(score),
     }
 
@@ -1099,6 +1149,8 @@ def _analyze_one_sym_v5(
     cont_k: float | None = None,
     act_r: float | None = None,
     entry_variant: str | None = None,
+    profit_gate: float | None = None,
+    trail_be: bool = False,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1132,6 +1184,10 @@ def _analyze_one_sym_v5(
         _eng.TRAIL_ACTIVATION_R_MULT = act_r
     if entry_variant is not None:
         _eng.ENTRY_VARIANT = entry_variant
+    if profit_gate is not None:
+        _eng.PROFIT_GATE_R = profit_gate
+    if trail_be:
+        _eng.TRAIL_BE_ON_GATE = True
 
     try:
         result = collect_fvg_profile(sym)
@@ -1523,6 +1579,7 @@ def _clean_backtest_state():
 def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
+    global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1543,6 +1600,22 @@ def main():
         action="store_true",
         help="A vs E1 (yumusak) vs E2 (sert) CHoCH giris filtresi karsilastirmasi (28 coin)",
     )
+    parser.add_argument(
+        "--trail-exp",
+        type=str,
+        choices=[
+            "BASELINE_RETRACE_LIVE_PARITY",
+            "PROFIT_GATE_0_8R",
+            "PROFIT_GATE_1_0R",
+            "ATR_TRAIL_0_5",
+            "ATR_TRAIL_0_75",
+            "HYBRID_FVG_PLUS_PROFIT_GATE",
+        ],
+        default=None,
+        help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
+        "(canli config / retrace) ile aynidir; deney sadece trailing'i degistirir, "
+        "entry/state'e dokunmaz.",
+    )
     args = parser.parse_args()
 
     use_serial = args.serial or args.workers <= 1
@@ -1553,14 +1626,45 @@ def main():
     # LUNA Plan C madde 3: her koşu TEMİZ state ile başlar.
     _clean_backtest_state()
 
+    # ── Trailing deneyleri (LUNA Plan C madde 4) ──
+    # Her deney BASELINE'dan AYRI: yalnizca trailing mekanigini degistirir,
+    # entry/state/komisyon degismez. Report etiketi EXP_TAG ile isaretlenir.
+    TRAIL_EXP_TAG = args.trail_exp or "BASELINE_RETRACE_LIVE_PARITY"
+    if args.trail_exp == "PROFIT_GATE_0_8R":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.8
+        TRAIL_BE_ON_GATE = False
+    elif args.trail_exp == "PROFIT_GATE_1_0R":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 1.0
+        TRAIL_BE_ON_GATE = False
+    elif args.trail_exp == "ATR_TRAIL_0_5":
+        TRAIL_MODE = "atr_chase"
+        CONT_BUFFER_MULT = 0.5
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+    elif args.trail_exp == "ATR_TRAIL_0_75":
+        TRAIL_MODE = "atr_chase"
+        CONT_BUFFER_MULT = 0.75
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+    elif args.trail_exp == "HYBRID_FVG_PLUS_PROFIT_GATE":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 1.0
+        TRAIL_BE_ON_GATE = True
+    else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
+        TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+
     # KAPANIS (2026-08-08): D modu + continuation geri cekildi. Varsayilan kosu
     # artik modul sabitini kullanir = canli config'ten turetilir (retrace).
     # ONCEKI sabit override (TRAIL_MODE="activation", K=2.0, R=1.5) KALDIRILDI:
     # backtest'i canli config'ten ayiran son gizli kaynak da boylece bitti.
     print(
         f"  TRAIL MODU: {TRAIL_MODE} "
-        f"(K={CONT_BUFFER_MULT}, R={TRAIL_ACTIVATION_R_MULT}) — "
-        f"canli config'ten (D modu/continuation 2026-08-08 geri cekildi)",
+        f"(K={CONT_BUFFER_MULT}, R={TRAIL_ACTIVATION_R_MULT}, "
+        f"Gate={PROFIT_GATE_R}, BE={TRAIL_BE_ON_GATE}) — EXP: {TRAIL_EXP_TAG}",
         flush=True,
     )
 
@@ -1647,6 +1751,9 @@ def main():
                     TRAIL_MODE,
                     CONT_BUFFER_MULT,
                     TRAIL_ACTIVATION_R_MULT,
+                    None,
+                    PROFIT_GATE_R,
+                    TRAIL_BE_ON_GATE,
                 ): sym
                 for sym in syms
             }
@@ -1718,8 +1825,8 @@ def main():
     )
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     with open(rpt_path, "a") as f:
-        f.write(f"\n---\n# analyzer_v5 Summary — {ts}\n\n")
-        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'TP%':>6} | {'PTrail%':>8} | {'Loss%':>7} | {'PF':>6} | {'Sharpe':>7} | {'MaxDD%':>7} | {'Fee':>10} | {'NetPnL':>10} | {'PnL/Fee':>8} | {'FVGCr':>6} | {'FVGEnt':>6} | {'MinRisk':>7} | {'Score':>7} |"
+        f.write(f"\n---\n# analyzer_v5 Summary [{TRAIL_EXP_TAG}] — {ts}\n\n")
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'TP%':>6} | {'PTrail%':>8} | {'Loss%':>7} | {'PF':>6} | {'Sharpe':>7} | {'MaxDD%':>7} | {'Fee':>10} | {'NetPnL':>10} | {'Exp$':>8} | {'AvgHold':>8} | {'PnL/Fee':>8} | {'FVGCr':>6} | {'FVGEnt':>6} | {'MinRisk':>7} | {'Score':>7} |"
         f.write(hdr2 + "\n")
         sep = "|" + "---|" * (hdr2.count("|") - 1)
         f.write(sep + "\n")
@@ -1728,11 +1835,24 @@ def main():
             fvg_c = fvg_created(rej)
             min_risk = rej.get("MIN_RISK_DIST", 0)
             line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['tp_pct']:>5.1f}% | {stats['profit_trail_pct']:>7.1f}% | {stats['loss_pct']:>6.1f}% | "
-            line += f"{stats['profit_factor']:>5.2f} | {stats['sharpe']:>6.3f} | {stats['max_dd_pct']:>6.1f}% | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {stats['pnl_per_fee']:>7.2f} | {fvg_c:>6} | {entered:>6} | {min_risk:>7} | {stats['score']:>6.1f} |"
+            line += f"{stats['profit_factor']:>5.2f} | {stats['sharpe']:>6.3f} | {stats['max_dd_pct']:>6.1f}% | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {stats['expectancy']:>8.2f} | {stats['avg_hold']:>7.1f} | {stats['pnl_per_fee']:>7.2f} | {fvg_c:>6} | {entered:>6} | {min_risk:>7} | {stats['score']:>6.1f} |"
             f.write(line + "\n")
         f.write(
-            f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}\n"
+            f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}, "
+            f"Expectancy={total_pnl / total_trades:+.2f}$/trade (avg_hold bar ort. "
+            f"{sum(s['avg_hold'] * s['total_trades'] for _, s, _, _ in results_data) / total_trades:.1f})\n"
         )
+        # ── Exit-reason dagilimi (LUNA Plan C madde 4 rapor zorunlulugu) ──
+        if all_trade_records:
+            n_tp = sum(1 for r in all_trade_records if r["result"] == "TP")
+            n_pt = sum(1 for r in all_trade_records if r["result"] == "PROFIT_TRAIL")
+            n_ls = sum(1 for r in all_trade_records if r["result"] in ("LOSS", "OPEN"))
+            f.write(
+                f"\n**Exit-reason:** TP={n_tp} ({n_tp / total_trades * 100:.1f}%) | "
+                f"PROFIT_TRAIL={n_pt} ({n_pt / total_trades * 100:.1f}%) | "
+                f"LOSS/OPEN={n_ls} ({n_ls / total_trades * 100:.1f}%)\n"
+            )
+        f.write("\n")
     print(f"  Rapor: {rpt_path}")
 
     # ── FVG Zone + Fibonacci Analizi ──
