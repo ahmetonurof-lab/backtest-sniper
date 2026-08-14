@@ -416,7 +416,11 @@ def _collect_fvg_profile_impl(symbol: str):
             w = ((ss.cbdr_body_high - ss.cbdr_body_low) / ss.cbdr_body_low) * 100
             day_cbdr[ss.cbdr_day] = round(w, 4)
 
-        process_sweep(rsm, ss, chunk, cur, atr, symbol)
+        # Canlı bot.py:490-495 parity: pozisyon açıkken progress_rsm ÇALIŞMAZ.
+        # RSM state'i trade süresince donar; kapanış sonrası BIAS_LOCKED'de
+        # on_bias_fvg kaldığı yerden sürer (sweep beklenmez).
+        if not active:
+            process_sweep(rsm, ss, chunk, cur, atr, symbol)
 
         if rsm.can_trigger() and not active:
             sd = rsm.direction
@@ -595,7 +599,11 @@ def _collect_fvg_profile_impl(symbol: str):
                         "cbdr_body_low": ss.cbdr_body_low,
                     }
                 )
-                rsm.reset()
+                # Canlı bot.py:1167 parity: entry sonrası BIAS_LOCKED — yön
+                # korunur, yeni sweep beklemeden BIAS yönlü taze FVG aranır
+                # (on_bias_fvg). Bias tersine dönerse / nötrleşirse sweep_sync
+                # BIAS_LOCKED dalı resetler.
+                rsm.lock_bias(bar_index=cur.index)
                 continue  # ayni-bar trailing/exit calistirma
             else:
                 # Filtered setup: record as rejected, reset RSM to avoid duplicate FVGs from same sweep.
@@ -1490,6 +1498,28 @@ def run_compare_ae(symbols, workers, serial):
     )
 
 
+def _clean_backtest_state():
+    """Backtest'e ait state dosyasını run başında temizle (LUNA Plan C madde 3).
+
+    Backtest, canlıyla aynı state_manager iskeletini kullandığından
+    (is_sweep_used okuma / .lock oluşturma) SNIPER_OUTPUT_DIR içindeki
+    trade_state.json kalıntısı (_used_sweeps) aynı günkü ikinci koşuyu
+    etkileyebilir: legacy "{direction}_{bar_index}" kayıtları bar_index'e
+    göre eşleştiğinden geçmiş koşuların sweep'leri yeni koşuda "kullanıldı"
+    görülüp trade sayısını değiştirir. Temizlenir ve loglanır — temiz state
+    + aynı veri → aynı trade/PnL determinizmi.
+    """
+    _out = os.path.join(os.path.dirname(__file__), "..", "output")
+    for fname in ("trade_state.json", "trade_state.json.lock", "trade_state.json.tmp"):
+        p = os.path.join(_out, fname)
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"  [STATE] temizlendi: {p}", flush=True)
+        except OSError as e:
+            print(f"  [STATE] temizleme hatasi: {p} ({e})", flush=True)
+
+
 def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
@@ -1519,6 +1549,9 @@ def main():
     n_workers = args.workers if not use_serial else 1
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # LUNA Plan C madde 3: her koşu TEMİZ state ile başlar.
+    _clean_backtest_state()
 
     # KAPANIS (2026-08-08): D modu + continuation geri cekildi. Varsayilan kosu
     # artik modul sabitini kullanir = canli config'ten turetilir (retrace).
