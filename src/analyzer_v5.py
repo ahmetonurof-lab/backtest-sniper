@@ -315,8 +315,9 @@ D1_BOS_LOOKBACK = 25
 # Kalan oran trailing (retrace) ile devam eder. Kismi kapanisin PnL'si
 # t["locked_pnl"]'de birikir ve final kapanista toplam PnL'ye eklenir.
 # 0.0 = devre disi (baseline ile bit-bit ayni davranis).
+# [VARYASYON - Aktif] 1.2R @ %70 kapanis (LUNA 2: 1.5R @ %50'den degisti)
 PARTIAL_TP_R = 0.0
-PARTIAL_TP_FRAC = 0.5
+PARTIAL_TP_FRAC = 0.7
 
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
@@ -1463,6 +1464,7 @@ def _analyze_one_sym_v5(
     profit_protect_swing_atr: float | None = None,
     htf_bias_align: bool = False,
     partial_tp_r: float | None = None,
+    partial_tp_frac: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1508,6 +1510,8 @@ def _analyze_one_sym_v5(
         _eng.HTF_BIAS_ALIGN = True
     if partial_tp_r is not None:
         _eng.PARTIAL_TP_R = partial_tp_r
+    if partial_tp_frac is not None:
+        _eng.PARTIAL_TP_FRAC = partial_tp_frac
 
     try:
         result = collect_fvg_profile(sym)
@@ -1901,7 +1905,7 @@ def main():
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
-    global HTF_BIAS_ALIGN, PARTIAL_TP_R
+    global HTF_BIAS_ALIGN, PARTIAL_TP_R, PARTIAL_TP_FRAC
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1938,6 +1942,7 @@ def main():
             "PROFIT_PROTECT_1_0R_SW0_75",
             "HTF_BIAS_ALIGN",
             "PARTIAL_TP_1_5R",
+            "PARTIAL_TP_1_2R_70PCT",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -2018,6 +2023,15 @@ def main():
         PROFIT_PROTECT_GATE_R = 0.0
         PROFIT_PROTECT_SWING_ATR_MULT = 0.5
         PARTIAL_TP_R = 1.5
+        PARTIAL_TP_FRAC = 0.5
+    elif args.trail_exp == "PARTIAL_TP_1_2R_70PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 1.2
+        PARTIAL_TP_FRAC = 0.7
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2132,6 +2146,7 @@ def main():
                     PROFIT_PROTECT_SWING_ATR_MULT,
                     HTF_BIAS_ALIGN,
                     PARTIAL_TP_R,
+                    PARTIAL_TP_FRAC,
                 ): sym
                 for sym in syms
             }
