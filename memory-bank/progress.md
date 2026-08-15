@@ -1,5 +1,23 @@
 # backtest-sniper — Progress
 
+## 📊 PLAN C — TRAILING KOŞU SONUÇLARI (6 koşu, 2026-08-15 08:57 tamamlandı)
+- **Sonuç: HİÇBİR deney baseline'ı geçemedi (5/5 koşu, 28/28 sembolde NetPnL düşüşü).** Rapor: `reports/LUNA_planC_trailing_raporu.md`.
+- **Özet (trade / PE% / PF / MaxDD% / NetPnL / Exp$ / AvgHold / TP-PTrail-Loss):**
+
+  | Koşu | Trade | PE% | PF | MaxDD% | NetPnL | Exp$ | AvgHold | TP/PTrail/Loss |
+  |---|---|---|---|---|---|---|---|---|
+  | BASELINE_RETRACE_LIVE_PARITY | 48,943 | 57.1 | 3.18 | 1.4 | **+1,602,063** | +32.73 | (eski format) | 17.0/40.1/42.9 |
+  | PROFIT_GATE_0_8R | 43,793 | 38.6 | 1.09 | 55.4 | +113,523 | +2.59 | 7.5 | 20.0/18.6/61.4 |
+  | PROFIT_GATE_1_0R | 42,694 | 37.3 | 1.05 | 80.8 | +59,833 | +1.40 | 8.4 | 21.0/16.3/62.7 |
+  | ATR_TRAIL_0_5 | 56,116 | 31.9 | 0.24 | 428.3 | −829,117 | −14.78 | 0.8 | 0.8/31.1/68.1 |
+  | ATR_TRAIL_0_75 | 55,140 | 30.8 | 0.25 | 441.8 | −862,938 | −15.65 | 1.3 | 1.6/29.2/69.2 |
+  | HYBRID_FVG_PLUS_PROFIT_GATE | 44,009 | 29.1 | 0.90 | 146.0 | −115,700 | −2.63 | 7.5 | 15.8/13.3/70.9 |
+
+- **Yorum (mekanizma):** baseline'ın getirisi FVG retrace trailing'ten değil, **initial TP'ye sessiz bekleyişten** geliyor (PE% 57.1 = TP 17.0 + PTrail 40.1). Kapı trail'i geç aktive edince trailing kârı kayboluyor (PTrail 40→18, Loss 43→61). ATR chandelier SL'yi girişten hemen vuruyor (AvgHold 0.8-1.3 bar, TP %1). HYBRID BE kârı erken donduruyor (Loss %70.9).
+- **En dirençli sembol:** XRPUSDT (Δ −18K/−30K); **en kırılgan:** GMXUSDT (Δ −86K/−136K). R-kâr kapısı eşiği 0.8→1.0R büyüdükçe sonuç kötüleşiyor (113K→60K) — bu aralıkta kaybediyor; 1.5-2.5R taraması istek halinde.
+- **Sonuç kararı:** canlıya trailing değişikliği önerilmez; baseline korunur. Koşu logları: `analyzer_v5_summary.md` satır 1477-1741 (6 `[EXP_TAG]` bölümü).
+- **Eksik hücre:** baseline AvgHold — determinizm koşuları eski formatla yapıldı; determinizm ispatlı olduğundan taze koşu aynı trade/PnL + yeni metrikleri üretir (opsiyonel).
+
 ## 🔬 PLAN C — TRAILING DENEYLERİ (--trail-exp, c4edf98, 2026-08-15)
 - **Görev:** LUNA direktifi Plan C madde 4 — baseline'dan AYRI trailing karşılaştırma koşuları: PROFIT_GATE_0_8R, PROFIT_GATE_1_0R, ATR_TRAIL_0_5, ATR_TRAIL_0_75, HYBRID_FVG_PLUS_PROFIT_GATE. Her rapor: trade, win rate, PF, NetPnL, MaxDD, expectancy, avg hold, exit-reason dağılımı. Entry/state'e dokunmak YASAK (ayrı commit).
 - **`analyzer_v5.py` (tek dosya, +126/-6):**
