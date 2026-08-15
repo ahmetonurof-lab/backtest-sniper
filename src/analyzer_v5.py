@@ -308,6 +308,16 @@ PROFIT_PROTECT_SWING_ATR_MULT = 0.5
 HTF_BIAS_ALIGN = False
 D1_BOS_LOOKBACK = 25
 
+# ─── KISMI TP (2026-08-15 LUNA 2. varyasyon) ────────────────────────────────
+# PARTIAL_TP_R > 0 iken: pozisyonun PARTIAL_TP_FRAC orani, giris fiyatindan
+# PARTIAL_TP_R * risk_pts (risk_pts = |entry - initial_sl|) uzakliktaki
+# fiyatta KAPANIR (long: entry + R*risk_pts, short: entry - R*risk_pts).
+# Kalan oran trailing (retrace) ile devam eder. Kismi kapanisin PnL'si
+# t["locked_pnl"]'de birikir ve final kapanista toplam PnL'ye eklenir.
+# 0.0 = devre disi (baseline ile bit-bit ayni davranis).
+PARTIAL_TP_R = 0.0
+PARTIAL_TP_FRAC = 0.5
+
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
 CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
@@ -774,6 +784,7 @@ def _collect_fvg_profile_impl(symbol: str):
                         "sl": sl,
                         "tp": tp,
                         "qty": qty,
+                        "entry_qty": qty,
                         "side": side,
                         "trigger_fvg": tf,
                         "initial_sl": sl,
@@ -784,6 +795,8 @@ def _collect_fvg_profile_impl(symbol: str):
                         "trade_uid": trade_uid,
                         "cbdr_body_high": ss.cbdr_body_high,
                         "cbdr_body_low": ss.cbdr_body_low,
+                        "partial_taken": False,
+                        "locked_pnl": 0.0,
                     }
                 )
                 # Canlı bot.py:1167 parity: entry sonrası BIAS_LOCKED — yön
@@ -1020,12 +1033,34 @@ def _collect_fvg_profile_impl(symbol: str):
                         t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
-                elif cur.high >= t["tp"]:
-                    t["exit_price"] = t["tp"]
-                    t["exit_bar"] = sb
-                    t["result"] = "TP"
-                    t["closed"] = True
-                    ex = True
+                else:
+                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i 1.5R'de kapanir ──
+                    if (
+                        PARTIAL_TP_R > 0
+                        and not t.get("partial_taken")
+                        and cur.high
+                        >= t["entry_price"]
+                        + PARTIAL_TP_R * abs(t["initial_sl"] - t["entry_price"])
+                    ):
+                        _pp = t["entry_price"] + PARTIAL_TP_R * abs(
+                            t["initial_sl"] - t["entry_price"]
+                        )
+                        _pq = t["qty"] * PARTIAL_TP_FRAC
+                        _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
+                        _exit_fee = _pp * _pq * COMMISSION_RATE
+                        t["locked_pnl"] += (_pp - t["entry_price"]) * _pq
+                        t["locked_fee"] = (
+                            t.get("locked_fee", 0.0) + _entry_fee + _exit_fee
+                        )
+                        t["qty"] -= _pq
+                        t["partial_taken"] = True
+                        rejection_counts["PARTIAL_TP"] += 1
+                    if cur.high >= t["tp"]:
+                        t["exit_price"] = t["tp"]
+                        t["exit_bar"] = sb
+                        t["result"] = "TP"
+                        t["closed"] = True
+                        ex = True
             else:
                 if cur.high >= t["sl"]:
                     t["exit_price"] = t["sl"]
@@ -1036,12 +1071,34 @@ def _collect_fvg_profile_impl(symbol: str):
                         t["result"] = "LOSS"
                     t["closed"] = True
                     ex = True
-                elif cur.low <= t["tp"]:
-                    t["exit_price"] = t["tp"]
-                    t["exit_bar"] = sb
-                    t["result"] = "TP"
-                    t["closed"] = True
-                    ex = True
+                else:
+                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i 1.5R'de kapanir ──
+                    if (
+                        PARTIAL_TP_R > 0
+                        and not t.get("partial_taken")
+                        and cur.low
+                        <= t["entry_price"]
+                        - PARTIAL_TP_R * abs(t["initial_sl"] - t["entry_price"])
+                    ):
+                        _pp = t["entry_price"] - PARTIAL_TP_R * abs(
+                            t["initial_sl"] - t["entry_price"]
+                        )
+                        _pq = t["qty"] * PARTIAL_TP_FRAC
+                        _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
+                        _exit_fee = _pp * _pq * COMMISSION_RATE
+                        t["locked_pnl"] += (t["entry_price"] - _pp) * _pq
+                        t["locked_fee"] = (
+                            t.get("locked_fee", 0.0) + _entry_fee + _exit_fee
+                        )
+                        t["qty"] -= _pq
+                        t["partial_taken"] = True
+                        rejection_counts["PARTIAL_TP"] += 1
+                    if cur.low <= t["tp"]:
+                        t["exit_price"] = t["tp"]
+                        t["exit_bar"] = sb
+                        t["result"] = "TP"
+                        t["closed"] = True
+                        ex = True
             if ex:
                 diff = (
                     (t["exit_price"] - t["entry_price"])
@@ -1053,11 +1110,18 @@ def _collect_fvg_profile_impl(symbol: str):
                 total_fee = entry_fee + exit_fee
                 t["entry_fee"] = round(entry_fee, 2)
                 t["exit_fee"] = round(exit_fee, 2)
-                t["fee"] = round(total_fee, 2)
-                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
+                t["fee"] = round(total_fee + t.get("locked_fee", 0.0), 2)
+                t["pnl"] = round(
+                    diff * t["qty"]
+                    - total_fee
+                    + t.get("locked_pnl", 0.0)
+                    - t.get("locked_fee", 0.0),
+                    2,
+                )
                 day_trades[t.get("day_key", "")].append(t["pnl"])
                 risk_usd_rec = (
-                    abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                    abs(t["initial_sl"] - t["entry_price"])
+                    * t.get("entry_qty", t["qty"])
                     if t["initial_sl"]
                     else 0
                 )
@@ -1094,7 +1158,8 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
                     risk_usd = (
-                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        abs(t["initial_sl"] - t["entry_price"])
+                        * t.get("entry_qty", t["qty"])
                         if t["initial_sl"]
                         else 0
                     )
@@ -1103,7 +1168,8 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_["v4_real_hit_stop"] = t["result"] in ("LOSS", "PROFIT_TRAIL")
                 if _LOGGER is not None:
                     risk_usd = (
-                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        abs(t["initial_sl"] - t["entry_price"])
+                        * t.get("entry_qty", t["qty"])
                         if t["initial_sl"]
                         else 0
                     )
@@ -1155,11 +1221,18 @@ def _collect_fvg_profile_impl(symbol: str):
                 total_fee = entry_fee + exit_fee
                 t["entry_fee"] = round(entry_fee, 2)
                 t["exit_fee"] = round(exit_fee, 2)
-                t["fee"] = round(total_fee, 2)
-                t["pnl"] = round(diff * t["qty"] - total_fee, 2)
+                t["fee"] = round(total_fee + t.get("locked_fee", 0.0), 2)
+                t["pnl"] = round(
+                    diff * t["qty"]
+                    - total_fee
+                    + t.get("locked_pnl", 0.0)
+                    - t.get("locked_fee", 0.0),
+                    2,
+                )
                 day_trades[t.get("day_key", "")].append(t["pnl"])
                 risk_usd_rec = (
-                    abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                    abs(t["initial_sl"] - t["entry_price"])
+                    * t.get("entry_qty", t["qty"])
                     if t["initial_sl"]
                     else 0
                 )
@@ -1196,7 +1269,8 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_["v4_real_result"] = t["result"]
                     f_["v4_real_pnl_usd"] = t["pnl"]
                     risk_usd = (
-                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        abs(t["initial_sl"] - t["entry_price"])
+                        * t.get("entry_qty", t["qty"])
                         if t["initial_sl"]
                         else 0
                     )
@@ -1205,7 +1279,8 @@ def _collect_fvg_profile_impl(symbol: str):
                     f_["v4_real_hit_stop"] = t["result"] in ("LOSS", "PROFIT_TRAIL")
                 if _LOGGER is not None:
                     risk_usd = (
-                        abs(t["initial_sl"] - t["entry_price"]) * t["qty"]
+                        abs(t["initial_sl"] - t["entry_price"])
+                        * t.get("entry_qty", t["qty"])
                         if t["initial_sl"]
                         else 0
                     )
@@ -1387,6 +1462,7 @@ def _analyze_one_sym_v5(
     profit_protect_gate: float | None = None,
     profit_protect_swing_atr: float | None = None,
     htf_bias_align: bool = False,
+    partial_tp_r: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1430,6 +1506,8 @@ def _analyze_one_sym_v5(
         _eng.PROFIT_PROTECT_SWING_ATR_MULT = profit_protect_swing_atr
     if htf_bias_align:
         _eng.HTF_BIAS_ALIGN = True
+    if partial_tp_r is not None:
+        _eng.PARTIAL_TP_R = partial_tp_r
 
     try:
         result = collect_fvg_profile(sym)
@@ -1823,7 +1901,7 @@ def main():
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
-    global HTF_BIAS_ALIGN
+    global HTF_BIAS_ALIGN, PARTIAL_TP_R
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1859,6 +1937,7 @@ def main():
             "PROFIT_PROTECT_1_0R_SW0_5",
             "PROFIT_PROTECT_1_0R_SW0_75",
             "HTF_BIAS_ALIGN",
+            "PARTIAL_TP_1_5R",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -1932,6 +2011,13 @@ def main():
         PROFIT_PROTECT_GATE_R = 0.0
         PROFIT_PROTECT_SWING_ATR_MULT = 0.5
         HTF_BIAS_ALIGN = True
+    elif args.trail_exp == "PARTIAL_TP_1_5R":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 1.5
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2045,6 +2131,7 @@ def main():
                     PROFIT_PROTECT_GATE_R,
                     PROFIT_PROTECT_SWING_ATR_MULT,
                     HTF_BIAS_ALIGN,
+                    PARTIAL_TP_R,
                 ): sym
                 for sym in syms
             }
@@ -2116,6 +2203,11 @@ def main():
         print(
             f"  HTF BIAS NOT: 1D bias'a zit yon nedeniyle girilmeyen trade: {_contra_total}"
         )
+    if PARTIAL_TP_R > 0:
+        _partial_total = sum(rej.get("PARTIAL_TP", 0) for _, _, _, rej in results_data)
+        print(
+            f"  PARTIAL TP NOT: {PARTIAL_TP_R}R'de %{PARTIAL_TP_FRAC*100:.0f} kapanan trade: {_partial_total}"
+        )
 
     # ── Report file ──
     rpt_path = os.path.join(
@@ -2159,6 +2251,12 @@ def main():
             f.write(
                 f"\n**HTF BIAS NOT:** 1D bias'a zit yon oldugu icin giris yapilmayan trade: "
                 f"{_contra} (kural: CBDR ve 1D ayni ya da natural ise gir)\n"
+            )
+        if PARTIAL_TP_R > 0:
+            _partial = sum(rej.get("PARTIAL_TP", 0) for _, _, _, rej in results_data)
+            f.write(
+                f"\n**PARTIAL TP NOT:** {PARTIAL_TP_R}R seviyesinde pozisyonun "
+                f"%{PARTIAL_TP_FRAC*100:.0f}'i kapatilan trade sayisi: {_partial}\n"
             )
         f.write("\n")
     print(f"  Rapor: {rpt_path}")
