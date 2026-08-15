@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## 🎯 PARTIAL_TP_1_8R_50PCT DENEYİ — kısmi TP seviyesi 1.8R, %50 kapanış (2026-08-15)
+- **Tetik:** Kullanıcı "1,8 + %50 yapalım mı" — 1.5R/%50'nin (baseline'a en yakın PARTIAL, 48943 trade/+1.598M 28-coinde) seviyesini 1.5R→1.8R'e çekmek. Mantık: seviye yükselince kısmi kapanış daha geç tetiklenir, trailing kârı daha az kesilir.
+- **`analyzer_v5.py` (commit `23f924d`):** dispatch'e `PARTIAL_TP_1_8R_50PCT` (PARTIAL_TP_R=1.8, PARTIAL_TP_FRAC=0.5). Smoke SOLUSDT: **1503 trade / +26,096.02** (mekanizma devrede). py_compile + pre-commit 8/8 PASS.
+- **Koşu komutu:** `python src\analyzer_v5.py --workers N --trail-exp PARTIAL_TP_1_8R_50PCT`. Koşu kullanıcı terminalinde.
+- **Bağlam (2.0R koşusu tamamlandı, raporlar commit `6917183`):** PP_2_0R_SW0_5=424,107 / PP_2_0R_SW0_75=424,252 (8-coin, RISK 0.002). 8-coin baseline=438,966, 1_2R_70=437,373 → 2.0R %3.4 altı ama 0.8/1.0R'nin %11 kaybından iyi (PTrail %48, TP %11.8). Swing ATR 0.5/0.75 farkı önemsiz.
+
 ## 🎯 PROFIT_PROTECT_2_0R_SW0_5/SW0_75 DENEYİ — yüksek kapı 2.0R + swing trail (2026-08-15)
 - **Tetik:** Kullanıcı kararı — PARTIAL_TP_1_2R_70PCT "yaramaz" (risk-normalize ΔPnL −0.4% olsa da kullanıcı beğenmedi), 1_5R daha iyi ama onun da ayrı değerlendirmesi var. "En son kalan madde / 2. varyant": LUNA matrisinin yüksek kapı köşesi — gate 0.8/1.0 zaten 4 PP varyantıyla koşuldu, **2.0R** açık kalan.
 - **`analyzer_v5.py` (commit `f42eb54`):** dispatch'e iki yeni `--trail-exp` varyantı: `PROFIT_PROTECT_2_0R_SW0_5` (gate=2.0, swing ATR=0.5) ve `PROFIT_PROTECT_2_0R_SW0_75` (gate=2.0, swing ATR=0.75) — choices + elif blokları. Worker parametre taşıması (`profit_protect_gate`/`profit_protect_swing_atr`) zaten mevcut, değişmedi.
