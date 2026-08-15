@@ -1,6 +1,8 @@
 # backtest-sniper — Active Context
 
 ## Current State
+2026-08-15: **HTF_BIAS_ALIGN KOŞUSU TAMAMLANDI (28 sembol, 30,809 trade) — filtre Exp$'i marjinal iyileştirdi (+32.73→+33.97, +3.8%) ama net PnL'yi −34.7% düşürdü (+1,046,522 vs baseline +1,602,063). 1D-zıt reddi 5,459 trade. Kritik bulgular: (1) kesilen trade'ler ort. +30.6$/trade ile KÂRLIYDI — filtre kötü trade'i ayırt edemiyor, hacmi eşit kesiyor; (2) 18,134 trade düşüşünün yalnız 5,459'u sayaçta — kalan ~12,675'i "natural=serbest" kuralının yan etkisi (NEUTRAL'da trade açılınca `if not active` sweep akışını donduyor, baseline'daki `rsm.reset()` akışı sürdürüyordu). Dünkü araştırma çıkarımı backtestte DOĞRULANMADI.**
+
 2026-08-15: **4 PROFIT_PROTECT KOŞUSU TAMAMLANDI (28 sembol, `analyzer_v5_summary.md` 1743/1782/1821/1860) — LUNA mekanizması 4 parametrede de net-negatif.**
 
   | Metrik | Baseline | 0.8R_SW0_5 | 0.8R_SW0_75 | 1.0R_SW0_5 | 1.0R_SW0_75 |
