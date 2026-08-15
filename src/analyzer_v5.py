@@ -34,7 +34,7 @@ from session_router import (
     get_session_hours,
 )
 from mss import detect_mss
-from pivot import SwingStateManager
+from pivot import SwingStateManager, find_swing_highs, find_swing_lows
 
 # ── E varyanti (A/E1/E2): CHoCH giris filtresi ─────────────────
 # ENTRY_VARIANT config'ten gelir; degilse baseline "A" kullanilir.
@@ -187,6 +187,24 @@ PROFIT_GATE_R = 0.0
 # TRAIL_BE_ON_GATE: PROFIT_GATE_R esigi asilinca SL'yi once entry'ye (BE) tasir
 # (profit protection / breakeven buffer). HYBRID_FVG_PLUS_PROFIT_GATE deneyi.
 TRAIL_BE_ON_GATE = False
+
+# ─── LUNA Profit Protection / Breakeven Buffer (Plan C madde 4) ──────────
+# LUNA'nin 2026-08-15 onerisinin BIREBIR uygulamasi:
+#   1) PROFIT_PROTECT_GATE_R > 0: trade en az +PROFIT_PROTECT_GATE_R*R unrealized
+#      kar gorunce koruma AKTIFLESIR (intrabar high/low bazli — 'gordugu' an).
+#   2) Ilk koruma: SL = entry + fees + PROFIT_PROTECT_BE_R*R (long),
+#      SL = entry - fees - PROFIT_PROTECT_BE_R*R (short). fees = round-trip
+#      komisyon (entry+exit leg). Trade BE + fees + 0.1R uzerine kilitlenir.
+#   3) Trend devam: her bar son onayli swing low/high VEYA ATR chandelier:
+#      long  SL = max(old, son_swing_low  - PROFIT_PROTECT_SWING_ATR_MULT*ATR)
+#      short SL = min(old, son_swing_high + PROFIT_PROTECT_SWING_ATR_MULT*ATR)
+#      (ratchet: sadece koruyucu yone hareket, geri donus yok).
+#   4) FVG retrace trail DEVAM eder; profit-protection ile carpismaz — daha
+#      korumaci seviye kazanir (long: max, short: min).
+# KAPALI (0.0/None): baseline ile bit-bit ayni davranis.
+PROFIT_PROTECT_GATE_R = 0.0
+PROFIT_PROTECT_BE_R = 0.1
+PROFIT_PROTECT_SWING_ATR_MULT = 0.5
 
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
@@ -377,6 +395,37 @@ def _collect_fvg_profile_impl(symbol: str):
     spans_midnight = sh > eh
     ss = SessionState(start_hour=sh, end_hour=eh)
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
+
+    # ── LUNA Profit Protection: confirmed swing low/high lookup tables ──────
+    # No-lookahead: find_swing_* fraktal sinyali bar_index + right (3) bar
+    # sonra DOGRULANIR. Burada tüm serinin fraktallari bir kez cikarilir, ama
+    # trailing degerlendirmesinde sadece sb - right <= sb'de "onaylanmis" olan
+    # swing kullanilir (ileriye bakis yok). last_swl_bar[sb] = sb'de bilinen son
+    # onayli swing low'un bar_index'i (yoksa -1).
+    last_swl_price = None
+    last_swl_bar = None
+    last_swh_price = None
+    last_swh_bar = None
+    if PROFIT_PROTECT_GATE_R > 0:
+        _swl = find_swing_lows(b15)
+        _swh = find_swing_highs(b15)
+        _nb = len(b15)
+        last_swl_price = [0.0] * _nb
+        last_swl_bar = [-1] * _nb
+        last_swh_price = [0.0] * _nb
+        last_swh_bar = [-1] * _nb
+        _i = 0
+        for sb in range(_nb):
+            while _i < len(_swl) and _swl[_i].bar_index + 3 <= sb:
+                last_swl_price[sb] = _swl[_i].price
+                last_swl_bar[sb] = _swl[_i].bar_index
+                _i += 1
+        _i = 0
+        for sb in range(_nb):
+            while _i < len(_swh) and _swh[_i].bar_index + 3 <= sb:
+                last_swh_price[sb] = _swh[_i].price
+                last_swh_bar[sb] = _swh[_i].bar_index
+                _i += 1
 
     day_cbdr = {}
     day_trades = defaultdict(list)
@@ -669,6 +718,61 @@ def _collect_fvg_profile_impl(symbol: str):
                             t["trailing_count"] = t.get("trailing_count", 0) + 1
                             ltc += 1
                             upd = True
+                # ── LUNA Profit Protection / Breakeven Buffer (gercek mekanizma) ──
+                # 1) GATE: trade en az +PROFIT_PROTECT_GATE_R*R unrealized kar
+                #    gorunce (intrabar high/low, 'gordugu' an) koruma KALICI
+                #    aktiflesir (latch). 2) ILK KORUMA: SL = entry + fees + 0.1R
+                #    (round-trip komisyon dahil, tam formül). 3) RATCHET: her bar
+                #    son onayli swing low/high ∓ SWING_ATR_MULT*ATR ile (long max,
+                #    short min). FVG retrace DEVAM eder; carpisma yok — daha
+                #    korumaci seviye kazanir (long max, short min zaten ortak kural).
+                if PROFIT_PROTECT_GATE_R > 0 and rpt2 > 0:
+                    if not t.get("protect_latched"):
+                        _best = cur.high if s2 == "long" else cur.low
+                        _upnl_r = (
+                            (_best - t["entry_price"]) / rpt2
+                            if s2 == "long"
+                            else (t["entry_price"] - _best) / rpt2
+                        )
+                        if _upnl_r >= PROFIT_PROTECT_GATE_R:
+                            t["protect_latched"] = True
+                            _be_sl = (
+                                (
+                                    t["entry_price"] * (1 + COMMISSION_RATE)
+                                    + PROFIT_PROTECT_BE_R * rpt2
+                                )
+                                / (1 - COMMISSION_RATE)
+                                if s2 == "long"
+                                else (
+                                    t["entry_price"] * (1 - COMMISSION_RATE)
+                                    - PROFIT_PROTECT_BE_R * rpt2
+                                )
+                                / (1 + COMMISSION_RATE)
+                            )
+                            if (s2 == "long" and _be_sl > csl) or (
+                                s2 == "short" and _be_sl < csl
+                            ):
+                                csl = _be_sl
+                                ltc += 1
+                                upd = True
+                    if t.get("protect_latched"):
+                        _swb = PROFIT_PROTECT_SWING_ATR_MULT * atr
+                        if s2 == "long" and last_swl_bar is not None:
+                            _slb = last_swl_bar[sb]
+                            if _slb >= t.get("entry_bar", 0):
+                                _ns = last_swl_price[sb] - _swb
+                                if _ns > csl:
+                                    csl = _ns
+                                    ltc += 1
+                                    upd = True
+                        elif s2 == "short" and last_swh_bar is not None:
+                            _shb = last_swh_bar[sb]
+                            if _shb >= t.get("entry_bar", 0):
+                                _ns = last_swh_price[sb] + _swb
+                                if _ns < csl:
+                                    csl = _ns
+                                    ltc += 1
+                                    upd = True
                 for fvg in cfvgs:
                     if s2 == "long" and fvg.direction != "bullish":
                         continue
@@ -1151,6 +1255,8 @@ def _analyze_one_sym_v5(
     entry_variant: str | None = None,
     profit_gate: float | None = None,
     trail_be: bool = False,
+    profit_protect_gate: float | None = None,
+    profit_protect_swing_atr: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1188,6 +1294,10 @@ def _analyze_one_sym_v5(
         _eng.PROFIT_GATE_R = profit_gate
     if trail_be:
         _eng.TRAIL_BE_ON_GATE = True
+    if profit_protect_gate is not None:
+        _eng.PROFIT_PROTECT_GATE_R = profit_protect_gate
+    if profit_protect_swing_atr is not None:
+        _eng.PROFIT_PROTECT_SWING_ATR_MULT = profit_protect_swing_atr
 
     try:
         result = collect_fvg_profile(sym)
@@ -1580,6 +1690,7 @@ def main():
     """V5 ana rapor: Tum sembolleri isler + summary + dosya."""
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
+    global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1610,6 +1721,10 @@ def main():
             "ATR_TRAIL_0_5",
             "ATR_TRAIL_0_75",
             "HYBRID_FVG_PLUS_PROFIT_GATE",
+            "PROFIT_PROTECT_0_8R_SW0_5",
+            "PROFIT_PROTECT_0_8R_SW0_75",
+            "PROFIT_PROTECT_1_0R_SW0_5",
+            "PROFIT_PROTECT_1_0R_SW0_75",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -1652,10 +1767,36 @@ def main():
         TRAIL_MODE = "retrace"
         PROFIT_GATE_R = 1.0
         TRAIL_BE_ON_GATE = True
+    elif args.trail_exp == "PROFIT_PROTECT_0_8R_SW0_5":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.8
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+    elif args.trail_exp == "PROFIT_PROTECT_0_8R_SW0_75":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.8
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.75
+    elif args.trail_exp == "PROFIT_PROTECT_1_0R_SW0_5":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 1.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+    elif args.trail_exp == "PROFIT_PROTECT_1_0R_SW0_75":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 1.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.75
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
         TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
 
     # KAPANIS (2026-08-08): D modu + continuation geri cekildi. Varsayilan kosu
     # artik modul sabitini kullanir = canli config'ten turetilir (retrace).
@@ -1667,6 +1808,12 @@ def main():
         f"Gate={PROFIT_GATE_R}, BE={TRAIL_BE_ON_GATE}) — EXP: {TRAIL_EXP_TAG}",
         flush=True,
     )
+    if PROFIT_PROTECT_GATE_R > 0:
+        print(
+            f"  PROFIT PROTECT: gate={PROFIT_PROTECT_GATE_R}R "
+            f"be={PROFIT_PROTECT_BE_R}R swing_atr={PROFIT_PROTECT_SWING_ATR_MULT}",
+            flush=True,
+        )
 
     if args.compare_ad:
         t0c = time.time()
@@ -1754,6 +1901,8 @@ def main():
                     None,
                     PROFIT_GATE_R,
                     TRAIL_BE_ON_GATE,
+                    PROFIT_PROTECT_GATE_R,
+                    PROFIT_PROTECT_SWING_ATR_MULT,
                 ): sym
                 for sym in syms
             }
