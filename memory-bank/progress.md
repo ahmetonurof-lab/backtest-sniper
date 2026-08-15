@@ -1,6 +1,12 @@
 # backtest-sniper — Progress
 
-## 🎯 PARTIAL_TP_1_8R_50PCT DENEYİ — kısmi TP seviyesi 1.8R, %50 kapanış (2026-08-15)
+## 🎯 PARTIAL_TP_1_8R_50PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 19:19, 8 sembol)
+- **Sonuç (8-coin, RISK 0.002):** 15,100 trade / net **+440,010** / Exp **+29.14** / TP 15.5 | PTrail 43.4 | Loss 41.6 / AvgHold 3.5 / ort MaxDD 0.55%.
+- **8-coinde baseline'ı geçen İLK varyant:** +%0.24 (baseline 438,966). Kısmi TP deseni: seviye yükseldikçe iyi — 1.5R/%50=−0.25%, 1.2R/%70=−0.4%, **1.8R/%50=+0.24%**.
+- **Sonraki aday:** 2.0R/%50 (desenin devamı) veya 1.8R/%70. LUNA raporu için en iyi aday şu an 1_8R_50PCT.
+- Ayrıntı: Exit-reason 1_2R_70 ile neredeyse aynı (TP 15.5/PTrail 43.4) — kısmi kapanış trailing kârını pek kesmiyor, fark MaxDD + Exp'te.
+
+## 🎯 PROFIT_PROTECT_2_0R_SW0_5/SW0_75 DENEYİ — KOŞU TAMAMLANDI (2026-08-15 19:05)
 - **Tetik:** Kullanıcı "1,8 + %50 yapalım mı" — 1.5R/%50'nin (baseline'a en yakın PARTIAL, 48943 trade/+1.598M 28-coinde) seviyesini 1.5R→1.8R'e çekmek. Mantık: seviye yükselince kısmi kapanış daha geç tetiklenir, trailing kârı daha az kesilir.
 - **`analyzer_v5.py` (commit `23f924d`):** dispatch'e `PARTIAL_TP_1_8R_50PCT` (PARTIAL_TP_R=1.8, PARTIAL_TP_FRAC=0.5). Smoke SOLUSDT: **1503 trade / +26,096.02** (mekanizma devrede). py_compile + pre-commit 8/8 PASS.
 - **Koşu komutu:** `python src\analyzer_v5.py --workers N --trail-exp PARTIAL_TP_1_8R_50PCT`. Koşu kullanıcı terminalinde.
