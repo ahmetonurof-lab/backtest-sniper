@@ -1,0 +1,3 @@
+TYPE: dict
+SOLUSDT SCALE(3pct,50,SL1.5,step2): 1506 trade | net PnL=+26413.87 | partial=49
+OK

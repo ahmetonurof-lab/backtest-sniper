@@ -2178,7 +2178,7 @@ def main():
         PARTIAL_TP_FRAC = 0.5
         PARTIAL_TP_PCT = 3.0
         PARTIAL_TP_SL_PROTECT_PCT = 1.5
-        PARTIAL_TP_SCALE_STEP_PCT = 3.0
+        PARTIAL_TP_SCALE_STEP_PCT = 2.0
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
