@@ -1,7 +1,0 @@
-      load_data: 1314000 bar 1.4s (feather) + 11.7s (bar) = 13.1s
-    [SOLUSDT] 1314000 bar 1m -> 87600 bar 15m
-    [REAL_CBDR] %0 (500/87600)    [REAL_CBDR] %6 (5500/87600)    [REAL_CBDR] %11 (10500/87600)    [REAL_CBDR] %17 (15500/87600)    [REAL_CBDR] %23 (20500/87600)    [REAL_CBDR] %29 (25500/87600)    [REAL_CBDR] %34 (30500/87600)    [REAL_CBDR] %40 (35500/87600)    [REAL_CBDR] %46 (40500/87600)    [REAL_CBDR] %52 (45500/87600)    [REAL_CBDR] %57 (50500/87600)    [REAL_CBDR] %63 (55500/87600)    [REAL_CBDR] %69 (60500/87600)    [REAL_CBDR] %75 (65500/87600)    [REAL_CBDR] %80 (70500/87600)    [REAL_CBDR] %86 (75500/87600)    [REAL_CBDR] %92 (80500/87600)    [REAL_CBDR] %98 (85500/87600)    [REAL_CBDR] %100 (87600/87600)
-    [SOLUSDT] Daily rows basliyor... (907 key)
-    [SOLUSDT] Daily rows tamam (907 row)
-    [SOLUSDT] Tamam: 907 gun CBDR, 462 gun trade, 1506 islem, 907 daily_row
-    [SOLUSDT] Red: {'CBDR_MULT_ZERO': 44, 'ENTERED': 1506, 'PARTIAL_TP': 49}
