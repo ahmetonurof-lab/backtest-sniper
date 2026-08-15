@@ -1,11 +1,21 @@
 # backtest-sniper — Progress
 
-## 🎯 PARTIAL_TP_1_2R_70PCT DENEYİ — kısmi TP 1.2R @ %70 + düşük risk + 8 coin (2026-08-15)
-- **Tetik:** Kullanıcı direktifi (LUNA 2): ① kısmi TP seviyesi 1.5R→1.2R, ② kısmi oran %50→%70, ③ RISK_PER_TRADE 0.003→0.002, ④ LEVERAGE 5→10, ⑤ SYMBOLS→8 düşük-MaxDD coin (PYTH/TIA/GMX/SEI/ENA/LDO/STRK/DYDX). İstek: eski varyasyona kolay dönüş.
-- **`analyzer_v5.py` (backtest-sniper `b4477f3`):** **BUG FIX — `PARTIAL_TP_FRAC` worker'a hiç taşınmıyordu** (yalnızca `partial_tp_r` vardı; worker spawn'da modül sabitine geri düşüyordu). Worker imzasına `partial_tp_frac` eklendi + `_eng.PARTIAL_TP_FRAC` set + main() global `PARTIAL_TP_FRAC` + paralel submit argümanı + dispatch'e yeni varyant `PARTIAL_TP_1_2R_70PCT` (PARTIAL_TP_R=1.2, PARTIAL_TP_FRAC=0.7). Eski `PARTIAL_TP_1_5R` AYNI KALDI (geri dönüş: `--trail-exp PARTIAL_TP_1_5R`). Modül sabiti `PARTIAL_TP_FRAC` 0.5→0.7 (baseline'da R=0 olduğu için etkisiz, davranış değişmez).
-- **`sniper/src/config.py` (sniper `fe0bcb6`):** RISK_PER_TRADE 0.002, LEVERAGE 10, SYMBOLS→8 coin. Eski değerler (0.003/5/28-coin) yorum olarak saklandı — geri dönüş tek satır değişimi.
-- **Doğrulama:** py_compile OK; pre-commit 8/8 (her iki repo) + parity-check PASS; smoke SOLUSDT (1.2R/0.7): **1503 trade / net +25,868.14 / PARTIAL_TP=399** — 1.5R/0.5'teki 343'ten yüksek (daha erken eşik + daha geniş kapanış, beklenen). `partial_taken`/`locked_pnl` trade dict'inde doğrulandı.
-- **ÖNEMLİ:** `LEVERAGE` backtest motorunda KULLANILMIYOR (`qty = ic*rpt*final_mult/rd`, analyzer_v5.py:759) — canlı pozisyon boyutunu etkiler, backtest PnL/DD'sini değiştirmez. Backtest'teki ölçek farkı yalnızca RISK_PER_TRADE 0.002'den (qty ~%33 küçülür). Koşu komutu: `python src\analyzer_v5.py --workers 6 --trail-exp PARTIAL_TP_1_2R_70PCT` (8 coin, kısa).
+## 🎯 PARTIAL_TP_1_2R_70PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 16:31, 8 sembol)
+- **Sonuç (8 coin, `analyzer_v5_summary.md` 16:31, RISK 0.002):** 15,100 trade / net **+437,373** / Exp **+28.97** / TP 15.5 | PTrail 43.4 | Loss 41.2 / AvgHold 3.5 / **PARTIAL_TP=3,372** (%22.3 trade'de %70 kısmi kapanış).
+- **Risk-normalize 8-coin kıyaslama (0.002 ölçeğinde):**
+
+  | Metrik | Baseline | 1_2R_70PCT | Δ |
+  |---|---|---|---|
+  | Net PnL | 438,966 | 437,373 | **−0.4% (nötr)** |
+  | Ort MaxDD% | 0.57 | 0.51 | **−%10.5** |
+  | Ort PF | 3.88 | 4.04 | +4.1% |
+  | Trade | 15,100 | 15,100 | aynı |
+
+- **Kritik kontrol — baseline vs 1_5R bu 8 coinde BİREBİR aynı PnL:** baseline(0.003)=658,449 = 1_5R(0.003)=658,449. Yani 1.5R PnL'yi hiç değiştirmiyor VE DD'yi düşürmüyor → önceki "nötr-negatif" kararı doğrulandı. **1_2R_70PCT farklı davranıyor:** PnL neredeyse sabitken ort MaxDD 0.57→0.51 (−%10.5).
+- **Kullanıcının DD-kaldıraç teorisi İLK KEZ DESTEKLENDİ:** MaxDD 0.57/0.51 = **1.118x** çarpan → aynı risk bütçesinde kaldıraç artırılırsa ≈**+488,983** vs baseline 438,966 = **+50K (+%11.4)**. 1.5R'nin yapamadığını (DD'yi düşürmeden PnL'yi değiştirmek) 1.2R/%70 yapıyor.
+- **Karar:** LUNA raporuna "DD-kaldıraç teorisini destekleyen TEK varyant" olarak girer; canlıya geçiş kararı kullanıcıda. Geri dönüş: config'teki eski değerler yorumda (sniper `fe0bcb6`), `--trail-exp PARTIAL_TP_1_5R` eski varyant.
+- **Çalışma notu:** koşu kullanıcı terminalinde çalıştı; aracının başlattığı arka plan koşusu (PID 10820) kullanıcı koşusuyla çakışmasın diye taskkill ile durduruldu + bt_1_2R_70.log temizlendi (öğrenilen ders: kullanıcı "ben koşuyorum" dediğinde araç başlattığı koşuyu öldür).
+- **Altyapı (önceki kayıt):** BUG FIX — `PARTIAL_TP_FRAC` worker'a taşındı (commit `b4477f3`); config RISK 0.002/LEV 10/8-coin (sniper `fe0bcb6`); LEVERAGE backtest motorunda kullanılmıyor; `--trail-exp PARTIAL_TP_1_2R_70PCT` koşu komutu (kısa).
 
 ## 🎯 PARTIAL_TP_1_5R DENEYİ — kısmi TP (1.5R'de %50 kapanış) (2026-08-15)
 - **Tetik:** Kullanıcı onayı — HTF_BIAS_ALIGN negatif sonuçlanınca LUNA'ya sunulacak ikinci varyant. Fikir: "tek hamlede 1.8R TP yerine, 1.5R'de pozisyonun yarısını kapat, kalanı trailing'e bırak" — karın bir kısmını erken realize et, riski kalan yarıya daralt.
