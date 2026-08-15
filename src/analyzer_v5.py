@@ -316,8 +316,13 @@ D1_BOS_LOOKBACK = 25
 # t["locked_pnl"]'de birikir ve final kapanista toplam PnL'ye eklenir.
 # 0.0 = devre disi (baseline ile bit-bit ayni davranis).
 # [VARYASYON - Aktif] 1.2R @ %70 kapanis (LUNA 2: 1.5R @ %50'den degisti)
+# PARTIAL_TP_PCT > 0 iken: R bazli seviye yerine FIYAT yuzdesi bazli tetikleyici.
+# Long: entry*(1+PCT/100) fiyatina ulasinca (short: entry*(1-PCT/100)) pozisyonun
+# PARTIAL_TP_FRAC orani kapanir. R bazli seviye (PARTIAL_TP_R) ile birbirini
+# dislar: PCT onceliklidir (PCT > 0 ise R dikkate alinmaz).
 PARTIAL_TP_R = 0.0
 PARTIAL_TP_FRAC = 0.7
+PARTIAL_TP_PCT = 0.0
 
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
@@ -1035,17 +1040,22 @@ def _collect_fvg_profile_impl(symbol: str):
                     t["closed"] = True
                     ex = True
                 else:
-                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i 1.5R'de kapanir ──
-                    if (
-                        PARTIAL_TP_R > 0
-                        and not t.get("partial_taken")
-                        and cur.high
-                        >= t["entry_price"]
-                        + PARTIAL_TP_R * abs(t["initial_sl"] - t["entry_price"])
-                    ):
-                        _pp = t["entry_price"] + PARTIAL_TP_R * abs(
+                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i seviyede kapanir ──
+                    # Seviye: PARTIAL_TP_PCT > 0 ise fiyat yuzdesi bazli
+                    # (entry*(1+PCT/100)), degilse R bazli (entry + R*risk_pts).
+                    _pt_level_long = None
+                    if PARTIAL_TP_PCT > 0:
+                        _pt_level_long = t["entry_price"] * (1 + PARTIAL_TP_PCT / 100.0)
+                    elif PARTIAL_TP_R > 0:
+                        _pt_level_long = t["entry_price"] + PARTIAL_TP_R * abs(
                             t["initial_sl"] - t["entry_price"]
                         )
+                    if (
+                        _pt_level_long is not None
+                        and not t.get("partial_taken")
+                        and cur.high >= _pt_level_long
+                    ):
+                        _pp = _pt_level_long
                         _pq = t["qty"] * PARTIAL_TP_FRAC
                         _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
                         _exit_fee = _pp * _pq * COMMISSION_RATE
@@ -1073,17 +1083,22 @@ def _collect_fvg_profile_impl(symbol: str):
                     t["closed"] = True
                     ex = True
                 else:
-                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i 1.5R'de kapanir ──
-                    if (
-                        PARTIAL_TP_R > 0
-                        and not t.get("partial_taken")
-                        and cur.low
-                        <= t["entry_price"]
-                        - PARTIAL_TP_R * abs(t["initial_sl"] - t["entry_price"])
-                    ):
-                        _pp = t["entry_price"] - PARTIAL_TP_R * abs(
+                    # ── KISMI TP: pozisyonun PARTIAL_TP_FRAC'i seviyede kapanir ──
+                    _pt_level_short = None
+                    if PARTIAL_TP_PCT > 0:
+                        _pt_level_short = t["entry_price"] * (
+                            1 - PARTIAL_TP_PCT / 100.0
+                        )
+                    elif PARTIAL_TP_R > 0:
+                        _pt_level_short = t["entry_price"] - PARTIAL_TP_R * abs(
                             t["initial_sl"] - t["entry_price"]
                         )
+                    if (
+                        _pt_level_short is not None
+                        and not t.get("partial_taken")
+                        and cur.low <= _pt_level_short
+                    ):
+                        _pp = _pt_level_short
                         _pq = t["qty"] * PARTIAL_TP_FRAC
                         _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
                         _exit_fee = _pp * _pq * COMMISSION_RATE
@@ -1465,6 +1480,7 @@ def _analyze_one_sym_v5(
     htf_bias_align: bool = False,
     partial_tp_r: float | None = None,
     partial_tp_frac: float | None = None,
+    partial_tp_pct: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1512,6 +1528,8 @@ def _analyze_one_sym_v5(
         _eng.PARTIAL_TP_R = partial_tp_r
     if partial_tp_frac is not None:
         _eng.PARTIAL_TP_FRAC = partial_tp_frac
+    if partial_tp_pct is not None:
+        _eng.PARTIAL_TP_PCT = partial_tp_pct
 
     try:
         result = collect_fvg_profile(sym)
@@ -1905,7 +1923,7 @@ def main():
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
-    global HTF_BIAS_ALIGN, PARTIAL_TP_R, PARTIAL_TP_FRAC
+    global HTF_BIAS_ALIGN, PARTIAL_TP_R, PARTIAL_TP_FRAC, PARTIAL_TP_PCT
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1946,6 +1964,7 @@ def main():
             "PARTIAL_TP_1_5R",
             "PARTIAL_TP_1_2R_70PCT",
             "PARTIAL_TP_1_8R_50PCT",
+            "PARTIAL_TP_2R_70PCT",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -2055,6 +2074,15 @@ def main():
         PROFIT_PROTECT_SWING_ATR_MULT = 0.5
         PARTIAL_TP_R = 1.8
         PARTIAL_TP_FRAC = 0.5
+    elif args.trail_exp == "PARTIAL_TP_2R_70PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 3.0
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2170,6 +2198,7 @@ def main():
                     HTF_BIAS_ALIGN,
                     PARTIAL_TP_R,
                     PARTIAL_TP_FRAC,
+                    PARTIAL_TP_PCT,
                 ): sym
                 for sym in syms
             }
@@ -2241,10 +2270,14 @@ def main():
         print(
             f"  HTF BIAS NOT: 1D bias'a zit yon nedeniyle girilmeyen trade: {_contra_total}"
         )
-    if PARTIAL_TP_R > 0:
+    if PARTIAL_TP_R > 0 or PARTIAL_TP_PCT > 0:
         _partial_total = sum(rej.get("PARTIAL_TP", 0) for _, _, _, rej in results_data)
+        if PARTIAL_TP_PCT > 0:
+            _pt_level_txt = f"{PARTIAL_TP_PCT:g}% fiyat"
+        else:
+            _pt_level_txt = f"{PARTIAL_TP_R}R"
         print(
-            f"  PARTIAL TP NOT: {PARTIAL_TP_R}R'de %{PARTIAL_TP_FRAC*100:.0f} kapanan trade: {_partial_total}"
+            f"  PARTIAL TP NOT: {_pt_level_txt}'de %{PARTIAL_TP_FRAC*100:.0f} kapanan trade: {_partial_total}"
         )
 
     # ── Report file ──
@@ -2290,10 +2323,14 @@ def main():
                 f"\n**HTF BIAS NOT:** 1D bias'a zit yon oldugu icin giris yapilmayan trade: "
                 f"{_contra} (kural: CBDR ve 1D ayni ya da natural ise gir)\n"
             )
-        if PARTIAL_TP_R > 0:
+        if PARTIAL_TP_R > 0 or PARTIAL_TP_PCT > 0:
             _partial = sum(rej.get("PARTIAL_TP", 0) for _, _, _, rej in results_data)
+            if PARTIAL_TP_PCT > 0:
+                _pt_level_txt = f"%{PARTIAL_TP_PCT:g} fiyat kari"
+            else:
+                _pt_level_txt = f"{PARTIAL_TP_R}R seviyesinde"
             f.write(
-                f"\n**PARTIAL TP NOT:** {PARTIAL_TP_R}R seviyesinde pozisyonun "
+                f"\n**PARTIAL TP NOT:** {_pt_level_txt} pozisyonun "
                 f"%{PARTIAL_TP_FRAC*100:.0f}'i kapatilan trade sayisi: {_partial}\n"
             )
         f.write("\n")
