@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## 🎯 PARTIAL_TP_2R_70PCT DENEYİ — %3 fiyat kârı bazlı kısmi TP, %70 kapanış (2026-08-15)
+- **Tetik:** Kullanıcı "2.0R yapalım ama %70'ini %3 karda satalım" — R bazlı seviye yerine FIYAT bazlı tetikleyici isteği. 1_8R_50PCT'nin (+%0.24, en iyi) devamı.
+- **`analyzer_v5.py` (commit `29c4187`):** yeni `PARTIAL_TP_PCT` global (default 0.0, PCT>0 ise R'yi ezer; seviye long: entry*(1+PCT/100)). Worker imzasına `partial_tp_pct` + set; dispatch `PARTIAL_TP_2R_70PCT` (PCT=3.0, FRAC=0.7); paralel submit + rapor notları güncellendi. ruff-format 1 dosyayı biçimlendirdi, re-commit sonrası 8/8 PASS.
+- **Smoke SOLUSDT:** 1503 trade / **+26,282.75** / 51 partial. (1_8R_50PCT SOL=+26,096 → hafif üstü.)
+- **Koşu komutu:** `python src\analyzer_v5.py --workers N --trail-exp PARTIAL_TP_2R_70PCT`. Koşu kullanıcı terminalinde.
+
 ## 🎯 PARTIAL_TP_1_8R_50PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 19:19, 8 sembol)
 - **Sonuç (8-coin, RISK 0.002):** 15,100 trade / net **+440,010** / Exp **+29.14** / TP 15.5 | PTrail 43.4 | Loss 41.6 / AvgHold 3.5 / ort MaxDD 0.55%.
 - **8-coinde baseline'ı geçen İLK varyant:** +%0.24 (baseline 438,966). Kısmi TP deseni: seviye yükseldikçe iyi — 1.5R/%50=−0.25%, 1.2R/%70=−0.4%, **1.8R/%50=+0.24%**.
