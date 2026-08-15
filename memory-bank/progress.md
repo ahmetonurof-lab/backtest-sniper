@@ -1,6 +1,16 @@
 # backtest-sniper — Progress
 
-## 🔬 LUNA GERÇEK PROFIT PROTECTION — Implemente + Push (da7fa83, 2026-08-15)
+## 🔬 HTF_BIAS_ALIGN DENEYİ — CBDR×1D bias eşleşme filtresi (2026-08-15)
+- **Tetik:** Dünkü CBDR/4H/1D bias örtüşme araştırması çıkarımı ("CBDR ve 1D aynı ya da natural ise işleme gir") — LUNA'ya baseline üstünde bir filter deneyi olarak sunmak üzere. Kullanıcı onayladı: base motora (profit-protect YOK) yalnızca BIAS eklemesi; 1D'ye zıt yönde girilmeyen trade sayısı rapor ALTINA not olarak (sütun DEĞİL).
+- **`analyzer_v5.py` (tek dosya):** yeni `--trail-exp HTF_BIAS_ALIGN` varyantı —
+  1. `_d1_bias_lookup(sym_b15)`: 15m → 1D barlar (timestamp slot, `_DAY_MS=86400_000`), her günün `day_end_15m_idx`'i = o günün son 15m bar'ının index'i.
+  2. `_d1_bos_bias(d1_segment)`: Sonnet `_detect_htf_bias` D1 mantığıyla BİREBİR — `find_swing_highs/lows(left=2,right=2)`, `last_close > sh.price` (bull BOS) / `< sl.price` (bear BOS), en güncel kırılım kazanır (`last_bull_bos >= last_bear_bos`), ikisi de yoksa None. `D1_BOS_LOOKBACK=25` (sonnet `config.D1_BOS_LOOKBACK`).
+  3. **No-lookahead:** `bias_by_day[d]` yalnızca d-1'e kadar KAPALI günlerden (`d1_bars[max(0,d-LOOKBACK+1):d+1]` — günlük bar zaten kendi içindeki son 15m bar kapanınca tamamlanır). `_d1_bias_for_15m`: sb barında bilinen bias = `bias_by_day[d-1]` (d = `day_end_15m_idx < sb` olan tamamlanmış gün sayısı) — güncel günün kapanmamış bar'ı asla dahil edilmez.
+  4. Entry filtresi (`HTF_BIAS_ALIGN=True`): sweep yönü vs daily_bias zıt → reddet (canlı parity korunur); daily_bias NEUTRAL (natural) → serbest (KULLANICININ KURALI, canlı `bias_reject` NEUTRAL'ı reddediyordu — bilinçli davranış değişikliği); 1D bias None (natural) → serbest; ikisi de yönlü ve zıt → `rejection_counts["HTF_BIAS_CONTRA"] += 1` + reset.
+  5. `HTF_BIAS_ALIGN=False` → eski `bias_reject` birebir (baseline bit-bit). Worker `htf_bias_align` param + paralel submit; main() global + elif dispatch; rapor sonuna **HTF BIAS NOT** satırı (toplam kontra; terminal TOPLAM'ına da print).
+- **Doğrulama:** 25/25 test PASS (`tests/test_analyze_cbdr_thresholds.py` collection hatası PRE-EXISTING — `analyze_cbdr_thresholds` modülü yok, bu değişiklikle ilgisiz). **Baseline bit-bit:** HTF off SOLUSDT **1503 / +39055** = bt_baseline.log birebir. **Smoke HTF on:** SOLUSDT **911 trade / +25,134** / HTF_BIAS_CONTRA=**187** — trade sayısı 1503→911 (-%39), filtre aktif ve kontra sayısı doğru raporlanıyor.
+- **Çalıştırma (kullanıcı terminali):** `python src\analyzer_v5.py --workers N --trail-exp HTF_BIAS_ALIGN` (BASE motor = retrace + PP kapalı). Sonuç baseline (48,943/+1,602,063) + 4 PP varyantıyla karşılaştırılır; HTF_BIAS_CONTRA toplamı rapor altında.
+
 - **Tetik:** LUNA'nın "kısmen evet, tam olarak hayır" değerlendirmesi — rapor sağlam, ama önerilen mekanizma birebir test edilmemişti (hybrid düz BE'ye taşıyordu, swing trail hiç denenmemişti). Gerçek versiyon için ayrı test şarttı.
 - **`analyzer_v5.py` (tek dosya, +150/−1):** LUNA'nın 4 katmanlı mekanizmasının BIREBIR uygulaması —
   1. **Gate latch:** `PROFIT_PROTECT_GATE_R` (0.8/1.0) — trade en az +Gate·risk_pts unrealized kârı intrabar high/low ile 'gördüğünde' koruma KALICI aktifleşir (`protect_latched`). Test edilen PROFIT_GATE trailing'i erteliyordu; bu korumayı AKTİFLEŞTİRİYOR (kritik fark).

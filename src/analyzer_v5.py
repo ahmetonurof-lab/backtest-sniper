@@ -131,6 +131,97 @@ def resample_15m(bars_1m):
     return m15
 
 
+# ─── HTF (1D) BIAS — kullanici cikarimi: "CBDR ve 1D ayni ya da natural ise gir" ──
+# Sonnet _detect_htf_bias ile AYNI BOS mantigi (D1_BOS_LOOKBACK=25, swing 2/2).
+# NO-LOOKAHEAD: bias YALNIZCA kapali (tamamlanmis) gunluk barlardan hesaplanir.
+#   _d1_bias_lookup(sym_b15) -> (d1_bars, day_end_15m_idx, bias_by_day)
+#     - d1_bars: 15m bar dizisinden turetilmis gunluk barlar (OHLC, kapanis aninda
+#       bilinen tek deger). Her gun YALNIZCA kendi son 15m bari kapandiktan sonra
+#       "tamamlanmis" sayilir.
+#     - bias_by_day[d] : d. gun kapandiktan SONRA bilinecek 1D bias ("LONG"/
+#       "SHORT"/None=natural). d-1.gune kadar olan kapali barlar ile hesaplanir
+#       (yani d. gunun kendisi HICBIR zaman bias'a dahil edilmez; guncel gunun
+#       henuz kapali olmayan bari lookahead yapmaz).
+#   _d1_bias_for_15m(sym_b15, d1_bars, day_end_15m_idx, bias_by_day)
+#     -> her 15m bar sb icin o an bilinen bias (no-lookahead).
+#   _d1_bos_bias(d1_segment) -> segmentin son kapanisi + swing BOS yonlu bias.
+def _d1_bos_bias(d1_segment):
+    """Son D1_BOS_LOOKBACK gunluk bar uzerinde 1D BOS bias (Sonnet ile ayni)."""
+    if len(d1_segment) < 5:
+        return None
+    highs = find_swing_highs(d1_segment, left=2, right=2)
+    lows = find_swing_lows(d1_segment, left=2, right=2)
+    last_close = d1_segment[-1].close
+    last_bull_bos = -1
+    last_bear_bos = -1
+    for sh in highs:
+        if last_close > sh.price and sh.bar_index > last_bull_bos:
+            last_bull_bos = sh.bar_index
+    for sl in lows:
+        if last_close < sl.price and sl.bar_index > last_bear_bos:
+            last_bear_bos = sl.bar_index
+    if last_bull_bos == -1 and last_bear_bos == -1:
+        return None
+    return "LONG" if last_bull_bos >= last_bear_bos else "SHORT"
+
+
+_DAY_MS = 86400 * 1000
+
+
+def _d1_bias_lookup(sym_b15):
+    """15m bar dizisinden gunluk barlari + gunluk bias tablosunu uretir.
+
+    No-lookahead invariantlari:
+      - Gunluk bar d, 15m index'i day_end_15m_idx[d] olan bari ile biter; o bar
+        indexli sb icin d. gun HENUZ kapali DEGILDIR (bias guncel gunu icermez).
+      - bias_by_day[d], d-1 ve onceki KAPALI gunlerden hesaplanir.
+    """
+    buckets = {}
+    for b in sym_b15:
+        day = b.timestamp // _DAY_MS
+        buckets.setdefault(day, []).append(b)
+    d1_bars = []
+    day_end_15m_idx = []
+    for day in sorted(buckets):
+        c = buckets[day]
+        d1_bars.append(
+            Bar(
+                index=len(d1_bars),
+                open=c[0].open,
+                high=max(x.high for x in c),
+                low=min(x.low for x in c),
+                close=c[-1].close,
+                volume=sum(x.volume for x in c),
+                is_closed=True,
+                timestamp=day * _DAY_MS,
+            )
+        )
+        day_end_15m_idx.append(c[-1].index)
+    bias_by_day = [None] * len(d1_bars)
+    for d in range(len(d1_bars)):
+        seg = d1_bars[max(0, d - D1_BOS_LOOKBACK + 1) : d + 1]
+        bias_by_day[d] = _d1_bos_bias(seg)
+    return d1_bars, day_end_15m_idx, bias_by_day
+
+
+def _d1_bias_for_15m(sym_b15, day_end_15m_idx, bias_by_day):
+    """Her 15m bar sb icin o an bilinen 1D bias (no-lookahead lookup).
+
+    d = sb'de tamamen KAPANMIS gun sayisi. bias_by_day[k] k. gun kapandiktan
+    SONRA bilinen bias oldugundan, sb'deki bilinen bias = bias_by_day[d-1]
+    (son kapanan gunun bias'i). Henuz hicbir gun kapali degilse None.
+    """
+    n = len(sym_b15)
+    out = [None] * n
+    d = 0
+    n_days = len(day_end_15m_idx)
+    for sb in range(n):
+        while d < n_days and day_end_15m_idx[d] < sb:
+            d += 1
+        out[sb] = bias_by_day[d - 1] if d > 0 else None
+    return out
+
+
 # ─── FVG status (3-state) ───────────────────────────────
 def get_fvg_status(top, bottom, direction, b):
     """
@@ -205,6 +296,17 @@ TRAIL_BE_ON_GATE = False
 PROFIT_PROTECT_GATE_R = 0.0
 PROFIT_PROTECT_BE_R = 0.1
 PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+
+# ─── HTF Bias Alignment (2026-08-15 kullanici cikarimi) ────────────────────
+# Dünkü arastirma cikarimi: "CBDR ve 1D ayni ya da natural ise isleme gir".
+# HTF_BIAS_ALIGN=True iken 1D BOS bias (son D1_BOS_LOOKBACK gunde swing
+# high/low kirilimi) hesaplanir ve CBDR daily_bias ile eslestirilir:
+#   - 1D bias ve CBDR ayni yon   -> giris serbest
+#   - 1D bias yok (natural)      -> giris serbest
+#   - 1D bias ve CBDR zit yon    -> giris REDDEDILIR (HTF_BIAS_CONTRA)
+# KAPALI (False): baseline ile bit-bit ayni davranis (bias_reject degismez).
+HTF_BIAS_ALIGN = False
+D1_BOS_LOOKBACK = 25
 
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
@@ -434,6 +536,14 @@ def _collect_fvg_profile_impl(symbol: str):
     losses = []
     trade_records = []
 
+    # ── HTF (1D) BIAS Alignment: no-lookahead bias tablosu ──────────────
+    # Sadece HTF_BIAS_ALIGN=True iken hesaplanir. d1_bias_at[sb] = sb 15m
+    # barinda "bilinen" 1D bias ("LONG"/"SHORT"/None=natural).
+    d1_bias_at = None
+    if HTF_BIAS_ALIGN:
+        _d1, _de, _bias = _d1_bias_lookup(b15)
+        d1_bias_at = _d1_bias_for_15m(b15, _de, _bias)
+
     fvg_by_uid = {}
     rejection_counts: dict = defaultdict(int)
 
@@ -483,14 +593,33 @@ def _collect_fvg_profile_impl(symbol: str):
         if rsm.can_trigger() and not active:
             sd = rsm.direction
             db = ss.daily_bias
-            bias_reject = (
-                (sd == "bullish" and db == DailyBias.BEARISH)
-                or (sd == "bearish" and db == DailyBias.BULLISH)
-                or db == DailyBias.NEUTRAL
-            )
-            if bias_reject:
-                rsm.reset()
-                continue
+            if HTF_BIAS_ALIGN:
+                # Kullanici cikarimi: CBDR ve 1D ayni ya da natural ise gir.
+                #   - sweep yonu (sd) vs CBDR zit  -> reddet (canli parity, korunur)
+                #   - daily_bias NEUTRAL (natural) -> bu filtrede serbest
+                #   - 1D bias None (natural)       -> serbest
+                #   - ikisi de yonlu ve zit        -> REDDET (HTF_BIAS_CONTRA)
+                if (sd == "bullish" and db == DailyBias.BEARISH) or (
+                    sd == "bearish" and db == DailyBias.BULLISH
+                ):
+                    rsm.reset()
+                    continue
+                d1b = d1_bias_at[sb]
+                if d1b is not None and db != DailyBias.NEUTRAL:
+                    cbdr_dir = "LONG" if db == DailyBias.BULLISH else "SHORT"
+                    if d1b != cbdr_dir:
+                        rejection_counts["HTF_BIAS_CONTRA"] += 1
+                        rsm.reset()
+                        continue
+            else:
+                bias_reject = (
+                    (sd == "bullish" and db == DailyBias.BEARISH)
+                    or (sd == "bearish" and db == DailyBias.BULLISH)
+                    or db == DailyBias.NEUTRAL
+                )
+                if bias_reject:
+                    rsm.reset()
+                    continue
 
             # ── E varyanti: CHoCH yon filtresi (config.ENTRY_VARIANT) ──
             v4_fvg = rsm.trigger_fvg
@@ -1257,6 +1386,7 @@ def _analyze_one_sym_v5(
     trail_be: bool = False,
     profit_protect_gate: float | None = None,
     profit_protect_swing_atr: float | None = None,
+    htf_bias_align: bool = False,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1298,6 +1428,8 @@ def _analyze_one_sym_v5(
         _eng.PROFIT_PROTECT_GATE_R = profit_protect_gate
     if profit_protect_swing_atr is not None:
         _eng.PROFIT_PROTECT_SWING_ATR_MULT = profit_protect_swing_atr
+    if htf_bias_align:
+        _eng.HTF_BIAS_ALIGN = True
 
     try:
         result = collect_fvg_profile(sym)
@@ -1691,6 +1823,7 @@ def main():
     global _LOGGER, TRAIL_MODE, CONT_BUFFER_MULT, TRAIL_ACTIVATION_R_MULT
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
+    global HTF_BIAS_ALIGN
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -1725,6 +1858,7 @@ def main():
             "PROFIT_PROTECT_0_8R_SW0_75",
             "PROFIT_PROTECT_1_0R_SW0_5",
             "PROFIT_PROTECT_1_0R_SW0_75",
+            "HTF_BIAS_ALIGN",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -1791,6 +1925,13 @@ def main():
         TRAIL_BE_ON_GATE = False
         PROFIT_PROTECT_GATE_R = 1.0
         PROFIT_PROTECT_SWING_ATR_MULT = 0.75
+    elif args.trail_exp == "HTF_BIAS_ALIGN":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        HTF_BIAS_ALIGN = True
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -1903,6 +2044,7 @@ def main():
                     TRAIL_BE_ON_GATE,
                     PROFIT_PROTECT_GATE_R,
                     PROFIT_PROTECT_SWING_ATR_MULT,
+                    HTF_BIAS_ALIGN,
                 ): sym
                 for sym in syms
             }
@@ -1967,6 +2109,13 @@ def main():
     print(
         f"\n  TOPLAM: {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f} | Sure: {time.time() - t0:.0f}s"
     )
+    if HTF_BIAS_ALIGN:
+        _contra_total = sum(
+            rej.get("HTF_BIAS_CONTRA", 0) for _, _, _, rej in results_data
+        )
+        print(
+            f"  HTF BIAS NOT: 1D bias'a zit yon nedeniyle girilmeyen trade: {_contra_total}"
+        )
 
     # ── Report file ──
     rpt_path = os.path.join(
@@ -2000,6 +2149,16 @@ def main():
                 f"\n**Exit-reason:** TP={n_tp} ({n_tp / total_trades * 100:.1f}%) | "
                 f"PROFIT_TRAIL={n_pt} ({n_pt / total_trades * 100:.1f}%) | "
                 f"LOSS/OPEN={n_ls} ({n_ls / total_trades * 100:.1f}%)\n"
+            )
+        # ── HTF BIAS notu: 1D bias'a zit yon nedeniyle giris yapilmayan trade sayisi
+        # (kullanici istegi: sütun degil, rapor altinda not olarak).
+        if HTF_BIAS_ALIGN:
+            _contra = sum(
+                rej.get("HTF_BIAS_CONTRA", 0) for _, _, _, rej in results_data
+            )
+            f.write(
+                f"\n**HTF BIAS NOT:** 1D bias'a zit yon oldugu icin giris yapilmayan trade: "
+                f"{_contra} (kural: CBDR ve 1D ayni ya da natural ise gir)\n"
             )
         f.write("\n")
     print(f"  Rapor: {rpt_path}")
