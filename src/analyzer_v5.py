@@ -1940,6 +1940,8 @@ def main():
             "PROFIT_PROTECT_0_8R_SW0_75",
             "PROFIT_PROTECT_1_0R_SW0_5",
             "PROFIT_PROTECT_1_0R_SW0_75",
+            "PROFIT_PROTECT_2_0R_SW0_5",
+            "PROFIT_PROTECT_2_0R_SW0_75",
             "HTF_BIAS_ALIGN",
             "PARTIAL_TP_1_5R",
             "PARTIAL_TP_1_2R_70PCT",
@@ -2008,6 +2010,18 @@ def main():
         PROFIT_GATE_R = 0.0
         TRAIL_BE_ON_GATE = False
         PROFIT_PROTECT_GATE_R = 1.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.75
+    elif args.trail_exp == "PROFIT_PROTECT_2_0R_SW0_5":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 2.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+    elif args.trail_exp == "PROFIT_PROTECT_2_0R_SW0_75":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 2.0
         PROFIT_PROTECT_SWING_ATR_MULT = 0.75
     elif args.trail_exp == "HTF_BIAS_ALIGN":
         TRAIL_MODE = "retrace"
