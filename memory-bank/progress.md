@@ -1,5 +1,17 @@
 # backtest-sniper — Progress
 
+## 🔬 LUNA GERÇEK PROFIT PROTECTION — Implemente + Push (da7fa83, 2026-08-15)
+- **Tetik:** LUNA'nın "kısmen evet, tam olarak hayır" değerlendirmesi — rapor sağlam, ama önerilen mekanizma birebir test edilmemişti (hybrid düz BE'ye taşıyordu, swing trail hiç denenmemişti). Gerçek versiyon için ayrı test şarttı.
+- **`analyzer_v5.py` (tek dosya, +150/−1):** LUNA'nın 4 katmanlı mekanizmasının BIREBIR uygulaması —
+  1. **Gate latch:** `PROFIT_PROTECT_GATE_R` (0.8/1.0) — trade en az +Gate·risk_pts unrealized kârı intrabar high/low ile 'gördüğünde' koruma KALICI aktifleşir (`protect_latched`). Test edilen PROFIT_GATE trailing'i erteliyordu; bu korumayı AKTİFLEŞTİRİYOR (kritik fark).
+  2. **İlk koruma:** `SL = entry ± fees ± 0.1R` — round-trip komisyon tam formülle (long: `(entry(1+r)+0.1R·rpt2)/(1−r)`, short simetrik; r=COMMISSION_RATE=0.0005/leg). Trade BE+fees+0.1R üzerine kilitlenir.
+  3. **Swing ratchet:** son onaylı swing low/high ∓ `PROFIT_PROTECT_SWING_ATR_MULT`·ATR — long max / short min, yalnızca `bar_index >= entry_bar`.
+  4. **FVG birleşimi:** retrace trail DEVAM eder, çarpışma yok — max/min birleşimi zaten ortak kural (daha korumacı seviye kazanır).
+- **No-lookahead:** `find_swing_lows/highs(b15)` ön-hesaplama + `last_swl_bar[sb]`/`last_swh_bar[sb]` lookup — sadece `bar_index+3 <= sb` onaylı swing (fraktal right=3), b15 bar_index pozisyonel (resample_15m `index=len(m15)` ile doğrulandı).
+- **Yeni `--trail-exp` varyantları (LUNA matrisi gate{0.8,1.0}×ATR{0.5,0.75}):** PROFIT_PROTECT_0_8R_SW0_5 / _0_8R_SW0_75 / _1_0R_SW0_5 / _1_0R_SW0_75. Worker `_analyze_one_sym_v5` + paralel submit'e `profit_protect_gate`/`profit_protect_swing_atr`; run_compare_ad/ae'ye dokunulmadı.
+- **Doğrulama:** 39/39 test PASS; pre-commit 8/8 PASS (ruff, ruff-format, vulture, mypy, trailing-whitespace, end-of-file, merge-conflicts, **parity-check**); **baseline bit-bit korundu** — gate=0 SOLUSDT **1503/+39055** = bt_baseline.log birebir. Smoke: PP_0_8R_SW0_5 → 1599 trade/+34,086/PTrail 67.5%, PP_1_0R_SW0_75 → 1562/+34,612/PTrail 60.8% — mekanizma devrede, baseline'dan net farklı (SOLUSDT'de trade arttı: BE kilitleri kayıpları trailing kârına çeviriyor).
+- **Çalıştırma (kullanıcı terminali, workers):** `python src\analyzer_v5.py --workers N --trail-exp PROFIT_PROTECT_0_8R_SW0_5` (4 varyant için ayrı koşu). Not: ilk koruma ile PTrail %37→%67 arttı — exit dağılımı rapor satırından doğrulanır.
+
 ## 📊 PLAN C — TRAILING KOŞU SONUÇLARI (6 koşu, 2026-08-15 08:57 tamamlandı)
 - **Sonuç: HİÇBİR deney baseline'ı geçemedi (5/5 koşu, 28/28 sembolde NetPnL düşüşü).** Rapor: `reports/LUNA_planC_trailing_raporu.md`.
 - **Özet (trade / PE% / PF / MaxDD% / NetPnL / Exp$ / AvgHold / TP-PTrail-Loss):**
