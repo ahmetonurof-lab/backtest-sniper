@@ -1945,6 +1945,7 @@ def main():
             "HTF_BIAS_ALIGN",
             "PARTIAL_TP_1_5R",
             "PARTIAL_TP_1_2R_70PCT",
+            "PARTIAL_TP_1_8R_50PCT",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -2046,6 +2047,14 @@ def main():
         PROFIT_PROTECT_SWING_ATR_MULT = 0.5
         PARTIAL_TP_R = 1.2
         PARTIAL_TP_FRAC = 0.7
+    elif args.trail_exp == "PARTIAL_TP_1_8R_50PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 1.8
+        PARTIAL_TP_FRAC = 0.5
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
