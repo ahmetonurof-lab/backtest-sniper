@@ -323,6 +323,17 @@ D1_BOS_LOOKBACK = 25
 PARTIAL_TP_R = 0.0
 PARTIAL_TP_FRAC = 0.7
 PARTIAL_TP_PCT = 0.0
+# PARTIAL_TP_PCT > 0 iken: R bazli seviye yerine FIYAT yuzdesi bazli tetikleyici.
+# Long: entry*(1+PCT/100) fiyatina ulasinca (short: entry*(1-PCT/100)) pozisyonun
+# PARTIAL_TP_FRAC orani kapanir. R bazli seviye (PARTIAL_TP_R) ile birbirini
+# dislar: PCT onceliklidir (PCT > 0 ise R dikkate alinmaz).
+# SCALE-OUT kademesi (PARTIAL_TP_SL_PROTECT_PCT > 0 iken aktif):
+#   1) Ilk tetikleyici (PCT) vurunca FRAC orani satilir, kalanin SL'si
+#      entry*(1±SL_PROTECT_PCT/100)'e tasinir, TP de ayni delta kadar otelenir.
+#   2) Fiyat ilk tetikleyiciden SCALE_STEP_PCT daha ileriye giderse (long:
+#      entry*(1+PCT/100)*(1+SCALE_STEP_PCT/100)) kalan pozisyonun TAMAMI satilir.
+PARTIAL_TP_SL_PROTECT_PCT = 0.0
+PARTIAL_TP_SCALE_STEP_PCT = 0.0
 
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
@@ -1050,6 +1061,32 @@ def _collect_fvg_profile_impl(symbol: str):
                         _pt_level_long = t["entry_price"] + PARTIAL_TP_R * abs(
                             t["initial_sl"] - t["entry_price"]
                         )
+                    # SCALE-OUT 2. kademe: ilk tetikleyiciden SCALE_STEP_PCT daha
+                    # ileri fiyatta kalan pozisyonun TAMAMI satilir.
+                    _pt_scale2_long = None
+                    if (
+                        PARTIAL_TP_SCALE_STEP_PCT > 0
+                        and _pt_level_long is not None
+                        and t.get("partial_taken")
+                    ):
+                        _pt_scale2_long = _pt_level_long * (
+                            1 + PARTIAL_TP_SCALE_STEP_PCT / 100.0
+                        )
+                        if cur.high >= _pt_scale2_long:
+                            _pp = _pt_scale2_long
+                            _pq = t["qty"]
+                            _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
+                            _exit_fee = _pp * _pq * COMMISSION_RATE
+                            t["locked_pnl"] += (_pp - t["entry_price"]) * _pq
+                            t["locked_fee"] = (
+                                t.get("locked_fee", 0.0) + _entry_fee + _exit_fee
+                            )
+                            t["qty"] -= _pq
+                            t["exit_price"] = _pp
+                            t["exit_bar"] = sb
+                            t["result"] = "TP"
+                            t["closed"] = True
+                            ex = True
                     if (
                         _pt_level_long is not None
                         and not t.get("partial_taken")
@@ -1066,6 +1103,18 @@ def _collect_fvg_profile_impl(symbol: str):
                         t["qty"] -= _pq
                         t["partial_taken"] = True
                         rejection_counts["PARTIAL_TP"] += 1
+                        # SCALE-OUT: kalanin SL'sini entry*(1±SL_PROTECT_PCT/100)'e
+                        # tasi (long), TP'yi de ayni delta kadar otele.
+                        if PARTIAL_TP_SL_PROTECT_PCT > 0 and t["qty"] > 0:
+                            _cur_sl = t["sl"]
+                            _new_sl = t["entry_price"] * (
+                                1 + PARTIAL_TP_SL_PROTECT_PCT / 100.0
+                            )
+                            if _new_sl > _cur_sl:
+                                _sd = _new_sl - _cur_sl
+                                t["sl"] = _new_sl
+                                if not TP_FIXED:
+                                    t["tp"] += _sd
                     if cur.high >= t["tp"]:
                         t["exit_price"] = t["tp"]
                         t["exit_bar"] = sb
@@ -1093,6 +1142,32 @@ def _collect_fvg_profile_impl(symbol: str):
                         _pt_level_short = t["entry_price"] - PARTIAL_TP_R * abs(
                             t["initial_sl"] - t["entry_price"]
                         )
+                    # SCALE-OUT 2. kademe: ilk tetikleyiciden SCALE_STEP_PCT daha
+                    # ileri fiyatta kalan pozisyonun TAMAMI satilir.
+                    _pt_scale2_short = None
+                    if (
+                        PARTIAL_TP_SCALE_STEP_PCT > 0
+                        and _pt_level_short is not None
+                        and t.get("partial_taken")
+                    ):
+                        _pt_scale2_short = _pt_level_short * (
+                            1 - PARTIAL_TP_SCALE_STEP_PCT / 100.0
+                        )
+                        if cur.low <= _pt_scale2_short:
+                            _pp = _pt_scale2_short
+                            _pq = t["qty"]
+                            _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
+                            _exit_fee = _pp * _pq * COMMISSION_RATE
+                            t["locked_pnl"] += (t["entry_price"] - _pp) * _pq
+                            t["locked_fee"] = (
+                                t.get("locked_fee", 0.0) + _entry_fee + _exit_fee
+                            )
+                            t["qty"] -= _pq
+                            t["exit_price"] = _pp
+                            t["exit_bar"] = sb
+                            t["result"] = "TP"
+                            t["closed"] = True
+                            ex = True
                     if (
                         _pt_level_short is not None
                         and not t.get("partial_taken")
@@ -1109,6 +1184,18 @@ def _collect_fvg_profile_impl(symbol: str):
                         t["qty"] -= _pq
                         t["partial_taken"] = True
                         rejection_counts["PARTIAL_TP"] += 1
+                        # SCALE-OUT: kalanin SL'sini entry*(1±SL_PROTECT_PCT/100)'e
+                        # tasi (short), TP'yi de ayni delta kadar otele.
+                        if PARTIAL_TP_SL_PROTECT_PCT > 0 and t["qty"] > 0:
+                            _cur_sl = t["sl"]
+                            _new_sl = t["entry_price"] * (
+                                1 - PARTIAL_TP_SL_PROTECT_PCT / 100.0
+                            )
+                            if _new_sl < _cur_sl:
+                                _sd = _cur_sl - _new_sl
+                                t["sl"] = _new_sl
+                                if not TP_FIXED:
+                                    t["tp"] -= _sd
                     if cur.low <= t["tp"]:
                         t["exit_price"] = t["tp"]
                         t["exit_bar"] = sb
@@ -1481,6 +1568,8 @@ def _analyze_one_sym_v5(
     partial_tp_r: float | None = None,
     partial_tp_frac: float | None = None,
     partial_tp_pct: float | None = None,
+    partial_tp_sl_protect_pct: float | None = None,
+    partial_tp_scale_step_pct: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1530,6 +1619,10 @@ def _analyze_one_sym_v5(
         _eng.PARTIAL_TP_FRAC = partial_tp_frac
     if partial_tp_pct is not None:
         _eng.PARTIAL_TP_PCT = partial_tp_pct
+    if partial_tp_sl_protect_pct is not None:
+        _eng.PARTIAL_TP_SL_PROTECT_PCT = partial_tp_sl_protect_pct
+    if partial_tp_scale_step_pct is not None:
+        _eng.PARTIAL_TP_SCALE_STEP_PCT = partial_tp_scale_step_pct
 
     try:
         result = collect_fvg_profile(sym)
@@ -1924,6 +2017,7 @@ def main():
     global PROFIT_GATE_R, TRAIL_BE_ON_GATE, TRAIL_EXP_TAG
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
     global HTF_BIAS_ALIGN, PARTIAL_TP_R, PARTIAL_TP_FRAC, PARTIAL_TP_PCT
+    global PARTIAL_TP_SL_PROTECT_PCT, PARTIAL_TP_SCALE_STEP_PCT
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -2081,8 +2175,10 @@ def main():
         PROFIT_PROTECT_GATE_R = 0.0
         PROFIT_PROTECT_SWING_ATR_MULT = 0.5
         PARTIAL_TP_R = 0.0
-        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_FRAC = 0.5
         PARTIAL_TP_PCT = 3.0
+        PARTIAL_TP_SL_PROTECT_PCT = 1.5
+        PARTIAL_TP_SCALE_STEP_PCT = 3.0
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2199,6 +2295,8 @@ def main():
                     PARTIAL_TP_R,
                     PARTIAL_TP_FRAC,
                     PARTIAL_TP_PCT,
+                    PARTIAL_TP_SL_PROTECT_PCT,
+                    PARTIAL_TP_SCALE_STEP_PCT,
                 ): sym
                 for sym in syms
             }
