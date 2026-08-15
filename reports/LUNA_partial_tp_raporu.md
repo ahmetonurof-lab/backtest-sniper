@@ -32,6 +32,26 @@
 
 ---
 
+## 2b. PROFIT_PROTECT — Swing High/Low ± ATR + FVG Retrace Birleşimi (28 sembol)
+
+**Bu, kullanıcının önerdiği "swing high/low ± ATR + FVG trail" birleşimidir ve implemente edilip koşulmuştur** (4 parametre, 28 sembol, 2026-08-15 12:02-12:48). Mekanizma (`analyzer_v5.py` `PROFIT_PROTECT_*`):
+- **Kapı (latch):** trade intrabar `+Gate·risk_pts` unrealized kârı gördüğünde koruma KALICI olarak devreye girer (`PROFIT_PROTECT_GATE_R`).
+- **İlk koruma:** `SL = entry ± fees ± 0.1R` (round-trip komisyonu dahil).
+- **Swing ratchet:** son onaylı swing low/high ∓ `SWING_ATR_MULT`·ATR (long max / short min).
+- **FVG retrace DEVAM eder** — çarpışma yok; max/min birleşimi ortak kuraldır.
+
+| Koşu | Gate | Swing ATR | Trade | NetPnL | Exp$/trade | TP/PTrail/Loss% | AvgHold |
+|---|---|---|---|---|---|---|---|
+| BASELINE_RETRACE_LIVE_PARITY | — | — | 48,943 | **+1,602,063** | +32.73 | 17.0 / 40.1 / 42.9 | — |
+| PROFIT_PROTECT_0_8R_SW0_5 | 0.8R | 0.5 | 51,854 | +1,424,298 | +27.47 | 3.0 / 65.6 / 31.4 | 2.4 |
+| PROFIT_PROTECT_0_8R_SW0_75 | 0.8R | 0.75 | 51,848 | +1,424,462 | +27.47 | 3.0 / 65.6 / 31.4 | 2.4 |
+| PROFIT_PROTECT_1_0R_SW0_5 | 1.0R | 0.5 | 50,665 | +1,436,431 | +28.35 | 5.1 / 60.4 / 34.5 | 2.8 |
+| PROFIT_PROTECT_1_0R_SW0_75 | 1.0R | 0.75 | 50,650 | +1,436,301 | +28.36 | 5.1 / 60.4 / 34.5 | 2.8 |
+
+**Sonuç:** 4 parametre de net-negatif. Kapı arttıkça (0.8→1.0R) kuyruk daha az kesiliyor ve baseline'a yaklaşıyor ama geçmiyor (Exp −16%→−13%). **Swing ATR tamponu 0.5 vs 0.75 etkisiz** (Δ≈+164$ / 51.8K trade). PE artışı (57→65.6) istatistik oyunu: kayıplar BE+fees+0.1R ufak kâra çevriliyor, cebe inen rakam kaybediyor. (Daha geç gate 2.0R de denendi, 8 sembolde −3.4% — bkz. §3 referans satırı.)
+
+---
+
 ## 3. Kısmi Kâr Alma (Partial TP) Serisi — 8 Sembol Evreni
 
 Trailing'e müdahale etmek yerine **pozisyonun bir kısmını erken kârda realize etme** hipotezi test edildi. Tetikleyici tasarımı: R bazlı (entry + R·risk_pts) vs **fiyat bazlı** (entry·(1±PCT/100)).
