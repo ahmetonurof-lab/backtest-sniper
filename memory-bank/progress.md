@@ -1,5 +1,12 @@
 # backtest-sniper — Progress
 
+## 🎯 PROFIT_PROTECT_2_0R_SW0_5/SW0_75 DENEYİ — yüksek kapı 2.0R + swing trail (2026-08-15)
+- **Tetik:** Kullanıcı kararı — PARTIAL_TP_1_2R_70PCT "yaramaz" (risk-normalize ΔPnL −0.4% olsa da kullanıcı beğenmedi), 1_5R daha iyi ama onun da ayrı değerlendirmesi var. "En son kalan madde / 2. varyant": LUNA matrisinin yüksek kapı köşesi — gate 0.8/1.0 zaten 4 PP varyantıyla koşuldu, **2.0R** açık kalan.
+- **`analyzer_v5.py` (commit `f42eb54`):** dispatch'e iki yeni `--trail-exp` varyantı: `PROFIT_PROTECT_2_0R_SW0_5` (gate=2.0, swing ATR=0.5) ve `PROFIT_PROTECT_2_0R_SW0_75` (gate=2.0, swing ATR=0.75) — choices + elif blokları. Worker parametre taşıması (`profit_protect_gate`/`profit_protect_swing_atr`) zaten mevcut, değişmedi.
+- **Doğrulama:** py_compile OK; pre-commit 8/8 + parity PASS; **smoke SOLUSDT PP_2_0R_SW0_75: 1505 trade / +24,290.58** (mekanizma devrede, baseline +24,290 civarı SOL +39055'ten farklı — koruma aktif). PP_2_0R_SW0_5 smoke'u ayrıca koşulmadı (aynı mekanizma, sadece swing ATR 0.5 — 0.8R/1.0R varyantlarıyla aynı desen).
+- **Koşu komutu:** `python src\analyzer_v5.py --workers N --trail-exp PROFIT_PROTECT_2_0R_SW0_5` (veya `_2_0R_SW0_75`). Koşu kullanıcı terminalinde.
+- **Bağlam:** LUNA PP matrisi şu ana kadar: gate 0.8/1.0 × swing 0.5/0.75 — dördü de baseline'ı geçemedi (Exp −16%/−13%, PE artışı istatistik oyunu). 2.0R yüksek kapı = koruma çok geç aktive olur, trailing'e daha fazla alan bırakır — gate 0.8→1.0 trendinde (daha iyi) devamı beklenir ama test edilir.
+
 ## 🎯 PARTIAL_TP_1_2R_70PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 16:31, 8 sembol)
 - **Sonuç (8 coin, `analyzer_v5_summary.md` 16:31, RISK 0.002):** 15,100 trade / net **+437,373** / Exp **+28.97** / TP 15.5 | PTrail 43.4 | Loss 41.2 / AvgHold 3.5 / **PARTIAL_TP=3,372** (%22.3 trade'de %70 kısmi kapanış).
 - **Risk-normalize 8-coin kıyaslama (0.002 ölçeğinde):**
