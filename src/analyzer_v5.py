@@ -335,6 +335,27 @@ PARTIAL_TP_PCT = 0.0
 PARTIAL_TP_SL_PROTECT_PCT = 0.0
 PARTIAL_TP_SCALE_STEP_PCT = 0.0
 
+# ─── KAR MERDIVENI (Fallback Ladder, 2026-08-16 LUNA direktif) ────────────
+# Mevcut FVG-based trailing FVG bulamadiginda SL'yi hareket ettiremiyor — fiyat
+# duz ilerleyip geri dondugu senaryolarda kar kaciriliyor. Fallback mekanizmasi:
+# fiyat entry'den ne kadar uzaksa (unrealized R), SL o kadar yuksek bir basamaga
+# kilitlenir (ratchet, geri dusmez). FVG varsa FVG KAZANIR: FVG dongusu once
+# islenir ve csl zaten FVG seviyesine tasinir; bu blok yalnizca merdivenin FVG'nin
+# ulasmadigi (daha yuksek) seviyeyi verdigi durumda devreye girer (long: max,
+# short: min = ortak koruyucu kural).
+# KAPALI (ENABLE_FALLBACK_LADDER=False): baseline ile bit-bit ayni davranis.
+ENABLE_FALLBACK_LADDER = False
+# Basamaklar: tetikleyici (unrealized R) -> SL konumu (R, entry uzeri/alti).
+# LADDER_STEP_X_R = 0 ise o basamak devre disi (SHALLOW varyanti).
+LADDER_STEP_1_R = 0.5
+LADDER_STEP_1_SL_R = 0.1
+LADDER_STEP_2_R = 1.0
+LADDER_STEP_2_SL_R = 0.5
+LADDER_STEP_3_R = 1.5
+LADDER_STEP_3_SL_R = 1.0
+LADDER_STEP_4_R = 2.0
+LADDER_STEP_4_SL_R = 1.5
+
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
 CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
@@ -349,6 +370,41 @@ CONT_CONFIRM_BARS = getattr(cfg, "CONTINUATION_CONFIRM_BARS", 2)
 # onaylar; pozisyon lehine far-side kapanis (bullish: close > top) FVG'yi
 # ELIMINE ETMEZ, donguye devam eder (sonraki gap ici kapanis onay verebilir).
 # Aksi yon (bullish: close < bottom) invalidation = False.
+def compute_fallback_ladder_sl(side, cur_close, risk_pts, entry_price):
+    """KAR MERDIVENI (Profit Ladder) — FVG trailing'in yedek mekanizmasi.
+
+    Fiyat entry'den belirli R mesafelerindeyse SL'yi kademeli olarak
+    entry +/- SL_R*R konumuna tasi (ratchet). SADECE oneri uretir; cagiran
+    taraf max/min ile mevcut SL'yi korur (FVG once islenmis olabilir).
+    Basamaklar LADDER_STEP_*_R / LADDER_STEP_*_SL_R sabitlerinden gelir.
+    LADDER_STEP_X_R=0 olan basamak atlanir (SHALLOW gibi 2 basamakli varyant).
+    risk_pts <= 0 ise None (hesaplanamaz).
+    """
+    if risk_pts <= 0:
+        return None
+    if side == "long":
+        unrealized_r = (cur_close - entry_price) / risk_pts
+        if LADDER_STEP_4_R > 0 and unrealized_r >= LADDER_STEP_4_R:
+            return entry_price + risk_pts * LADDER_STEP_4_SL_R
+        if LADDER_STEP_3_R > 0 and unrealized_r >= LADDER_STEP_3_R:
+            return entry_price + risk_pts * LADDER_STEP_3_SL_R
+        if LADDER_STEP_2_R > 0 and unrealized_r >= LADDER_STEP_2_R:
+            return entry_price + risk_pts * LADDER_STEP_2_SL_R
+        if LADDER_STEP_1_R > 0 and unrealized_r >= LADDER_STEP_1_R:
+            return entry_price + risk_pts * LADDER_STEP_1_SL_R
+    else:  # short
+        unrealized_r = (entry_price - cur_close) / risk_pts
+        if LADDER_STEP_4_R > 0 and unrealized_r >= LADDER_STEP_4_R:
+            return entry_price - risk_pts * LADDER_STEP_4_SL_R
+        if LADDER_STEP_3_R > 0 and unrealized_r >= LADDER_STEP_3_R:
+            return entry_price - risk_pts * LADDER_STEP_3_SL_R
+        if LADDER_STEP_2_R > 0 and unrealized_r >= LADDER_STEP_2_R:
+            return entry_price - risk_pts * LADDER_STEP_2_SL_R
+        if LADDER_STEP_1_R > 0 and unrealized_r >= LADDER_STEP_1_R:
+            return entry_price - risk_pts * LADDER_STEP_1_SL_R
+    return None  # degisiklik onerisi yok
+
+
 def fvg_close_confirmed(fvg, all_bars):
     scan_from = fvg.real_index + 2
     for b in all_bars:
@@ -995,6 +1051,32 @@ def _collect_fvg_profile_impl(symbol: str):
                                 ctp -= sd2
                             ltc += 1
                             upd = True
+                # ── KAR MERDIVENI (Fallback Ladder, 2026-08-16) ──
+                # FVG yolu bittikten SONRA devreye girer. csl bu noktada FVG'nin
+                # ulastigi seviyededir (varsa); merdiven sadece daha koruyucu bir
+                # seviye veriyorsa kazanir (long: max, short: min). Ratchet +
+                # min-move filtresi diger trailing yollariyla ayni kuraldir.
+                if ENABLE_FALLBACK_LADDER:
+                    _ladder_sl = compute_fallback_ladder_sl(
+                        s2, cur.close, rpt2, t["entry_price"]
+                    )
+                    if _ladder_sl is not None:
+                        if s2 == "long" and _ladder_sl > csl:
+                            if (_ladder_sl - csl) > rpt2 * TMM:
+                                sd2 = _ladder_sl - csl
+                                csl = _ladder_sl
+                                if not TP_FIXED:
+                                    ctp += sd2
+                                ltc += 1
+                                upd = True
+                        elif s2 == "short" and _ladder_sl < csl:
+                            if (csl - _ladder_sl) > rpt2 * TMM:
+                                sd2 = csl - _ladder_sl
+                                csl = _ladder_sl
+                                if not TP_FIXED:
+                                    ctp -= sd2
+                                ltc += 1
+                                upd = True
                 if TRAIL_MODE in ("atr_chase", "activation") and not upd:
                     # DENEYSEL (geri cekildi 2026-08-08): ATR-chase fallback —
                     # FVG aday kullanilamadiginda SL = close ∓ K*ATR ile chase.
@@ -1570,6 +1652,15 @@ def _analyze_one_sym_v5(
     partial_tp_pct: float | None = None,
     partial_tp_sl_protect_pct: float | None = None,
     partial_tp_scale_step_pct: float | None = None,
+    enable_fallback_ladder: bool = False,
+    ladder_step_1_r: float | None = None,
+    ladder_step_1_sl_r: float | None = None,
+    ladder_step_2_r: float | None = None,
+    ladder_step_2_sl_r: float | None = None,
+    ladder_step_3_r: float | None = None,
+    ladder_step_3_sl_r: float | None = None,
+    ladder_step_4_r: float | None = None,
+    ladder_step_4_sl_r: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1623,6 +1714,24 @@ def _analyze_one_sym_v5(
         _eng.PARTIAL_TP_SL_PROTECT_PCT = partial_tp_sl_protect_pct
     if partial_tp_scale_step_pct is not None:
         _eng.PARTIAL_TP_SCALE_STEP_PCT = partial_tp_scale_step_pct
+    if enable_fallback_ladder:
+        _eng.ENABLE_FALLBACK_LADDER = True
+    if ladder_step_1_r is not None:
+        _eng.LADDER_STEP_1_R = ladder_step_1_r
+    if ladder_step_1_sl_r is not None:
+        _eng.LADDER_STEP_1_SL_R = ladder_step_1_sl_r
+    if ladder_step_2_r is not None:
+        _eng.LADDER_STEP_2_R = ladder_step_2_r
+    if ladder_step_2_sl_r is not None:
+        _eng.LADDER_STEP_2_SL_R = ladder_step_2_sl_r
+    if ladder_step_3_r is not None:
+        _eng.LADDER_STEP_3_R = ladder_step_3_r
+    if ladder_step_3_sl_r is not None:
+        _eng.LADDER_STEP_3_SL_R = ladder_step_3_sl_r
+    if ladder_step_4_r is not None:
+        _eng.LADDER_STEP_4_R = ladder_step_4_r
+    if ladder_step_4_sl_r is not None:
+        _eng.LADDER_STEP_4_SL_R = ladder_step_4_sl_r
 
     try:
         result = collect_fvg_profile(sym)
@@ -2059,6 +2168,10 @@ def main():
             "PARTIAL_TP_1_2R_70PCT",
             "PARTIAL_TP_1_8R_50PCT",
             "PARTIAL_TP_2R_70PCT",
+            "LADDER_DEFAULT",
+            "LADDER_AGGRESSIVE",
+            "LADDER_CONSERVATIVE",
+            "LADDER_SHALLOW",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -2179,6 +2292,86 @@ def main():
         PARTIAL_TP_PCT = 3.0
         PARTIAL_TP_SL_PROTECT_PCT = 1.5
         PARTIAL_TP_SCALE_STEP_PCT = 2.0
+    elif args.trail_exp == "LADDER_DEFAULT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = True
+        LADDER_STEP_1_R = 0.5
+        LADDER_STEP_1_SL_R = 0.1
+        LADDER_STEP_2_R = 1.0
+        LADDER_STEP_2_SL_R = 0.5
+        LADDER_STEP_3_R = 1.5
+        LADDER_STEP_3_SL_R = 1.0
+        LADDER_STEP_4_R = 2.0
+        LADDER_STEP_4_SL_R = 1.5
+    elif args.trail_exp == "LADDER_AGGRESSIVE":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = True
+        LADDER_STEP_1_R = 0.5
+        LADDER_STEP_1_SL_R = 0.05
+        LADDER_STEP_2_R = 1.0
+        LADDER_STEP_2_SL_R = 0.3
+        LADDER_STEP_3_R = 1.5
+        LADDER_STEP_3_SL_R = 0.7
+        LADDER_STEP_4_R = 2.0
+        LADDER_STEP_4_SL_R = 1.2
+    elif args.trail_exp == "LADDER_CONSERVATIVE":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = True
+        LADDER_STEP_1_R = 0.5
+        LADDER_STEP_1_SL_R = 0.1
+        LADDER_STEP_2_R = 1.0
+        LADDER_STEP_2_SL_R = 0.5
+        LADDER_STEP_3_R = 2.0
+        LADDER_STEP_3_SL_R = 1.0
+        LADDER_STEP_4_R = 3.0
+        LADDER_STEP_4_SL_R = 2.0
+    elif args.trail_exp == "LADDER_SHALLOW":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = True
+        LADDER_STEP_1_R = 0.5
+        LADDER_STEP_1_SL_R = 0.05
+        LADDER_STEP_2_R = 1.0
+        LADDER_STEP_2_SL_R = 0.5
+        LADDER_STEP_3_R = 0.0
+        LADDER_STEP_3_SL_R = 0.0
+        LADDER_STEP_4_R = 0.0
+        LADDER_STEP_4_SL_R = 0.0
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2200,6 +2393,14 @@ def main():
         print(
             f"  PROFIT PROTECT: gate={PROFIT_PROTECT_GATE_R}R "
             f"be={PROFIT_PROTECT_BE_R}R swing_atr={PROFIT_PROTECT_SWING_ATR_MULT}",
+            flush=True,
+        )
+    if ENABLE_FALLBACK_LADDER:
+        print(
+            f"  FALLBACK LADDER: {LADDER_STEP_1_R:.1f}R->+{LADDER_STEP_1_SL_R}R "
+            f"{LADDER_STEP_2_R:.1f}R->+{LADDER_STEP_2_SL_R}R "
+            f"{LADDER_STEP_3_R:.1f}R->+{LADDER_STEP_3_SL_R}R "
+            f"{LADDER_STEP_4_R:.1f}R->+{LADDER_STEP_4_SL_R}R (SL=entry+SL_R*R)",
             flush=True,
         )
 
@@ -2297,6 +2498,15 @@ def main():
                     PARTIAL_TP_PCT,
                     PARTIAL_TP_SL_PROTECT_PCT,
                     PARTIAL_TP_SCALE_STEP_PCT,
+                    ENABLE_FALLBACK_LADDER,
+                    LADDER_STEP_1_R,
+                    LADDER_STEP_1_SL_R,
+                    LADDER_STEP_2_R,
+                    LADDER_STEP_2_SL_R,
+                    LADDER_STEP_3_R,
+                    LADDER_STEP_3_SL_R,
+                    LADDER_STEP_4_R,
+                    LADDER_STEP_4_SL_R,
                 ): sym
                 for sym in syms
             }
