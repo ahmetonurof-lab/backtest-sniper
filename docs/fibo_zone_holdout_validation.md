@@ -745,3 +745,34 @@ Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded f
 **Decision: VALIDATED**
 
 Holdout PF 9.83 vs train PF 4.79 (ratio=2.05 if train nonzero); holdout winrate 72.72% vs train 64.24%. PASSED thresholds (pf_ratio>=0.8, winrate_drop<=5.0pt).
+
+## Fibonacci Zone Holdout Validation — Matched vs Mismatched Pairs
+
+Matched pairs = discount+0.236, premium+0.786 (combined as ONE strategy).
+Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded from strategy).
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 6682 | 65.13% | 4.6 | +182943 | 1.09% | yes |
+| Matched | Holdout | 3295 | 73.51% | 9.41 | +232395 | 1.25% | yes |
+| Mismatched | Train | 2271 | 41.52% | 0.83 | -5283 | 53.09% | yes |
+| Mismatched | Holdout | 419 | 37.47% | 0.67 | -3053 | 31.29% | yes |
+
+**Decision: VALIDATED**
+
+Holdout PF 9.41 vs train PF 4.6 (ratio=2.05 if train nonzero); holdout winrate 73.51% vs train 65.13%. PASSED thresholds (pf_ratio>=0.8, winrate_drop<=5.0pt).
+## Fibonacci Zone Holdout Validation — Matched vs Mismatched Pairs
+
+Matched pairs = discount+0.236, premium+0.786 (combined as ONE strategy).
+Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded from strategy).
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 6682 | 65.13% | 4.6 | +182931 | 1.09% | yes |
+| Matched | Holdout | 3295 | 73.51% | 9.41 | +232413 | 1.25% | yes |
+| Mismatched | Train | 2270 | 41.54% | 0.83 | -5147 | 51.73% | yes |
+| Mismatched | Holdout | 418 | 37.32% | 0.66 | -3102 | 31.78% | yes |
+
+**Decision: VALIDATED**
+
+Holdout PF 9.41 vs train PF 4.6 (ratio=2.05 if train nonzero); holdout winrate 73.51% vs train 65.13%. PASSED thresholds (pf_ratio>=0.8, winrate_drop<=5.0pt).
