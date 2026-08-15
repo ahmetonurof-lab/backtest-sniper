@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## 🎯 PARTIAL_TP_2R_70PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 19:40, 8 sembol)
+- **Sonuç (8-coin, RISK 0.002):** 15,100 trade / net **+444,318** / Exp **+29.43** / ort MaxDD ~0.54% / %70 kısmi kapanış: **790 trade** (%3 fiyat kârı tetikleyici).
+- **Şu ana kadar en iyi:** baseline'ı **+%1.2** geçti (baseline 438,966). Desen: 1.5R/−0.25% → 1.2R/−0.4% → 1.8R/+0.24% → **%3 fiyat/+1.2%**.
+- **Çıkarım:** R bazlı seviye yerine FIYAT bazlı tetikleyici (entry×1.03) + %70 kapanış, 8-coinde birikimli olarak en güçlü. 790 partial, exit-reason dağılımını değiştirmedi (TP 15.5/PTrail 43.4/Loss 41.2) — kısmi kapanış trailing'i etkilemiyor, sadece kilitlenen kâr ekleniyor.
+- **Sıradaki adaylar:** %4/%5 fiyat kârı (tetikleyici yükselme), FRAC 0.5/0.8 varyasyonu. LUNA raporu lideri: 2R_70PCT.
+
 ## 🎯 PARTIAL_TP_2R_70PCT DENEYİ — %3 fiyat kârı bazlı kısmi TP, %70 kapanış (2026-08-15)
 - **Tetik:** Kullanıcı "2.0R yapalım ama %70'ini %3 karda satalım" — R bazlı seviye yerine FIYAT bazlı tetikleyici isteği. 1_8R_50PCT'nin (+%0.24, en iyi) devamı.
 - **`analyzer_v5.py` (commit `29c4187`):** yeni `PARTIAL_TP_PCT` global (default 0.0, PCT>0 ise R'yi ezer; seviye long: entry*(1+PCT/100)). Worker imzasına `partial_tp_pct` + set; dispatch `PARTIAL_TP_2R_70PCT` (PCT=3.0, FRAC=0.7); paralel submit + rapor notları güncellendi. ruff-format 1 dosyayı biçimlendirdi, re-commit sonrası 8/8 PASS.
