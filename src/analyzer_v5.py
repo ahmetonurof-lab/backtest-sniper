@@ -36,6 +36,19 @@ from session_router import (
 from mss import detect_mss
 from pivot import SwingStateManager, find_swing_highs, find_swing_lows
 
+# SWING producer: canli trailing_manager._default_level_from_swings'e DOGRUDAN
+# cagrilir (LUNA direktif madde 2/5 — iki farkli swing tanimi istemiyoruz, bu
+# hem gereksiz kod hem ileride parity bug'i riski). trading paketi __init__.py
+# agir moduller (signal_engine/order_manager/...) import ettigi icin onu
+# tetiklemeden sniper/src/trading klasorunu sys.path'e ekleyip top-level
+# modul olarak cekiyoruz. price_reader/protection_gateway backtest'te
+# kullanilmaz; yalnizca pivot_strength (TrailingConfig default=2) + static
+# _get/_decimal erisimi icin gerekli.
+sys.path.insert(0, os.path.join(_SNIPER_SRC, "trading"))
+from trailing_manager import TrailingManager
+
+_SWING_TRAIL_TM = TrailingManager(price_reader=None, protection_gateway=None)
+
 # ── E varyanti (A/E1/E2): CHoCH giris filtresi ─────────────────
 # ENTRY_VARIANT config'ten gelir; degilse baseline "A" kullanilir.
 ENTRY_VARIANT = getattr(cfg, "ENTRY_VARIANT", "A")
@@ -369,6 +382,36 @@ LADDER_STEP_3_SL_R = 1.0
 LADDER_STEP_4_R = 2.0
 LADDER_STEP_4_SL_R = 1.5
 
+# ─── STRUCTURAL FALLBACK TRAILING (2026-08-16 LUNA direktif) ─────────
+# FVG → LADDER → CONFIRMED 15m SWING yapisal fallback katmani.
+#   - 15m = KARAR (trailing/FVG/ladder/swing), 1m = yalnizca EXECUTION/REPAIR.
+#   - FVG varsa baseline FVG trailing korunur (fvg_close_confirmed, yon
+#     filtresi, FVG_MIN_SIZE_ATR_MULT, ATR_TRAIL_MULT, TRAIL_MIN_MOVE_MULT
+#     aynen). FVG YOKSA PROFIT STATE'e gecilir:
+#       LADDER_ONLY -> kar merdiveni (>=1R, 15m CLOSE bazli aktive)
+#       SWING_ONLY  -> >=2R'de confirmed 15m swing (SWING_TRAIL_BUFFER*ATR)
+#       HYBRID      -> <1R none | 1-2R ladder | >=2R confirmed 15m swing
+#   - Tum candidate SL'ler uretilir ve LONG->max / SHORT->min uygulanir
+#     (section 8: "hangi sinyal daha onemli" tartismasi yok). SL geriye
+#     gitmez; TP, SL delta'si kadar otelehir (baseline davranisi).
+#   - KAPALI (None): baseline ile bit-bit ayni davranis.
+STRUCTURAL_FALLBACK_MODE = None  # "LADDER" | "SWING" | "HYBRID"
+# Confirmed 15m swing SL tamponu (long: swing_low - BUF*ATR, short: swing_high + BUF*ATR).
+# Swing LOW/HIGH tanimi canli trailing_manager._default_level_from_swings'ten gelir
+# (yeniden implemente edilmez — parite, direktif madde 5).
+SWING_TRAIL_BUFFER = 0.10
+# Ladder kademeleri (Varyant A/C ortak). SF_LADDER_STEP_X_R = tetikleyici
+# (15m close unrealized R), SF_LADDER_STEP_X_SL_R = SL konumu (entry +/- SL_R*R).
+# 1. basamak "BE + fees" (SL_R=0 + round-trip komisyon formulu).
+SF_LADDER_STEP_1_R = 1.0
+SF_LADDER_STEP_1_SL_R = 0.0
+SF_LADDER_STEP_2_R = 1.5
+SF_LADDER_STEP_2_SL_R = 0.5
+SF_LADDER_STEP_3_R = 2.0
+SF_LADDER_STEP_3_SL_R = 1.0
+SF_LADDER_STEP_4_R = 3.0
+SF_LADDER_STEP_4_SL_R = 1.5
+
 # DENEYSEL (kullanilmiyor): continuation far-side SL tamponu ATR_TRAIL_MULT*ATR
 # (canli: ATR_TRAIL_MULT_CONTINUATION=0.50). Continuation geri cekildi.
 CONT_TRAIL_MULT = getattr(cfg, "ATR_TRAIL_MULT_CONTINUATION", 0.5)
@@ -416,6 +459,167 @@ def compute_fallback_ladder_sl(side, cur_close, risk_pts, entry_price):
         if LADDER_STEP_1_R > 0 and unrealized_r >= LADDER_STEP_1_R:
             return entry_price - risk_pts * LADDER_STEP_1_SL_R
     return None  # degisiklik onerisi yok
+
+
+def compute_structural_ladder_sl(side, unrealized_r, risk_pts, entry_price):
+    """STRUCTURAL FALLBACK kar merdiveni (Varyant A/C, 15m close bazli).
+
+    Kademeler (SF_LADDER_STEP_*):
+      >=3.0R -> entry + 1.5R (long) / entry - 1.5R (short)
+      >=2.0R -> entry + 1.0R / entry - 1.0R
+      >=1.5R -> entry + 0.5R / entry - 0.5R
+      >=1.0R -> BE + fees (round-trip komisyon dahil, tam formül)
+    Yalnizca 15m candle CLOSE unrealized R ile aktive olur; intrabar
+    high/low tetiklemez (look-ahead / intrabar noise onlemi). Ratchet:
+    caller max/min ile mevcut SL'yi korur, geriye dusus olmaz.
+    (sl_price, tetikleyici_R) tuple'i dondurur; seviye yoksa (None, None).
+    """
+    if risk_pts <= 0:
+        return None, None
+    if unrealized_r >= SF_LADDER_STEP_4_R:
+        return (
+            entry_price + risk_pts * SF_LADDER_STEP_4_SL_R
+            if side == "long"
+            else entry_price - risk_pts * SF_LADDER_STEP_4_SL_R
+        ), SF_LADDER_STEP_4_R
+    if unrealized_r >= SF_LADDER_STEP_3_R:
+        return (
+            entry_price + risk_pts * SF_LADDER_STEP_3_SL_R
+            if side == "long"
+            else entry_price - risk_pts * SF_LADDER_STEP_3_SL_R
+        ), SF_LADDER_STEP_3_R
+    if unrealized_r >= SF_LADDER_STEP_2_R:
+        return (
+            entry_price + risk_pts * SF_LADDER_STEP_2_SL_R
+            if side == "long"
+            else entry_price - risk_pts * SF_LADDER_STEP_2_SL_R
+        ), SF_LADDER_STEP_2_R
+    if unrealized_r >= SF_LADDER_STEP_1_R:
+        if side == "long":
+            _be = (entry_price * (1 + COMMISSION_RATE)) / (1 - COMMISSION_RATE)
+        else:
+            _be = (entry_price * (1 - COMMISSION_RATE)) / (1 + COMMISSION_RATE)
+        return _be, SF_LADDER_STEP_1_R
+    return None, None
+
+
+def _sf_gate(mode, rpt2, fvg_present):
+    """GATE modeli (direktif madde 1): fallback yalnizca FVG YOKKEN devreye
+    girer. FVG varsa ladder/swing HIC hesaplanmaz — competition yok, exclusive
+    secim. rpt2 = entry anindaki SABIT risk mesafesi (direktif madde 3)."""
+    return mode is not None and rpt2 > 0 and not fvg_present
+
+
+def _sf_pick_fallback_candidate(
+    s2,
+    upnl_r,
+    rpt2,
+    entry_price,
+    atr,
+    csl,
+    mode,
+    buffer,
+    b15,
+    entry_bar,
+    sb,
+):
+    """STRUCTURAL FALLBACK candidate secimi (saf fonksiyon, state'e yazmaz).
+
+    Cagiran, gate'i (_sf_gate) uygulamistir (FVG yok). Bu fonksiyon:
+      - LADDER (A; C'de 1-2R): 15m CLOSE unrealized R bazli ratchet kademesi.
+      - SWING (B; C'de >=2R): canli trailing_manager._default_level_from_swings'e
+        DOGRUDAN cagrilir (yeniden implemente edilmez — parite, madde 5) ve
+        swing ∓ buffer*ATR offset'i uygulanir.
+    LONG->max / SHORT->min birlestirilir (madde 8), csl'den daha iyi VE TMM
+    min-move filtrelerini gecenler dondurulur. Aksi halde (None, None, None) —
+    reddedilen aday trail_steps/fingerprint/eVt alanlarina YAZILMAZ (madde 2).
+    """
+    ladder_sl = None
+    ladder_step = None
+    if mode in ("LADDER", "HYBRID"):
+        _lad_active = True
+        if mode == "HYBRID":
+            _lad_active = SF_LADDER_STEP_1_R <= upnl_r < 2.0
+        if _lad_active:
+            ladder_sl, ladder_step = compute_structural_ladder_sl(
+                s2, upnl_r, rpt2, entry_price
+            )
+    swing_sl = None
+    if mode in ("SWING", "HYBRID") and upnl_r >= 2.0:
+        _lv = _SWING_TRAIL_TM._default_level_from_swings(b15[entry_bar : sb + 1], s2)
+        if _lv is not None:
+            _swb = buffer * atr
+            if s2 == "long":
+                swing_sl = float(_lv.price) - _swb
+            else:
+                swing_sl = float(_lv.price) + _swb
+    _cands = []
+    if ladder_sl is not None:
+        _cands.append((ladder_sl, "LADDER", f"R>={ladder_step:g}R"))
+    if swing_sl is not None:
+        _cands.append((swing_sl, "SWING", "SWING_CONFIRMED"))
+    if not _cands:
+        return None, None, None
+    _ns, _src, _reason = (
+        max(_cands, key=lambda c: c[0])
+        if s2 == "long"
+        else min(_cands, key=lambda c: c[0])
+    )
+    _moved_ok = (
+        (_ns - csl) > rpt2 * cfg.TRAIL_MIN_MOVE_MULT
+        if s2 == "long"
+        else (csl - _ns) > rpt2 * cfg.TRAIL_MIN_MOVE_MULT
+    )
+    if not _moved_ok:
+        return None, None, None
+    return _ns, _src, _reason
+
+
+def _finalize_trail_metrics(t):
+    """Trade kapanisinda trail + reached_* alanlarini hesaplar (rapor icin).
+
+    trail_source degerleri: FVG | LADDER | SWING | FVG+LADDER | FVG+SWING |
+    LADDER+SWING | FVG+LADDER+SWING | NONE. reached_* fiyat bazli rejim
+    bilgisidir (%1 / %1.5 / %2 / %3, kullanici direktifi madde 12).
+    """
+    if t["side"] == "long":
+        _ep = t["entry_price"]
+        _mx = t.get("max_price", _ep)
+        t["reached_1pct"] = _mx >= _ep * 1.01
+        t["reached_1_5pct"] = _mx >= _ep * 1.015
+        t["reached_2pct"] = _mx >= _ep * 1.02
+        t["reached_3pct"] = _mx >= _ep * 1.03
+    else:
+        _ep = t["entry_price"]
+        _mn = t.get("min_price", _ep)
+        t["reached_1pct"] = _mn <= _ep * 0.99
+        t["reached_1_5pct"] = _mn <= _ep * 0.985
+        t["reached_2pct"] = _mn <= _ep * 0.98
+        t["reached_3pct"] = _mn <= _ep * 0.97
+    if not t.get("trail_source"):
+        _src = []
+        if t.get("trail_fvg"):
+            _src.append("FVG")
+        if t.get("trail_ladder"):
+            _src.append("LADDER")
+        if t.get("trail_swing"):
+            _src.append("SWING")
+        t["trail_source"] = "+".join(_src) if _src else "NONE"
+    return {
+        "trail_source": t.get("trail_source", "NONE"),
+        "trail_candidate": t.get("trail_candidate"),
+        "trail_reason": t.get("trail_reason"),
+        "trail_r": t.get("trail_r"),
+        "trail_fvg": t.get("trail_fvg", False),
+        "trail_ladder": t.get("trail_ladder", False),
+        "trail_swing": t.get("trail_swing", False),
+        "trail_sl_before": t.get("trail_sl_before"),
+        "trail_sl_after": t.get("sl"),
+        "reached_1pct": t.get("reached_1pct", False),
+        "reached_1_5pct": t.get("reached_1_5pct", False),
+        "reached_2pct": t.get("reached_2pct", False),
+        "reached_3pct": t.get("reached_3pct", False),
+    }
 
 
 def fvg_close_confirmed(fvg, all_bars):
@@ -595,11 +799,13 @@ def _collect_fvg_profile_impl(symbol: str):
     rsm = RetraceStateMachine(max_wick_ratio=cfg.FVG_WICK_RATIO_MAX)
 
     # ── LUNA Profit Protection: confirmed swing low/high lookup tables ──────
-    # No-lookahead: find_swing_* fraktal sinyali bar_index + right (3) bar
-    # sonra DOGRULANIR. Burada tüm serinin fraktallari bir kez cikarilir, ama
-    # trailing degerlendirmesinde sadece sb - right <= sb'de "onaylanmis" olan
-    # swing kullanilir (ileriye bakis yok). last_swl_bar[sb] = sb'de bilinen son
-    # onayli swing low'un bar_index'i (yoksa -1).
+    # YALNIZCA Profit Protection icin (SF swing, canli
+    # trailing_manager._default_level_from_swings'i kullandigindan bu tablolari
+    # KULLANMAZ — direktif madde 5). No-lookahead: find_swing_* fraktal sinyali
+    # bar_index + right (3) bar sonra DOGRULANIR. Burada tüm serinin fraktallari
+    # bir kez cikarilir, ama trailing degerlendirmesinde sadece sb - right <= sb'de
+    # "onaylanmis" olan swing kullanilir (ileriye bakis yok). last_swl_bar[sb] =
+    # sb'de bilinen son onayli swing low'un bar_index'i (yoksa -1).
     last_swl_price = None
     last_swl_bar = None
     last_swh_price = None
@@ -883,6 +1089,18 @@ def _collect_fvg_profile_impl(symbol: str):
                         "cbdr_body_low": ss.cbdr_body_low,
                         "partial_taken": False,
                         "locked_pnl": 0.0,
+                        # ── STRUCTURAL FALLBACK / trail raporlama (madde 14) ──
+                        "trail_source": "NONE",
+                        "trail_candidate": None,
+                        "trail_reason": None,
+                        "trail_r": None,
+                        "trail_fvg": False,
+                        "trail_ladder": False,
+                        "trail_swing": False,
+                        "trail_sl_before": sl,
+                        "trail_sl_after": sl,
+                        "max_price": ep,
+                        "min_price": ep,
                     }
                 )
                 # Canlı bot.py:1167 parity: entry sonrası BIAS_LOCKED — yön
@@ -923,6 +1141,20 @@ def _collect_fvg_profile_impl(symbol: str):
                 rpt2 = abs(t["initial_sl"] - t["entry_price"])
                 ltc = 0
                 upd = False
+                # 15m CLOSE bazli unrealized R (ladder/swing gate'leri icin).
+                if rpt2 > 0:
+                    _upnl_r_close = (
+                        (cur.close - t["entry_price"]) / rpt2
+                        if s2 == "long"
+                        else (t["entry_price"] - cur.close) / rpt2
+                    )
+                else:
+                    _upnl_r_close = 0.0
+                # reached_* fiyat bazli rejim bilgisi (madde 12, intrabar).
+                if s2 == "long":
+                    t["max_price"] = max(t.get("max_price", cur.high), cur.high)
+                else:
+                    t["min_price"] = min(t.get("min_price", cur.low), cur.low)
                 # ── R-kar kapisi (LUNA Plan C madde 4): PROFIT_GATE_R > 0 ise
                 # trailing yalnizca unrealized kar >= PROFIT_GATE_R * risk_pts
                 # oldugunda calisir. Kapinin altinda SL/TP oldugu gibi kalir.
@@ -1004,6 +1236,8 @@ def _collect_fvg_profile_impl(symbol: str):
                 # DISABLE_FVG_TRAIL=True: FVG-based retrace trailing komple
                 # kapatilir (yalnizca kismi TP/scale-out kademeleri SL'yi
                 # hareket ettirir, SL giris 1R'de sabit baslar).
+                _fvg_present = False  # bu bar confirmed ayni yonlu FVG var mi?
+                _fvg_moved = False  # FVG trail SL'yi bu bar hareket ettirdi mi?
                 for fvg in [] if DISABLE_FVG_TRAIL else cfvgs:
                     if s2 == "long" and fvg.direction != "bullish":
                         continue
@@ -1017,12 +1251,14 @@ def _collect_fvg_profile_impl(symbol: str):
                         # icin retrace dali tek aktif yol; activation geri cekildi.
                         if not fvg_close_confirmed(fvg, tc):
                             continue
+                        _fvg_present = True
                         mode = "retrace"
                     else:
                         # DENEYSEL: continuation/atr_chase (geri cekildi)
                         mode = fvg_confirm_mode(fvg, tc, CONT_CONFIRM_BARS)
                         if mode is None:
                             continue
+                        _fvg_present = True
                     # Continuation/atr-chase SL tamponu: continuation icin
                     # CONT_TRAIL_MULT*ATR (canli ATR_TRAIL_MULT_CONTINUATION),
                     # retrace icin ATR_TRAIL_MULT*ATR. Kapsam: far-side hop'u
@@ -1050,6 +1286,7 @@ def _collect_fvg_profile_impl(symbol: str):
                                 ctp += sd2
                             ltc += 1
                             upd = True
+                            _fvg_moved = True
                     else:
                         ns = (
                             (fvg.bottom + ab2)
@@ -1067,6 +1304,13 @@ def _collect_fvg_profile_impl(symbol: str):
                                 ctp -= sd2
                             ltc += 1
                             upd = True
+                            _fvg_moved = True
+                # ── FVG trail kaydi (rapor, madde 14) ──
+                if _fvg_moved:
+                    t["trail_fvg"] = True
+                    t["trail_candidate"] = csl
+                    t["trail_r"] = _upnl_r_close if rpt2 > 0 else None
+                    t["trail_reason"] = "FVG_RETRACE"
                 # ── KAR MERDIVENI (Fallback Ladder, 2026-08-16) ──
                 # FVG yolu bittikten SONRA devreye girer. csl bu noktada FVG'nin
                 # ulastigi seviyededir (varsa); merdiven sadece daha koruyucu bir
@@ -1085,6 +1329,10 @@ def _collect_fvg_profile_impl(symbol: str):
                                     ctp += sd2
                                 ltc += 1
                                 upd = True
+                                t["trail_ladder"] = True
+                                t["trail_candidate"] = _ladder_sl
+                                t["trail_r"] = _upnl_r_close if rpt2 > 0 else None
+                                t["trail_reason"] = "LADDER"
                         elif s2 == "short" and _ladder_sl < csl:
                             if (csl - _ladder_sl) > rpt2 * TMM:
                                 sd2 = csl - _ladder_sl
@@ -1093,6 +1341,52 @@ def _collect_fvg_profile_impl(symbol: str):
                                     ctp -= sd2
                                 ltc += 1
                                 upd = True
+                                t["trail_ladder"] = True
+                                t["trail_candidate"] = _ladder_sl
+                                t["trail_r"] = _upnl_r_close if rpt2 > 0 else None
+                                t["trail_reason"] = "LADDER"
+                # ── STRUCTURAL FALLBACK TRAILING (2026-08-16 LUNA direktif) ──
+                # GATE modeli (madde 1): FVG hala ana motor — bu bar confirmed
+                # ayni yonlu FVG varsa baseline FVG trailing korunur, fallback
+                # HIC hesaplanmaz (competition yok, exclusive). FVG YOKSA
+                # PROFIT STATE:
+                #   LADDER_ONLY  -> kar merdiveni (>=1R, 15m CLOSE bazli aktive)
+                #   SWING_ONLY   -> >=2R'de confirmed 15m swing (BUF*ATR)
+                #   HYBRID       -> <1R none | 1-2R ladder | >=2R confirmed swing
+                # Swing, canli trailing_manager._default_level_from_swings'ten
+                # gelir (parite). Candidate LONG->max / SHORT->min; SL geriye
+                # gitmez, TP delta kadar otelehir. 1m trailing/swing/ATR URETILMEZ.
+                if _sf_gate(STRUCTURAL_FALLBACK_MODE, rpt2, _fvg_present):
+                    _ns, _src, _reason = _sf_pick_fallback_candidate(
+                        s2,
+                        _upnl_r_close,
+                        rpt2,
+                        t["entry_price"],
+                        atr,
+                        csl,
+                        STRUCTURAL_FALLBACK_MODE,
+                        SWING_TRAIL_BUFFER,
+                        b15,
+                        t.get("entry_bar", 0),
+                        sb,
+                    )
+                    if _ns is not None:
+                        sd2 = abs(_ns - csl)
+                        csl = _ns
+                        if not TP_FIXED:
+                            if s2 == "long":
+                                ctp += sd2
+                            else:
+                                ctp -= sd2
+                        ltc += 1
+                        upd = True
+                        if _src == "LADDER":
+                            t["trail_ladder"] = True
+                        else:
+                            t["trail_swing"] = True
+                        t["trail_candidate"] = _ns
+                        t["trail_r"] = _upnl_r_close
+                        t["trail_reason"] = _reason
                 if TRAIL_MODE in ("atr_chase", "activation") and not upd:
                     # DENEYSEL (geri cekildi 2026-08-08): ATR-chase fallback —
                     # FVG aday kullanilamadiginda SL = close ∓ K*ATR ile chase.
@@ -1132,6 +1426,15 @@ def _collect_fvg_profile_impl(symbol: str):
                     t["sl"] = csl
                     t["tp"] = ctp
                     t["trailing_count"] = t.get("trailing_count", 0) + ltc
+                    t["trail_sl_after"] = csl
+                    _src_parts = []
+                    if t.get("trail_fvg"):
+                        _src_parts.append("FVG")
+                    if t.get("trail_ladder"):
+                        _src_parts.append("LADDER")
+                    if t.get("trail_swing"):
+                        _src_parts.append("SWING")
+                    t["trail_source"] = "+".join(_src_parts) if _src_parts else "NONE"
 
         sa = []
         for t in active:
@@ -1370,6 +1673,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     if t["initial_sl"]
                     else 0
                 )
+                _tmeta = _finalize_trail_metrics(t)
                 trade_records.append(
                     {
                         "result": t["result"],
@@ -1393,6 +1697,19 @@ def _collect_fvg_profile_impl(symbol: str):
                         else 0,
                         "cbdr_body_high": t.get("cbdr_body_high", 0),
                         "cbdr_body_low": t.get("cbdr_body_low", 0),
+                        "trail_source": _tmeta["trail_source"],
+                        "trail_candidate": _tmeta["trail_candidate"],
+                        "trail_reason": _tmeta["trail_reason"],
+                        "trail_r": _tmeta["trail_r"],
+                        "trail_fvg": _tmeta["trail_fvg"],
+                        "trail_ladder": _tmeta["trail_ladder"],
+                        "trail_swing": _tmeta["trail_swing"],
+                        "trail_sl_before": _tmeta["trail_sl_before"],
+                        "trail_sl_after": _tmeta["trail_sl_after"],
+                        "reached_1pct": _tmeta["reached_1pct"],
+                        "reached_1_5pct": _tmeta["reached_1_5pct"],
+                        "reached_2pct": _tmeta["reached_2pct"],
+                        "reached_3pct": _tmeta["reached_3pct"],
                     }
                 )
                 if t["pnl"] > 0:
@@ -1484,6 +1801,7 @@ def _collect_fvg_profile_impl(symbol: str):
                     if t["initial_sl"]
                     else 0
                 )
+                _tmeta = _finalize_trail_metrics(t)
                 trade_records.append(
                     {
                         "result": t["result"],
@@ -1507,6 +1825,19 @@ def _collect_fvg_profile_impl(symbol: str):
                         else 0,
                         "cbdr_body_high": t.get("cbdr_body_high", 0),
                         "cbdr_body_low": t.get("cbdr_body_low", 0),
+                        "trail_source": _tmeta["trail_source"],
+                        "trail_candidate": _tmeta["trail_candidate"],
+                        "trail_reason": _tmeta["trail_reason"],
+                        "trail_r": _tmeta["trail_r"],
+                        "trail_fvg": _tmeta["trail_fvg"],
+                        "trail_ladder": _tmeta["trail_ladder"],
+                        "trail_swing": _tmeta["trail_swing"],
+                        "trail_sl_before": _tmeta["trail_sl_before"],
+                        "trail_sl_after": _tmeta["trail_sl_after"],
+                        "reached_1pct": _tmeta["reached_1pct"],
+                        "reached_1_5pct": _tmeta["reached_1_5pct"],
+                        "reached_2pct": _tmeta["reached_2pct"],
+                        "reached_3pct": _tmeta["reached_3pct"],
                     }
                 )
                 if t["pnl"] > 0:
@@ -1624,6 +1955,19 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
             "expectancy": 0,
             "avg_hold": 0,
             "score": 0,
+            "sf_trail_fvg_count": 0,
+            "sf_trail_ladder_count": 0,
+            "sf_trail_swing_count": 0,
+            "sf_no_trail_count": 0,
+            "sf_rescued_count": 0,
+            "sf_fallback_only_trades": 0,
+            "sf_fallback_only_pnl": 0,
+            "sf_fvg_only_trades": 0,
+            "sf_fvg_only_pnl": 0,
+            "sf_reached_1pct": 0,
+            "sf_reached_1_5pct": 0,
+            "sf_reached_2pct": 0,
+            "sf_reached_3pct": 0,
         }
     tp = sum(1 for r in trade_records if r["result"] == "TP")
     profit_trail = sum(1 for r in trade_records if r["result"] == "PROFIT_TRAIL")
@@ -1682,6 +2026,24 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         if max_dd_pct >= 0
         else 0
     )
+    # ── STRUCTURAL FALLBACK ozet metrikleri (madde 14) ──
+    # trail_fvg/ladder/swing: o mekanizmanin SL'yi initial'dan ileri tasidigi
+    # trade sayisi. "no trail" = hicbir mekanizma SL'yi ileri tasimamis.
+    # "rescued" = fallback (ladder|swing) PROFIT_TRAIL cikisi saglamis ve FVG
+    # devreye girmemis. fallback_only_pnl = fallback'in devrede oldugu ama
+    # FVG'nin hic SL hareketi yapmadigi trade'lerin PnL'si (fallback gercekten
+    # para kazaniyor mu sorusu). fvg_only_pnl = yalnizca FVG'nin SL hareketi
+    # yaptigi trade'lerin PnL'si. reached_* = fiyat bazli rejim bilgisi (madde 12).
+    _fb_tr = [
+        r
+        for r in trade_records
+        if (r.get("trail_ladder") or r.get("trail_swing")) and not r.get("trail_fvg")
+    ]
+    _fvg_tr = [
+        r
+        for r in trade_records
+        if r.get("trail_fvg") and not (r.get("trail_ladder") or r.get("trail_swing"))
+    ]
     return {
         "total_trades": n,
         "tp_pct": tp_pct,
@@ -1697,6 +2059,29 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         "expectancy": expectancy,
         "avg_hold": avg_hold,
         "score": round(score),
+        "sf_trail_fvg_count": sum(1 for r in trade_records if r.get("trail_fvg")),
+        "sf_trail_ladder_count": sum(1 for r in trade_records if r.get("trail_ladder")),
+        "sf_trail_swing_count": sum(1 for r in trade_records if r.get("trail_swing")),
+        "sf_no_trail_count": sum(
+            1
+            for r in trade_records
+            if not (r.get("trail_fvg") or r.get("trail_ladder") or r.get("trail_swing"))
+        ),
+        "sf_rescued_count": sum(
+            1
+            for r in trade_records
+            if (r.get("trail_ladder") or r.get("trail_swing"))
+            and r["result"] == "PROFIT_TRAIL"
+            and not r.get("trail_fvg")
+        ),
+        "sf_fallback_only_trades": len(_fb_tr),
+        "sf_fallback_only_pnl": sum(r["pnl"] for r in _fb_tr),
+        "sf_fvg_only_trades": len(_fvg_tr),
+        "sf_fvg_only_pnl": sum(r["pnl"] for r in _fvg_tr),
+        "sf_reached_1pct": sum(1 for r in trade_records if r.get("reached_1pct")),
+        "sf_reached_1_5pct": sum(1 for r in trade_records if r.get("reached_1_5pct")),
+        "sf_reached_2pct": sum(1 for r in trade_records if r.get("reached_2pct")),
+        "sf_reached_3pct": sum(1 for r in trade_records if r.get("reached_3pct")),
     }
 
 
@@ -1730,6 +2115,8 @@ def _analyze_one_sym_v5(
     ladder_step_3_sl_r: float | None = None,
     ladder_step_4_r: float | None = None,
     ladder_step_4_sl_r: float | None = None,
+    structural_fallback_mode: str | None = None,
+    swing_trail_buffer: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -1807,6 +2194,10 @@ def _analyze_one_sym_v5(
         _eng.LADDER_STEP_4_R = ladder_step_4_r
     if ladder_step_4_sl_r is not None:
         _eng.LADDER_STEP_4_SL_R = ladder_step_4_sl_r
+    if structural_fallback_mode is not None:
+        _eng.STRUCTURAL_FALLBACK_MODE = structural_fallback_mode
+    if swing_trail_buffer is not None:
+        _eng.SWING_TRAIL_BUFFER = swing_trail_buffer
 
     try:
         result = collect_fvg_profile(sym)
@@ -1996,6 +2387,291 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
         f"  D > A (NetPnL): {len(out_win)}/{len(syms)} coin -> {', '.join(r[0] for r in out_win)}"
     )
     print(f"\n  Rapor: {rpt_path}")
+
+
+def run_compare_sf(symbols, workers, serial):
+    """STRUCTURAL FALLBACK TRAILING karsilastirmasi: baseline vs eski-kapi vs A/B/C.
+
+    Baseline = FVG trailing (fallback KAPALI). OLD_PROFIT_GATE_1R = eski deney
+    (PROFIT_GATE_R=1.0, BE=False) — direktif madde 8'in "yeni isim verdik farkli
+    oldu" degil, gercekten farkli davrandigini kanitlama karsilastirmasi icin.
+    A = LADDER_ONLY, B = SWING_ONLY, C = HYBRID (LUNA direktif: en onemli test).
+    Entry/state/komisyon/TP-RR tum modlarda ayni; yalnizca trailing degisir.
+    Worker'lar _analyze_one_sym_v5 uzerinden structural_fallback_mode ile kosulur.
+    Rapor: reports/analyzer_v5_sf_compare.md
+    """
+    import concurrent.futures
+
+    syms = sorted(symbols)
+    tags = [
+        ("BASELINE", None, 0.0),
+        ("OLD_PROFIT_GATE_1R", None, 1.0),
+        ("A_LADDER_ONLY", "LADDER", 0.0),
+        ("B_SWING_ONLY", "SWING", 0.0),
+        ("C_HYBRID", "HYBRID", 0.0),
+    ]
+    tasks = [(sym, tag, mode, gate) for sym in syms for tag, mode, gate in tags]
+
+    results = {}
+
+    def _run(sym, mode, gate):
+        return _analyze_one_sym_v5(
+            sym,
+            "retrace",
+            structural_fallback_mode=mode,
+            profit_gate=gate,
+        )
+
+    if serial or workers <= 1:
+        for sym, tag, mode, gate in tasks:
+            try:
+                results[(sym, tag)] = _run(sym, mode, gate)
+            except Exception as e:
+                results[(sym, tag)] = {"sym": sym, "error": str(e)}
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+            fut_map = {
+                ex.submit(_run, sym, mode, gate): (sym, tag)
+                for sym, tag, mode, gate in tasks
+            }
+            for fut in concurrent.futures.as_completed(fut_map):
+                key = fut_map[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as e:
+                    results[key] = {"sym": key[0], "error": str(e)}
+
+    # ── Aggregation ──
+    tag_names = [label for label, _, _ in tags]
+    agg = {
+        tag: {
+            "n": 0,
+            "tp": 0,
+            "pt": 0,
+            "loss": 0,
+            "pe": 0.0,
+            "pf": 0.0,
+            "dd": 0.0,
+            "pnl": 0.0,
+            "fvg": 0,
+            "lad": 0,
+            "swg": 0,
+            "no": 0,
+            "resc": 0,
+            "fb_tr": 0,
+            "fb_pnl": 0.0,
+            "fg_tr": 0,
+            "fg_pnl": 0.0,
+            "r1": 0,
+            "r15": 0,
+            "r2": 0,
+            "r3": 0,
+        }
+        for tag in tag_names
+    }
+    rows = []
+    for sym in syms:
+        row = [sym]
+        for label, _, _ in tags:
+            res = results.get((sym, label), {})
+            if "error" in res or "stats" not in res:
+                row.append(None)
+                continue
+            s = res["stats"]
+            a = agg[label]
+            a["n"] += s["total_trades"]
+            a["tp"] += int(s["tp_pct"] * s["total_trades"] / 100)
+            a["pt"] += int(s["profit_trail_pct"] * s["total_trades"] / 100)
+            a["loss"] += int(s["loss_pct"] * s["total_trades"] / 100)
+            a["dd"] = max(a["dd"], s["max_dd_pct"])
+            a["pnl"] += s["total_pnl"]
+            a["fvg"] += s.get("sf_trail_fvg_count", 0)
+            a["lad"] += s.get("sf_trail_ladder_count", 0)
+            a["swg"] += s.get("sf_trail_swing_count", 0)
+            a["no"] += s.get("sf_no_trail_count", 0)
+            a["resc"] += s.get("sf_rescued_count", 0)
+            a["fb_tr"] += s.get("sf_fallback_only_trades", 0)
+            a["fb_pnl"] += s.get("sf_fallback_only_pnl", 0)
+            a["fg_tr"] += s.get("sf_fvg_only_trades", 0)
+            a["fg_pnl"] += s.get("sf_fvg_only_pnl", 0)
+            a["r1"] += s.get("sf_reached_1pct", 0)
+            a["r15"] += s.get("sf_reached_1_5pct", 0)
+            a["r2"] += s.get("sf_reached_2pct", 0)
+            a["r3"] += s.get("sf_reached_3pct", 0)
+            row.append(s)
+        rows.append(row)
+    # ticari oranlar (agregation sonrasi)
+    for tag in tag_names:
+        a = agg[tag]
+        a["pe"] = (a["tp"] + a["pt"]) / a["n"] * 100 if a["n"] else 0.0
+        gp = sum(
+            r[tag_names.index(tag) + 1]["total_pnl"]
+            for r in rows
+            if r[tag_names.index(tag) + 1] is not None
+            and r[tag_names.index(tag) + 1]["total_pnl"] > 0
+        )
+        gl = abs(
+            sum(
+                r[tag_names.index(tag) + 1]["total_pnl"]
+                for r in rows
+                if r[tag_names.index(tag) + 1] is not None
+                and r[tag_names.index(tag) + 1]["total_pnl"] < 0
+            )
+        )
+        a["pf"] = 999.0 if gl == 0 else gp / gl
+
+    lines = []
+    w = lines.append
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    w(f"# STRUCTURAL FALLBACK TRAILING: baseline vs A/B/C — {ts}")
+    w("")
+    w(
+        "- **Baseline**: FVG retrace trailing (fallback KAPALI) — canli config ile birebir."
+    )
+    w(
+        "- **OLD_PROFIT_GATE_1R**: eski deney (madde 8 karsilastirmasi) — TRAIL_MODE=retrace, `PROFIT_GATE_R=1.0`, BE=False. R-kapisinda trailing; FVG gerekli."
+    )
+    w(
+        "- **A (LADDER_ONLY)**: FVG yoksa 15m close `R>=1.0` → BE, `>=1.5` → +0.5R, `>=2.0` → +1.0R, `>=3.0` → +1.5R (ratchet)."
+    )
+    w(
+        "- **B (SWING_ONLY)**: FVG yoksa `R>=2.0` → confirmed 15m swing `SL = swing -/+ {SWING_TRAIL_BUFFER}*ATR15` (canli `trailing_manager._default_level_from_swings`)."
+    )
+    w(
+        "- **C (HYBRID)**: FVG ana motor; FVG yoksa `<1R` none, `1-2R` ladder, `>2R` confirmed swing. **(LUNA direktif: oncelikli test)**"
+    )
+    w(
+        "- Entry/state/sweep/MSS/FVG detection/risk/TP-RR tum modlarda AYNI; 1m stratejik trailing kullanilmaz. SL LONG→max / SHORT→min, TP delta kadar paralel tasinir."
+    )
+    w("")
+
+    w("## Ozet (toplam)")
+    w("")
+    hdr = "| Mod | Trade | TP% | PTrail% | Loss% | PE% | PF | MaxDD% | NetPnL | Exp$/trade |"
+    w(hdr)
+    w("|" + "---|" * (hdr.count("|") - 1))
+    for tag in tag_names:
+        a = agg[tag]
+        w(
+            f"| {tag} | {a['n']} | {a['tp']/a['n']*100 if a['n'] else 0:.1f}% | "
+            f"{a['pt']/a['n']*100 if a['n'] else 0:.1f}% | "
+            f"{a['loss']/a['n']*100 if a['n'] else 0:.1f}% | {a['pe']:.1f}% | "
+            f"{a['pf']:.2f} | {a['dd']:.1f}% | {a['pnl']:+,.0f} | "
+            f"{a['pnl']/a['n'] if a['n'] else 0:+.2f} |"
+        )
+    w("")
+
+    w("## Madde 8: Zorunlu karsilastirma (eski kapidan ayrim)")
+    w("")
+    w(
+        "- Amaç: ladder fallback'in, basarisiz `PROFIT_GATE_0.8R/1.0R` deney ailesinden GERCEKTEN farkli davrandigini kanitlamak — 'yeni isim verdik farkli oldu' degil. Ladder, FVG gerektirmez (R kapisi + 15m close); eski kapida FVG sart."
+    )
+    w("")
+    hdr5 = "| Mod | NetPnL | PF | Exp$/trade | PTrail% | Loss% | MaxDD% | Ladder act. | Fallback-only |"
+    w(hdr5)
+    w("|" + "---|" * (hdr5.count("|") - 1))
+    for tag in ("OLD_PROFIT_GATE_1R", "A_LADDER_ONLY", "BASELINE"):
+        a = agg[tag]
+        w(
+            f"| {tag} | {a['pnl']:+,.0f} | {a['pf']:.2f} | "
+            f"{a['pnl']/a['n'] if a['n'] else 0:+.2f} | "
+            f"{a['pt']/a['n']*100 if a['n'] else 0:.1f}% | "
+            f"{a['loss']/a['n']*100 if a['n'] else 0:.1f}% | {a['dd']:.1f}% | "
+            f"{a['lad']} | {a['fb_tr']} (PnL {a['fb_pnl']:+,.0f}) |"
+        )
+    w("")
+    w(
+        "- Odak: (1) fallback FVG olmayinca gercekten para kazaniyor mu, yoksa baseline'in iyi trade'lerini erken mi kesiyor? (2) PTrail% azalirken Exp$/trade dusuyor mu?"
+    )
+    w("")
+
+    w("## Fallback devreye girme (madde 14)")
+    w("")
+    hdr2 = "| Mod | FVG trail | Ladder trail | Swing trail | No-trail | Rescued | Fallback-only | FVG-only |"
+    w(hdr2)
+    w("|" + "---|" * (hdr2.count("|") - 1))
+    for tag in tag_names:
+        a = agg[tag]
+        w(
+            f"| {tag} | {a['fvg']} | {a['lad']} | {a['swg']} | {a['no']} | {a['resc']} | "
+            f"{a['fb_tr']} (PnL {a['fb_pnl']:+,.0f}) | {a['fg_tr']} (PnL {a['fg_pnl']:+,.0f}) |"
+        )
+    w("")
+
+    w("## Reached (fiyat bazli rejim, bilgi)")
+    w("")
+    hdr3 = "| Mod | >=1pct | >=1.5pct | >=2pct | >=3pct |"
+    w(hdr3)
+    w("|" + "---|" * (hdr3.count("|") - 1))
+    for tag in tag_names:
+        a = agg[tag]
+        w(f"| {tag} | {a['r1']} | {a['r15']} | {a['r2']} | {a['r3']} |")
+    w("")
+
+    i_c = tag_names.index("C_HYBRID") + 1
+    i_b = tag_names.index("BASELINE") + 1
+    w("## Coin bazli: C_HYBRID vs BASELINE")
+    w("")
+    hdr4 = "| Symbol | Tr(B) | PE%(B) | PnL(B) | Tr(C) | PE%(C) | PnL(C) | ΔPnL(C-B) |"
+    w(hdr4)
+    w("|" + "---|" * (hdr4.count("|") - 1))
+    c_win = 0
+    for r in rows:
+        sb, sc = r[i_b], r[i_c]
+        if sb is None or sc is None:
+            w(f"| {r[0]} | — | — | — | — | — | — | HATA |")
+            continue
+        d = sc["total_pnl"] - sb["total_pnl"]
+        if d > 0:
+            c_win += 1
+        w(
+            f"| {r[0]} | {sb['total_trades']} | {sb['positive_exit_pct']:.1f}% | "
+            f"{sb['total_pnl']:+,.0f} | {sc['total_trades']} | {sc['positive_exit_pct']:.1f}% | "
+            f"{sc['total_pnl']:+,.0f} | {d:+,.0f} |"
+        )
+    w("")
+
+    w("## Sonuc")
+    w("")
+    a_b, a_c = agg["BASELINE"], agg["C_HYBRID"]
+    verdict = (
+        "C_HYBRID, toplam NetPnL'de baseline'i geciyor"
+        if a_c["pnl"] > a_b["pnl"]
+        else "Baseline, toplam NetPnL'de C_HYBRID'den onde"
+    )
+    w(
+        f"- {verdict} (Baseline: {a_b['pnl']:+,.0f} vs C: {a_c['pnl']:+,.0f}, fark {a_c['pnl'] - a_b['pnl']:+,.0f})."
+    )
+    w(
+        f"- C, {c_win}/{len(syms)} coinde baseline'i NetPnL'de gecti; "
+        f"MaxDD Baseline: {a_b['dd']:.1f}% / C: {a_c['dd']:.1f}%."
+    )
+    w(
+        f"- Fallback gercekten kurtarici mi: C fallback-only {a_c['fb_tr']} trade / "
+        f"{a_c['fb_pnl']:+,.0f} PnL; baseline FVG-only {a_b['fg_tr']} trade / "
+        f"{a_b['fg_pnl']:+,.0f} PnL."
+    )
+
+    report_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+    os.makedirs(report_dir, exist_ok=True)
+    rpt_path = os.path.join(report_dir, "analyzer_v5_sf_compare.md")
+    with open(rpt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    print(f"\n{'=' * 100}")
+    print("  STRUCTURAL FALLBACK TRAILING — BASELINE vs A/B/C")
+    print(f"{'=' * 100}")
+    for tag in tag_names:
+        a = agg[tag]
+        print(
+            f"  {tag:<14} {a['n']:>6} trade  PE={a['pe']:>6.2f}%  "
+            f"PF={a['pf']:>6.2f}  MaxDD={a['dd']:>6.2f}%  PnL={a['pnl']:>+12,.0f}"
+        )
+    print(
+        f"\n  C vs BASELINE: {c_win}/{len(syms)} coin onde  "
+        f"PnL farki {a_c['pnl'] - a_b['pnl']:+,.0f}"
+    )
+    print(f"  Rapor: {rpt_path}")
 
 
 def run_compare_ae(symbols, workers, serial):
@@ -2208,6 +2884,7 @@ def main():
     global LADDER_STEP_2_R, LADDER_STEP_2_SL_R
     global LADDER_STEP_3_R, LADDER_STEP_3_SL_R
     global LADDER_STEP_4_R, LADDER_STEP_4_SL_R
+    global STRUCTURAL_FALLBACK_MODE, SWING_TRAIL_BUFFER
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -2227,6 +2904,11 @@ def main():
         "--compare-ae",
         action="store_true",
         help="A vs E1 (yumusak) vs E2 (sert) CHoCH giris filtresi karsilastirmasi (28 coin)",
+    )
+    parser.add_argument(
+        "--compare-sf",
+        action="store_true",
+        help="STRUCTURAL FALLBACK: baseline vs A/B/C karsilastirma raporu uret",
     )
     parser.add_argument(
         "--trail-exp",
@@ -2260,6 +2942,9 @@ def main():
             "LADDER_AGGRESSIVE",
             "LADDER_CONSERVATIVE",
             "LADDER_SHALLOW",
+            "SF_LADDER_ONLY",
+            "SF_SWING_ONLY",
+            "SF_HYBRID",
         ],
         default=None,
         help="LUNA Plan C madde 4 trailing deneyi. Varsayilan kosu baseline "
@@ -2292,6 +2977,8 @@ def main():
     PARTIAL_TP_SCALE2_ABS_PCT = 0.0
     PARTIAL_TP_TIME_EXIT_BARS = 0
     DISABLE_FVG_TRAIL = False
+    STRUCTURAL_FALLBACK_MODE = None
+    SWING_TRAIL_BUFFER = 0.10
     if args.trail_exp == "PROFIT_GATE_0_8R":
         TRAIL_MODE = "retrace"
         PROFIT_GATE_R = 0.8
@@ -2541,6 +3228,52 @@ def main():
         LADDER_STEP_3_SL_R = 0.0
         LADDER_STEP_4_R = 0.0
         LADDER_STEP_4_SL_R = 0.0
+    # ── STRUCTURAL FALLBACK TRAILING (LUNA direktif, 2026-08-16) ──
+    # FVG ana motor korunur; fallback yalnizca FVG yokken devreye girer.
+    # Varyant A: 15m close R>=1 -> LADDER. Varyant B: R>=2 -> confirmed swing.
+    # Varyant C (HYBRID): 1-2R arasi ladder, >2R swing. (madde 5)
+    elif args.trail_exp == "SF_LADDER_ONLY":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = False
+        STRUCTURAL_FALLBACK_MODE = "LADDER"
+        SWING_TRAIL_BUFFER = 0.10
+    elif args.trail_exp == "SF_SWING_ONLY":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = False
+        STRUCTURAL_FALLBACK_MODE = "SWING"
+        SWING_TRAIL_BUFFER = 0.10
+    elif args.trail_exp == "SF_HYBRID":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = False
+        STRUCTURAL_FALLBACK_MODE = "HYBRID"
+        SWING_TRAIL_BUFFER = 0.10
     else:  # BASELINE_RETRACE_LIVE_PARITY (veya default kosu)
         TRAIL_MODE = getattr(cfg, "TRAIL_MODE", "retrace")
         PROFIT_GATE_R = 0.0
@@ -2570,6 +3303,14 @@ def main():
             f"{LADDER_STEP_2_R:.1f}R->+{LADDER_STEP_2_SL_R}R "
             f"{LADDER_STEP_3_R:.1f}R->+{LADDER_STEP_3_SL_R}R "
             f"{LADDER_STEP_4_R:.1f}R->+{LADDER_STEP_4_SL_R}R (SL=entry+SL_R*R)",
+            flush=True,
+        )
+    if STRUCTURAL_FALLBACK_MODE is not None:
+        print(
+            f"  STRUCTURAL FALLBACK: {STRUCTURAL_FALLBACK_MODE} "
+            f"(swing_buf={SWING_TRAIL_BUFFER}) "
+            f"Ladder[>=1.0R->BE, >=1.5R->+0.5R, >=2.0R->+1.0R, >=3.0R->+1.5R] "
+            f"| Swing>=2.0R (confirmed 15m)",
             flush=True,
         )
     if PARTIAL_TP_PCT > 0 or PARTIAL_TP_R > 0:
@@ -2608,6 +3349,12 @@ def main():
     if args.compare_ae:
         t0c = time.time()
         run_compare_ae(cfg.SYMBOLS, n_workers, use_serial)
+        print(f"Sure: {time.time() - t0c:.0f}s")
+        return
+
+    if args.compare_sf:
+        t0c = time.time()
+        run_compare_sf(cfg.SYMBOLS, n_workers, use_serial)
         print(f"Sure: {time.time() - t0c:.0f}s")
         return
 
@@ -2699,6 +3446,8 @@ def main():
                     LADDER_STEP_3_SL_R,
                     LADDER_STEP_4_R,
                     LADDER_STEP_4_SL_R,
+                    STRUCTURAL_FALLBACK_MODE,
+                    SWING_TRAIL_BUFFER,
                 ): sym
                 for sym in syms
             }
@@ -2812,6 +3561,56 @@ def main():
                 f"\n**Exit-reason:** TP={n_tp} ({n_tp / total_trades * 100:.1f}%) | "
                 f"PROFIT_TRAIL={n_pt} ({n_pt / total_trades * 100:.1f}%) | "
                 f"LOSS/OPEN={n_ls} ({n_ls / total_trades * 100:.1f}%)\n"
+            )
+        # ── STRUCTURAL FALLBACK ozet (madde 14) ──
+        if STRUCTURAL_FALLBACK_MODE is not None and all_trade_records:
+            _sf_fvg = sum(1 for r in all_trade_records if r.get("trail_fvg"))
+            _sf_lad = sum(1 for r in all_trade_records if r.get("trail_ladder"))
+            _sf_swg = sum(1 for r in all_trade_records if r.get("trail_swing"))
+            _sf_no = sum(
+                1
+                for r in all_trade_records
+                if not (
+                    r.get("trail_fvg") or r.get("trail_ladder") or r.get("trail_swing")
+                )
+            )
+            _sf_resc = sum(
+                1
+                for r in all_trade_records
+                if (r.get("trail_ladder") or r.get("trail_swing"))
+                and r["result"] == "PROFIT_TRAIL"
+                and not r.get("trail_fvg")
+            )
+            _fb_tr = [
+                r
+                for r in all_trade_records
+                if (r.get("trail_ladder") or r.get("trail_swing"))
+                and not r.get("trail_fvg")
+            ]
+            _fg_tr = [
+                r
+                for r in all_trade_records
+                if r.get("trail_fvg")
+                and not (r.get("trail_ladder") or r.get("trail_swing"))
+            ]
+            _r1 = sum(1 for r in all_trade_records if r.get("reached_1pct"))
+            _r15 = sum(1 for r in all_trade_records if r.get("reached_1_5pct"))
+            _r2 = sum(1 for r in all_trade_records if r.get("reached_2pct"))
+            _r3 = sum(1 for r in all_trade_records if r.get("reached_3pct"))
+            f.write(
+                f"\n**STRUCTURAL FALLBACK [{STRUCTURAL_FALLBACK_MODE}]:** "
+                f"FVG trail={_sf_fvg} | Ladder trail={_sf_lad} | Swing trail={_sf_swg} | "
+                f"No-trail={_sf_no} | Rescued={_sf_resc}\n"
+            )
+            f.write(
+                f"  Fallback-only (ladder|swing, FVG yok): {len(_fb_tr)} trade / "
+                f"{sum(r['pnl'] for r in _fb_tr):+,.0f} PnL | "
+                f"FVG-only: {len(_fg_tr)} trade / {sum(r['pnl'] for r in _fg_tr):+,.0f} PnL\n"
+            )
+            f.write(
+                f"  Reached (bilgi): >=1pct={_r1} | >=1.5pct={_r15} | "
+                f">=2pct={_r2} | >=3pct={_r3} "
+                f"(trail yalnizca 15m CLOSE R ile aktiflesir, fiyat bazli degil)\n"
             )
         # ── HTF BIAS notu: 1D bias'a zit yon nedeniyle giris yapilmayan trade sayisi
         # (kullanici istegi: sütun degil, rapor altinda not olarak).
