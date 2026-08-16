@@ -1,5 +1,26 @@
 # backtest-sniper — Progress
 
+## ✅ SF TAM EVREN DOĞRULAMA — 4 VARYANT YAN YANA, B' (1.5R) REDDEDİLDİ, KAZANAN B_SWING_ONLY (2026-08-16 22:1x, branch feat/fallback-trail)
+- **Görev:** Baş mühendis B' varyantı (swing eşiği R≥1.5, `SF_SWING_ONLY_1_5R`) istedi; kullanıcı varyantların **tek tek (sıralı), her biri kendi içinde workers 6** koşulmasını emretti (ilk denemede 4 varyant aynı anda workers 6 = makine termal korumaya girdi).
+- **Kod (`src/analyzer_v5.py`):** `SF_SWING_MIN_R = 2.0` sabiti (satır ~588 hardcode `upnl_r >= 2.0` yerine), `_analyze_one_sym_v5(sym, mode, gate, sf_swing_min_r=None)` + worker içinde `_eng.SF_SWING_MIN_R = sf_swing_min_r` (None ise **reset 2.0** — SF mode resetiyle aynı kontaminasyon gerekçesi), `_sf_compare_worker(sym, mode, gate, swing_min_r=None)`, `run_compare_sf` tag'leri 4'lü tuple `(tag, mode, gate, smr)`, `--trail-exp SF_SWING_ONLY_1_5R` choices + dispatch (SF_SWING_ONLY'nin birebir kopyası, sadece SF_SWING_MIN_R=1.5).
+- **Driver (`run_sf_two_stage.py`):** `_TAGS` 4'lü tuple (B' dahil), `--workers N` (varyant İÇİNDE coin paralelliği, ProcessPool), `--validate-tags` (birden çok doğrulama varyantı), `_run_stage(syms, tags, workers)` varyantlar arası SIRALI. Rapor: stage1 tablosu (B' dahil 6 varyant), stage2 aggregate + her varyant için coin bazlı karşılaştırma tablosu + Δ/verdict/winner satırları.
+- **Test (`tests/test_structural_fallback.py`):** 3 yeni test (SF_SWING_MIN_R default 2.0 / 1.5R'de 1.7R unrealized close swing'i AKTİFLEŞTİRİR / worker `collect_fvg_profile`+`compute_session_stats` mock'lu set-reset). **33/33 PASS (~29.5s).** Tam süit (72) son ağır BNBUSDT engine smoke testinde takılıyor — pre-existing termal (tek dosya koşusu hızlı; değişiklik regresyonu değil).
+- **KOŞULAR (28 coin, tek tek, workers 6, detach Start-Process + log redirect, cache resumable):**
+  | Varyant | Trade | NetPnL | TP% | PTrail% | PE | MaxDD | Exp$ | Δ vs BASELINE | Kazanan coin |
+  |---|---|---|---|---|---|---|---|---|---|
+  | BASELINE | 48,943 | +1,068,042 | 17.0 | 40.1 | 57.1 | 1.2 | +21.82 | — | — |
+  | A_LADDER_ONLY | 48,663 | +1,029,944 | 11.6 | 46.6 | 58.2 | 1.5 | +21.16 | **−38,098** | 0/28 |
+  | B_SWING_ONLY | 48,904 | +1,070,170 | 16.8 | 40.3 | 57.1 | 1.2 | +21.88 | **+2,127** | 24/28 |
+  | B_SWING_ONLY_1_5R | 48,798 | +1,069,349 | 16.3 | 40.9 | 57.1 | 1.3 | +21.91 | **+1,307** | 17/28 |
+  | C_HYBRID | 48,717 | +1,035,641 | 12.8 | 45.2 | 58.1 | 1.4 | +21.26 | **−32,401** | 0/28 |
+- **SONUÇLAR:**
+  1. **B' (1.5R) hipotezi REDDEDİLDİ:** swing eşiği 2.0→1.5R swing kullanımını 219→689 (3.1x) artırdı ama kenarı DÜŞÜRDÜ (Δ +2,127→+1,307, kazanan coin 24→17). Erken swing koruması = erken SL taşıma = Exp$ ölümü; LADDER (−38K) ve ProfitProtect deneyleriyle AYNI desen, sadece daha hafif.
+  2. **Ladder ailesi (A/C) kesin negatif:** C'nin 1-2R aralığındaki ladder segmenti de batırıyor → HYBRID "en önemli varyant" değil, en kötülerden.
+  3. **Kazanan:** B_SWING_ONLY (2.0R) korunuyor; Δ +2,127 = +%0.20, 24/28 coin, swing yalnızca 219 trade'de devreye girdi (fallback-only 152 trade / +7,892).
+- **Rapor:** `reports/analyzer_v5_sf_two_stage.md` (stage1 6 varyant dahil; stage2 aggregate + coin bazlı 4 karşılaştırma tablosu). Cache: `reports/sf_two_stage_cache/` 158 json (stage1 36 + stage2 122; B' stage-1 satırı 28-coin koşusundan geldiği için cache'ten yükleniyor).
+- **Scratch temizliği:** `sf_chief_analysis.py` silindi.
+- **Sıradaki:** commit + push; baş mühendise B' reddi gerekçesi (erken koruma → kenar erimesi) + Ladder ailesinin kesin reddi iletilir; öneri: B (2.0R) yayın kararı kullanıcıda, marj gürültü sınırında olduğundan başka eşik (2.5R) veya buffer daraltma benchmark'ı opsiyonel.
+
 ## ✅ SF İKİ AŞAMALI TARAMA TAMAMLANDI — B_SWING_ONLY BASELINE'I GEÇTİ AMA MARJ GÜRÜLTÜ SINIRINDA (2026-08-16 20:41, branch feat/fallback-trail)
 - **Aşama 1 (6 coin tarama: BNB/SOL/AVAX/LINK/XRP/ATOM, 5 varyant):** **B_SWING_ONLY kazandı** (+165,136 vs BASELINE +164,565, Δ+571). OLD_PROFIT_GATE_1R **−8,394** (PF 0.28, MaxDD 53.9 — eski profit-gate yıkıcı); A_LADDER_ONLY +157,598; C_HYBRID +158,764.
 - **Aşama 2 (28 coin doğrulama):** BASELINE 48,943 trade / **+1,068,042** / PE 57.1 / PF 999 / MaxDD 1.2 / Exp +21.82; B_SWING_ONLY 48,904 / **+1,070,170** / PE 57.1 / MaxDD 1.2 / Exp +21.88. Δ **+2,127 (+%0.20)**.

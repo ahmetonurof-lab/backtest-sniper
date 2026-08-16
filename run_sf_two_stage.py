@@ -1,15 +1,18 @@
 """run_sf_two_stage.py — STRUCTURAL FALLBACK iki asamali tarama.
 
-Asama 1 (tarama): secili coinlerde 5 varyant (BASELINE, OLD_PROFIT_GATE_1R,
-A_LADDER_ONLY, B_SWING_ONLY, C_HYBRID) SERI kosulur; kazanan varyant belirlenir.
-Asama 2 (dogrulama): kazanan varyant tam evrende BASELINE ile karsilastirilir.
+Asama 1 (tarama): secili coinlerde varyantlar SERI kosulur; kazanan belirlenir.
+Asama 2 (dogrulama): secilen varyantlar tam evrende BASELINE ile karsilastirilir.
 
-ISINMA RISKI NEDENIYLE TAMAMEN SERI calisir (worker=1, ProcessPool YOK).
-Her (sym, tag) sonucu disk'e cache'lenir — makine kapanirsa kaldigi yerden
-devam eder. Rapor: reports/analyzer_v5_sf_two_stage.md
+ISINMA KURALI (2026-08-16): varyantlar ASLA hep birlikte kosulmaz — varyant
+bazinda SIRALI; her varyant kendi icinde istenirse --workers ile paralel calisir.
+Ilk denemede 4 varyant workers 6 ile tek seferde kosulmus, makine kendini
+korumaya almis; ayrı ayrı kosta problem yok. Her (sym, tag) sonucu disk'e
+cache'lenir — makine kapanirsa kaldigi yerden devam eder.
+Rapor: reports/analyzer_v5_sf_two_stage.md
 """
 
 # ruff: noqa: E402
+import concurrent.futures
 import contextlib
 import io
 import json
@@ -32,12 +35,14 @@ import config as cfg  # noqa: E402
 _CACHE_DIR = os.path.join(_ROOT, "reports", "sf_two_stage_cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
+# (tag, structural_fallback_mode, profit_gate, swing_min_r)
 _TAGS = [
-    ("BASELINE", None, 0.0),
-    ("OLD_PROFIT_GATE_1R", None, 1.0),
-    ("A_LADDER_ONLY", "LADDER", 0.0),
-    ("B_SWING_ONLY", "SWING", 0.0),
-    ("C_HYBRID", "HYBRID", 0.0),
+    ("BASELINE", None, 0.0, None),
+    ("OLD_PROFIT_GATE_1R", None, 1.0, None),
+    ("A_LADDER_ONLY", "LADDER", 0.0, None),
+    ("B_SWING_ONLY", "SWING", 0.0, None),
+    ("B_SWING_ONLY_1_5R", "SWING", 0.0, 1.5),
+    ("C_HYBRID", "HYBRID", 0.0, None),
 ]
 
 # Tarama seti (dev-test sembolleri: 4 session tipine yayilir)
@@ -71,7 +76,7 @@ def _save_result(sym, tag, res):
         json.dump(res, f, default=str)
 
 
-def _run_task(sym, tag, mode, gate, force=False):
+def _run_task(sym, tag, mode, gate, swing_min_r, force=False):
     if not force:
         res = _load_result(sym, tag)
         if res is not None:
@@ -88,7 +93,7 @@ def _run_task(sym, tag, mode, gate, force=False):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
             io.StringIO()
         ):
-            res = _eng._sf_compare_worker(sym, mode, gate)
+            res = _eng._sf_compare_worker(sym, mode, gate, swing_min_r)
     except Exception as e:
         res = {"sym": sym, "error": str(e)}
     _save_result(sym, tag, res)
@@ -184,11 +189,32 @@ def _print_table(title, agg, tag_names):
         )
 
 
-def _run_stage(syms, tags):
+def _run_stage(syms, tags, workers=1):
+    """Bir kume tag'i kosar. Varyantlar arasi SIRALI (isinma korumasi);
+    workers>1 ise yalnizca o varyantin coinleri paralel kosulur."""
     results = {}
-    for sym in sorted(syms):
-        for tag, mode, gate in tags:
-            results[(sym, tag)] = _run_task(sym, tag, mode, gate)
+    for tag, mode, gate, swing_min_r in tags:
+        tasks = [(sym, tag, mode, gate, swing_min_r) for sym in sorted(syms)]
+        if workers <= 1:
+            for sym, _, m, g, smr in tasks:
+                results[(sym, tag)] = _run_task(sym, tag, m, g, smr)
+        else:
+            print(
+                f"  [{datetime.now().strftime('%H:%M:%S')}] {tag} — "
+                f"{len(tasks)} coin / {workers} worker (varyant SIRALI)",
+                flush=True,
+            )
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+                fut_map = {
+                    ex.submit(_run_task, sym, tag, m, g, smr): (sym, tag)
+                    for sym, _, m, g, smr in tasks
+                }
+                for fut in concurrent.futures.as_completed(fut_map):
+                    key = fut_map[fut]
+                    try:
+                        results[key] = fut.result()
+                    except Exception as e:
+                        results[key] = {"sym": key[0], "error": str(e)}
     return results
 
 
@@ -223,10 +249,25 @@ def main():
     parser.add_argument(
         "--force", action="store_true", help="Cache'i yok say, yeniden kos"
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Varyant ICINDE coin paralelligi. Varyantlar arasi daima SIRALI "
+        "(isinma korumasi); yalnizca tek varyantin coinleri bu kadar worker ile "
+        "paralel kosulur.",
+    )
+    parser.add_argument(
+        "--validate-tags",
+        nargs="+",
+        default=None,
+        help="Asama 2 dogrulama tag'leri (BASELINE disinda). Varsayilan: kazanan. "
+        "Ornek: --validate-tags A_LADDER_ONLY B_SWING_ONLY B_SWING_ONLY_1_5R C_HYBRID",
+    )
     args = parser.parse_args()
 
     t_all = time.time()
-    tag_names = [t for t, _, _ in _TAGS]
+    tag_names = [t for t, *_ in _TAGS]
     _start_heartbeat()
 
     # ── Asama 1: tarama ──
@@ -241,11 +282,11 @@ def main():
         _print_table("ASAMA 1 — TOPLAM", a1, tag_names)
         b = a1["BASELINE"]
         print("\n  Varyant vs BASELINE (NetPnL farki):")
-        for t in ("A_LADDER_ONLY", "B_SWING_ONLY", "C_HYBRID"):
+        for t in ("A_LADDER_ONLY", "B_SWING_ONLY", "B_SWING_ONLY_1_5R", "C_HYBRID"):
             d = a1[t]["pnl"] - b["pnl"]
             print(f"    {t:<18} Δ={d:+,.0f}  {'> BASELINE' if d > 0 else '< BASELINE'}")
         best = max(
-            ("A_LADDER_ONLY", "B_SWING_ONLY", "C_HYBRID"),
+            ("A_LADDER_ONLY", "B_SWING_ONLY", "B_SWING_ONLY_1_5R", "C_HYBRID"),
             key=lambda t: a1[t]["pnl"],
         )
         print(f"\n  KAZANAN VARYANT: {best} (NetPnL={a1[best]['pnl']:+,.0f})")
@@ -262,7 +303,7 @@ def main():
         r1 = {}
         # Asama 1 sonuclarini cache'ten geri yukle (rapor tablosu icin)
         for sym in sorted(SCREEN_SYMS):
-            for tag, mode, gate in _TAGS:
+            for tag, *_ in _TAGS:
                 r = _load_result(sym, tag)
                 if r is not None:
                     r1[(sym, tag)] = r
@@ -272,13 +313,26 @@ def main():
 
     # ── Asama 2: tam evren dogrulama ──
     syms2 = sorted(cfg.SYMBOLS)
-    tags2 = [t for t in _TAGS if t[0] in ("BASELINE", best)]
+    if args.validate_tags:
+        validate = list(dict.fromkeys(args.validate_tags))
+        for t in validate:
+            if t not in tag_names:
+                print(f"HATA: bilinmeyen tag '{t}'. Secenekler: {tag_names}")
+                sys.exit(1)
+    else:
+        validate = [best]
+    tags2 = [t for t in _TAGS if t[0] in (["BASELINE"] + validate)]
+    mode_txt = f"{args.workers} worker/varyant" if args.workers > 1 else "seri"
     print("=" * 100)
-    print(f"  ASAMA 2 — DOGRULAMA ({len(syms2)} coin, seri): BASELINE vs {best}")
+    print(
+        f"  ASAMA 2 — DOGRULAMA ({len(syms2)} coin, {mode_txt}): "
+        f"BASELINE vs {', '.join(validate)}"
+    )
     print("=" * 100)
-    r2 = _run_stage(syms2, tags2)
-    a2 = _aggregate(r2, syms2, [t for t, _, _ in tags2])
-    _print_table("ASAMA 2 — TOPLAM", a2, [t for t, _, _ in tags2])
+    r2 = _run_stage(syms2, tags2, workers=args.workers)
+    tags2_names = [t[0] for t in tags2]
+    a2 = _aggregate(r2, syms2, tags2_names)
+    _print_table("ASAMA 2 — TOPLAM", a2, tags2_names)
 
     # ── Rapor ──
     lines = []
@@ -315,7 +369,7 @@ def main():
         "| Mod | Trade | TP% | PTrail% | Loss% | PE% | PF | MaxDD% | NetPnL | Exp$/trade |"
     )
     w("|" + "---|" * 9)
-    for t, _, _ in tags2:
+    for t in tags2_names:
         a = a2[t]
         exp = a["pnl"] / a["n"] if a["n"] else 0.0
         w(
@@ -324,48 +378,57 @@ def main():
             f"{a['loss'] / a['n'] * 100 if a['n'] else 0:.1f}% | {a['pe']:.1f}% | "
             f"{a['pf']:.2f} | {a['dd']:.1f}% | {a['pnl']:+,.0f} | {exp:+.2f} |"
         )
-    w("")
-    w("## Coin bazli: {0} vs BASELINE".format(best))
-    w("")
-    w("| Symbol | Tr(B) | PE%(B) | PnL(B) | Tr(W) | PE%(W) | PnL(W) | ΔPnL(W-B) |")
-    w("|" + "---|" * 7)
-    w_win = 0
-    for sym in syms2:
-        rb = r2.get((sym, "BASELINE"), {})
-        rw = r2.get((sym, best), {})
-        if "stats" not in rb or "stats" not in rw:
-            w(f"| {sym} | — | — | — | — | — | — | HATA |")
-            continue
-        sb, sw = rb["stats"], rw["stats"]
-        d = sw["total_pnl"] - sb["total_pnl"]
-        if d > 0:
-            w_win += 1
-        w(
-            f"| {sym} | {sb['total_trades']} | {sb['positive_exit_pct']:.1f}% | "
-            f"{sb['total_pnl']:+,.0f} | {sw['total_trades']} | "
-            f"{sw['positive_exit_pct']:.1f}% | {sw['total_pnl']:+,.0f} | {d:+,.0f} |"
-        )
-    w("")
-    ab, aw = a2["BASELINE"], a2[best]
-    verdict = (
-        f"{best}, toplam NetPnL'de baseline'i geciyor"
-        if aw["pnl"] > ab["pnl"]
-        else "Baseline, toplam NetPnL'de {0}'den onde".format(best)
-    )
+    for vt in validate:
+        w("")
+        w(f"## Coin bazli: {vt} vs BASELINE")
+        w("")
+        w("| Symbol | Tr(B) | PE%(B) | PnL(B) | Tr(W) | PE%(W) | PnL(W) | ΔPnL(W-B) |")
+        w("|" + "---|" * 7)
+        w_win = 0
+        for sym in syms2:
+            rb = r2.get((sym, "BASELINE"), {})
+            rw = r2.get((sym, vt), {})
+            if "stats" not in rb or "stats" not in rw:
+                w(f"| {sym} | — | — | — | — | — | — | HATA |")
+                continue
+            sb, sw = rb["stats"], rw["stats"]
+            d = sw["total_pnl"] - sb["total_pnl"]
+            if d > 0:
+                w_win += 1
+            w(
+                f"| {sym} | {sb['total_trades']} | {sb['positive_exit_pct']:.1f}% | "
+                f"{sb['total_pnl']:+,.0f} | {sw['total_trades']} | "
+                f"{sw['positive_exit_pct']:.1f}% | {sw['total_pnl']:+,.0f} | {d:+,.0f} |"
+            )
+        w("")
+    ab = a2["BASELINE"]
     w("## Sonuc")
     w("")
-    w(
-        f"- {verdict} (Baseline: {ab['pnl']:+,.0f} vs {best}: {aw['pnl']:+,.0f}, "
-        f"fark {aw['pnl'] - ab['pnl']:+,.0f})."
-    )
-    w(
-        f"- {best}, {w_win}/{len(syms2)} coinde baseline'i NetPnL'de gecti; "
-        f"MaxDD Baseline: {ab['dd']:.1f}% / {best}: {aw['dd']:.1f}%."
-    )
-    w(
-        f"- Fallback aktifligi: FVG={aw['fvg']} Ladder={aw['lad']} Swing={aw['swg']} "
-        f"| fallback-only {aw['fb_tr']} trade / {aw['fb_pnl']:+,.0f} PnL."
-    )
+    for vt in validate:
+        av = a2[vt]
+        w_win = sum(
+            1
+            for sym in syms2
+            if "stats" in r2.get((sym, "BASELINE"), {})
+            and "stats" in r2.get((sym, vt), {})
+            and r2[(sym, vt)]["stats"]["total_pnl"]
+            > r2[(sym, "BASELINE")]["stats"]["total_pnl"]
+        )
+        d = av["pnl"] - ab["pnl"]
+        mark = "> BASELINE" if d > 0 else ("< BASELINE" if d < 0 else "= BASELINE")
+        w(
+            f"- **{vt}**: NetPnL {av['pnl']:+,.0f} (Δ {d:+,.0f}, {mark}), "
+            f"{w_win}/{len(syms2)} coinde gecuyor. MaxDD {av['dd']:.1f}%. "
+            f"Fallback: FVG={av['fvg']} Ladder={av['lad']} Swing={av['swg']} | "
+            f"fallback-only {av['fb_tr']} trade / {av['fb_pnl']:+,.0f} PnL."
+        )
+    best_v = max(validate, key=lambda t: a2[t]["pnl"])
+    if a2[best_v]["pnl"] > ab["pnl"]:
+        w("")
+        w(f"- **Kazanan: {best_v}** (toplam NetPnL'de baseline'i geciyor).")
+    else:
+        w("")
+        w("- **Baseline**, dogrulanan tum varyantlarin onde; fallback eklemez.")
 
     rpt_dir = os.path.join(_ROOT, "reports")
     os.makedirs(rpt_dir, exist_ok=True)

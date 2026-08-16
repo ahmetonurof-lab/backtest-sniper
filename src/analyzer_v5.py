@@ -400,6 +400,11 @@ STRUCTURAL_FALLBACK_MODE = None  # "LADDER" | "SWING" | "HYBRID"
 # Swing LOW/HIGH tanimi canli trailing_manager._default_level_from_swings'ten gelir
 # (yeniden implemente edilmez — parite, direktif madde 5).
 SWING_TRAIL_BUFFER = 0.10
+# Swing fallback aktivasyon esigi (15m close unrealized R). B = 2.0R (direktif
+# madde 5). B' varyanti (SF_SWING_ONLY_1_5R) bu esigi 1.5R'ye ceker — bas
+# muhendis hipotez testi; negatif cikarsa B (2.0R) aynen korunur. SWING ve
+# HYBRID ortak kullanir (C'de >=2R swing, direktif madde 6).
+SF_SWING_MIN_R = 2.0
 # Ladder kademeleri (Varyant A/C ortak). SF_LADDER_STEP_X_R = tetikleyici
 # (15m close unrealized R), SF_LADDER_STEP_X_SL_R = SL konumu (entry +/- SL_R*R).
 # 1. basamak "BE + fees" (SL_R=0 + round-trip komisyon formulu).
@@ -585,7 +590,7 @@ def _sf_pick_fallback_candidate(
                 s2, upnl_r, rpt2, entry_price
             )
     swing_sl = None
-    if mode in ("SWING", "HYBRID") and upnl_r >= 2.0:
+    if mode in ("SWING", "HYBRID") and upnl_r >= SF_SWING_MIN_R:
         _lv = _SWING_TRAIL_TM._default_level_from_swings(b15[entry_bar : sb + 1], s2)
         if _lv is not None:
             _swb = buffer * atr
@@ -2151,6 +2156,7 @@ def _analyze_one_sym_v5(
     ladder_step_4_sl_r: float | None = None,
     structural_fallback_mode: str | None = None,
     swing_trail_buffer: float | None = None,
+    sf_swing_min_r: float | None = None,
 ) -> dict | None:
     """Worker: collect_fvg_profile + compute_session_stats.
     Ayri ProcessPoolExecutor worker'inda calisir. mode verilirse
@@ -2237,6 +2243,14 @@ def _analyze_one_sym_v5(
         _eng.STRUCTURAL_FALLBACK_MODE = None
     if swing_trail_buffer is not None:
         _eng.SWING_TRAIL_BUFFER = swing_trail_buffer
+    # SF swing esigi her task'ta RESET edilir (2.0 default): onceki task 1.5R
+    # set etmis olabilir; BASELINE/OLD gibi tags2'lerde kalinti kontaminasyonu
+    # olmamasi icin sifirlama zorunlu (STRUCTURAL_FALLBACK_MODE reseti ile ayni
+    # gerekce — ayni process'te cok-task'li worker kullanimi).
+    if sf_swing_min_r is not None:
+        _eng.SF_SWING_MIN_R = sf_swing_min_r
+    else:
+        _eng.SF_SWING_MIN_R = 2.0
 
     try:
         result = collect_fvg_profile(sym)
@@ -2428,12 +2442,13 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
     print(f"\n  Rapor: {rpt_path}")
 
 
-def _sf_compare_worker(sym, mode, gate):
+def _sf_compare_worker(sym, mode, gate, swing_min_r=None):
     return _analyze_one_sym_v5(
         sym,
         "retrace",
         structural_fallback_mode=mode,
         profit_gate=gate,
+        sf_swing_min_r=swing_min_r,
     )
 
 
@@ -2444,6 +2459,8 @@ def run_compare_sf(symbols, workers, serial):
     (PROFIT_GATE_R=1.0, BE=False) — direktif madde 8'in "yeni isim verdik farkli
     oldu" degil, gercekten farkli davrandigini kanitlama karsilastirmasi icin.
     A = LADDER_ONLY, B = SWING_ONLY, C = HYBRID (LUNA direktif: en onemli test).
+    B_SWING_ONLY_1_5R = B' (bas muhendis): B'nin swing aktivasyon esigini 1.5R'ye
+    cekilmis ayri varyanti — B sonucu ezilmez, BASELINE/B/B' yan yana raporlanir.
     Entry/state/komisyon/TP-RR tum modlarda ayni; yalnizca trailing degisir.
     Worker'lar _analyze_one_sym_v5 uzerinden structural_fallback_mode ile kosulur.
     Rapor: reports/analyzer_v5_sf_compare.md
@@ -2452,27 +2469,30 @@ def run_compare_sf(symbols, workers, serial):
 
     syms = sorted(symbols)
     tags = [
-        ("BASELINE", None, 0.0),
-        ("OLD_PROFIT_GATE_1R", None, 1.0),
-        ("A_LADDER_ONLY", "LADDER", 0.0),
-        ("B_SWING_ONLY", "SWING", 0.0),
-        ("C_HYBRID", "HYBRID", 0.0),
+        ("BASELINE", None, 0.0, None),
+        ("OLD_PROFIT_GATE_1R", None, 1.0, None),
+        ("A_LADDER_ONLY", "LADDER", 0.0, None),
+        ("B_SWING_ONLY", "SWING", 0.0, None),
+        ("B_SWING_ONLY_1_5R", "SWING", 0.0, 1.5),
+        ("C_HYBRID", "HYBRID", 0.0, None),
     ]
-    tasks = [(sym, tag, mode, gate) for sym in syms for tag, mode, gate in tags]
+    tasks = [
+        (sym, tag, mode, gate, smr) for sym in syms for tag, mode, gate, smr in tags
+    ]
 
     results = {}
 
     if serial or workers <= 1:
-        for sym, tag, mode, gate in tasks:
+        for sym, tag, mode, gate, smr in tasks:
             try:
-                results[(sym, tag)] = _sf_compare_worker(sym, mode, gate)
+                results[(sym, tag)] = _sf_compare_worker(sym, mode, gate, smr)
             except Exception as e:
                 results[(sym, tag)] = {"sym": sym, "error": str(e)}
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
             fut_map = {
-                ex.submit(_sf_compare_worker, sym, mode, gate): (sym, tag)
-                for sym, tag, mode, gate in tasks
+                ex.submit(_sf_compare_worker, sym, mode, gate, smr): (sym, tag)
+                for sym, tag, mode, gate, smr in tasks
             }
             for fut in concurrent.futures.as_completed(fut_map):
                 key = fut_map[fut]
@@ -2482,7 +2502,7 @@ def run_compare_sf(symbols, workers, serial):
                     results[key] = {"sym": key[0], "error": str(e)}
 
     # ── Aggregation ──
-    tag_names = [label for label, _, _ in tags]
+    tag_names = [label for label, *_ in tags]
     agg = {
         tag: {
             "n": 0,
@@ -2512,7 +2532,7 @@ def run_compare_sf(symbols, workers, serial):
     rows = []
     for sym in syms:
         row = [sym]
-        for label, _, _ in tags:
+        for label, *_ in tags:
             res = results.get((sym, label), {})
             if "error" in res or "stats" not in res:
                 row.append(None)
@@ -2925,6 +2945,7 @@ def main():
     global LADDER_STEP_3_R, LADDER_STEP_3_SL_R
     global LADDER_STEP_4_R, LADDER_STEP_4_SL_R
     global STRUCTURAL_FALLBACK_MODE, SWING_TRAIL_BUFFER
+    global SF_SWING_MIN_R
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -2984,6 +3005,7 @@ def main():
             "LADDER_SHALLOW",
             "SF_LADDER_ONLY",
             "SF_SWING_ONLY",
+            "SF_SWING_ONLY_1_5R",
             "SF_HYBRID",
         ],
         default=None,
@@ -3300,6 +3322,21 @@ def main():
         ENABLE_FALLBACK_LADDER = False
         STRUCTURAL_FALLBACK_MODE = "SWING"
         SWING_TRAIL_BUFFER = 0.10
+    elif args.trail_exp == "SF_SWING_ONLY_1_5R":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 0.0
+        PARTIAL_TP_SL_PROTECT_PCT = 0.0
+        PARTIAL_TP_SCALE_STEP_PCT = 0.0
+        ENABLE_FALLBACK_LADDER = False
+        STRUCTURAL_FALLBACK_MODE = "SWING"
+        SWING_TRAIL_BUFFER = 0.10
+        SF_SWING_MIN_R = 1.5
     elif args.trail_exp == "SF_HYBRID":
         TRAIL_MODE = "retrace"
         PROFIT_GATE_R = 0.0
@@ -3350,7 +3387,7 @@ def main():
             f"  STRUCTURAL FALLBACK: {STRUCTURAL_FALLBACK_MODE} "
             f"(swing_buf={SWING_TRAIL_BUFFER}) "
             f"Ladder[>=1.0R->BE, >=1.5R->+0.5R, >=2.0R->+1.0R, >=3.0R->+1.5R] "
-            f"| Swing>=2.0R (confirmed 15m)",
+            f"| Swing>={SF_SWING_MIN_R:g}R (confirmed 15m)",
             flush=True,
         )
     if PARTIAL_TP_PCT > 0 or PARTIAL_TP_R > 0:
@@ -3488,6 +3525,7 @@ def main():
                     LADDER_STEP_4_SL_R,
                     STRUCTURAL_FALLBACK_MODE,
                     SWING_TRAIL_BUFFER,
+                    SF_SWING_MIN_R,
                 ): sym
                 for sym in syms
             }

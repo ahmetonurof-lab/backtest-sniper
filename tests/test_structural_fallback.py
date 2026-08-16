@@ -125,6 +125,69 @@ class StructuralFallbackSwingProducerTests(unittest.TestCase):
         )
         self.assertIsNone(ns)
 
+    def test_swing_min_r_constant_default_is_2r(self):
+        self.assertAlmostEqual(_eng.SF_SWING_MIN_R, 2.0)
+
+    def test_bprime_1_5r_activates_swing_between_1_5r_and_2r(self):
+        _eng.SF_SWING_MIN_R = 1.5
+        try:
+            ns, src, reason = _eng._sf_pick_fallback_candidate(
+                "long", 1.7, 1.0, 10.0, 1.0, 5.0, "SWING", 0.10, self.bars, 0, 4
+            )
+        finally:
+            _eng.SF_SWING_MIN_R = 2.0
+        self.assertAlmostEqual(ns, 7.9)
+        self.assertEqual(src, "SWING")
+        self.assertEqual(reason, "SWING_CONFIRMED")
+
+    def test_bprime_worker_sets_and_resets_swing_min_r(self):
+        """Worker her task'ta SF_SWING_MIN_R'i set eder ve None ile 2.0'a
+        resetler (cok-task'li process'te kontaminasyon onleme)."""
+
+        def _fake_collect(sym):
+            rows = [{"time": 0, "close": 1.0}]
+            trs = [
+                {
+                    "pnl": 0,
+                    "side": "long",
+                    "sl": 0.9,
+                    "tp": 1.1,
+                    "entry_price": 1.0,
+                    "initial_sl": 0.9,
+                    "trail_source": "NONE",
+                    "reached_1pct": 0,
+                    "reached_1_5pct": 0,
+                    "reached_2pct": 0,
+                    "reached_3pct": 0,
+                }
+            ]
+            return rows, [], [], trs, {}
+
+        def _fake_stats(trades, balance, rows):
+            return {
+                "total_trades": 1,
+                "total_pnl": 0.0,
+                "tp_pct": 0.0,
+                "profit_trail_pct": 0.0,
+                "loss_pct": 0.0,
+                "positive_exit_pct": 100.0,
+                "max_dd_pct": 0.0,
+            }
+
+        with mock.patch.object(
+            _eng, "collect_fvg_profile", side_effect=_fake_collect
+        ), mock.patch.object(_eng, "compute_session_stats", side_effect=_fake_stats):
+            r = _eng._analyze_one_sym_v5(
+                "X",
+                "retrace",
+                structural_fallback_mode="SWING",
+                sf_swing_min_r=1.5,
+            )
+            self.assertIn("stats", r)
+            self.assertAlmostEqual(_eng.SF_SWING_MIN_R, 1.5)
+            _eng._analyze_one_sym_v5("X", "retrace", structural_fallback_mode=None)
+            self.assertAlmostEqual(_eng.SF_SWING_MIN_R, 2.0)
+
 
 class StructuralFallbackLadderProducerTests(unittest.TestCase):
     """Madde 4: ladder kademeleri (15m CLOSE R bazli)."""
