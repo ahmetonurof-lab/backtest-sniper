@@ -1,5 +1,17 @@
 # backtest-sniper — Progress
 
+## ✅ B_SWING_ONLY (2.0R) 0.003 RISK DOGRULAMA KOSUSU — BASELINE'I +%0.20 GECTI, 0.002 BULGUSU BIREBIR TEKRARLANDI (2026-08-17 01:5x, branch feat/fallback-trail)
+- **Kosu:** kullanici terminali, `python src\analyzer_v5.py --trail-exp SF_SWING_ONLY --workers 6`, RISK_PER_TRADE=0.003 (sniper `b898602`).
+- **Sonuc:** 48,904 trade / **net +1,605,254** / Exp +32.82$ / TP 16.8 | PTrail 40.3 | Loss 42.9 / avg_hold 3.7.
+- **VS baseline (0.003, eski 1.6M serisi 48,943/+1,602,063):** Δ **+3,191 = +%0.20**.
+- **Tutarlilik dogrulamalari (0.002 vs 0.003 birebir olceklendi):**
+  - 0.002'deki B: +1,070,170 → ×1.5 = 1,605,255 ≈ **1,605,254** ✓
+  - 0.002'deki Δ: +2,127 → ×1.5 = 3,190.5 ≈ **+3,191** ✓ (aynı %0.20 marj)
+  - fallback-only PnL: 7,892 × 1.5 = 11,838 ≈ **+11,837** ✓
+- **Fallback istatistikleri:** FVG trail=28,131 | Ladder=0 | **Swing=219** | No-trail=20,621 | Rescued=18; fallback-only 152 trade / **+11,837 PnL**; FVG-only 28,064 / +1,761,698. Reached: 1pct=12,238 | 1.5pct=7,738 | 2pct=4,965 | 3pct=2,146.
+- **Karar:** B_SWING_ONLY (2.0R) 0.003 RISK'te gecerliligini tekrar kanitladi (marj gurultu sinirinda ama iki risk seviyesinde de ayni yon). Yayin karari kullanici + bas muhendis. Rapor: `reports/analyzer_v5_summary.md` (2421 satir).
+- **Sıradaki:** bas muhendis uyandiginda B yayin onayina sunulacak; kullanici 1.6M baseline ile karsilastirmayi yapti.
+
 ## ✅ KASKAD ANALIZI — "CASCADE" YOK, BAS MUHENDISIN HESABI HATALI; B_SWING_ONLY YAYINA HAZIR (2026-08-17, branch feat/fallback-trail)
 - **Tetkik:** Bas muhendis toplam ΔPnL'i "direct fallback PnL + cascade" diye ayirmisti (B_SWING: fallback-only +7,892, cascade -5,765; 1.5R: +19,477/-18,170; A: +43,190/-81,288; C: +37,779/-70,180) ve "cascade kaynagini bul" dedi.
 - **Hesaplama hatasi:** bas muhendis fallback-only PnL'yi GROSS aldi; baseline'in ayni trade'lerdeki karsi parcasini saymadi. Dogru dekompozisyon = touched marjinal + set degisimi:
