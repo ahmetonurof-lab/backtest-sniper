@@ -510,6 +510,46 @@ def _sf_gate(mode, rpt2, fvg_present):
     return mode is not None and rpt2 > 0 and not fvg_present
 
 
+def _sf_unrealized_r_close(s2, cur_close, entry_price, rpt2):
+    """15m CLOSE bazli unrealized R (direktif madde 3 / Bolum 5).
+
+    Kural: ladder/swing aktive kararlari yalnizca 15m CLOSE'tan turetilir;
+    intrabar high/low HIC kullanilmaz. Ornek (Bolum 5): 15m high=+1.8R ama
+    15m close=+1.2R ise 1.5R kademesi AKTIF OLMAZ. Motor bu fonksiyonu
+    cur.close ile cagirir (tek kaynak — test ve motor ayri drifte giremez).
+    """
+    if rpt2 <= 0:
+        return 0.0
+    if s2 == "long":
+        return (cur_close - entry_price) / rpt2
+    return (entry_price - cur_close) / rpt2
+
+
+def _sf_apply_candidate(t, s2, csl, ctp, ns, src, reason, upnl_r_close, tp_fixed):
+    """Onaylanan fallback adayini SL+TP'ye ATOMIK uygular (direktif madde 2/7).
+
+    Cagiran, gate + candidate secimi sonrasi ns is not None ise cagirir; bu
+    fonksiyon SL ve TP'yi birlikte gunceller (yarim-state imkansiz). Ladder
+    ratchet geriye gitmez: aday zaten csl'den daha iyi secilmistir; kilitlenen
+    SL monoton kalir. Trade alanlari (trail_*) burada yazilir — reddedilen
+    aday buraya asla ulasmaz. csl, ctp guncellenmis halini dondurur."""
+    sd2 = abs(ns - csl)
+    csl = ns
+    if not tp_fixed:
+        if s2 == "long":
+            ctp += sd2
+        else:
+            ctp -= sd2
+    if src == "LADDER":
+        t["trail_ladder"] = True
+    else:
+        t["trail_swing"] = True
+    t["trail_candidate"] = ns
+    t["trail_r"] = upnl_r_close
+    t["trail_reason"] = reason
+    return csl, ctp
+
+
 def _sf_pick_fallback_candidate(
     s2,
     upnl_r,
@@ -1142,14 +1182,11 @@ def _collect_fvg_profile_impl(symbol: str):
                 ltc = 0
                 upd = False
                 # 15m CLOSE bazli unrealized R (ladder/swing gate'leri icin).
-                if rpt2 > 0:
-                    _upnl_r_close = (
-                        (cur.close - t["entry_price"]) / rpt2
-                        if s2 == "long"
-                        else (t["entry_price"] - cur.close) / rpt2
-                    )
-                else:
-                    _upnl_r_close = 0.0
+                # Tek kaynak: _sf_unrealized_r_close (direktif Bolum 5 — intrabar
+                # high/low R hesabina asla girmez). Motor cur.close gecer.
+                _upnl_r_close = _sf_unrealized_r_close(
+                    s2, cur.close, t["entry_price"], rpt2
+                )
                 # reached_* fiyat bazli rejim bilgisi (madde 12, intrabar).
                 if s2 == "long":
                     t["max_price"] = max(t.get("max_price", cur.high), cur.high)
@@ -1371,22 +1408,19 @@ def _collect_fvg_profile_impl(symbol: str):
                         sb,
                     )
                     if _ns is not None:
-                        sd2 = abs(_ns - csl)
-                        csl = _ns
-                        if not TP_FIXED:
-                            if s2 == "long":
-                                ctp += sd2
-                            else:
-                                ctp -= sd2
+                        csl, ctp = _sf_apply_candidate(
+                            t,
+                            s2,
+                            csl,
+                            ctp,
+                            _ns,
+                            _src,
+                            _reason,
+                            _upnl_r_close,
+                            TP_FIXED,
+                        )
                         ltc += 1
                         upd = True
-                        if _src == "LADDER":
-                            t["trail_ladder"] = True
-                        else:
-                            t["trail_swing"] = True
-                        t["trail_candidate"] = _ns
-                        t["trail_r"] = _upnl_r_close
-                        t["trail_reason"] = _reason
                 if TRAIL_MODE in ("atr_chase", "activation") and not upd:
                     # DENEYSEL (geri cekildi 2026-08-08): ATR-chase fallback —
                     # FVG aday kullanilamadiginda SL = close ∓ K*ATR ile chase.
@@ -2553,11 +2587,11 @@ def run_compare_sf(symbols, workers, serial):
     for tag in tag_names:
         a = agg[tag]
         w(
-            f"| {tag} | {a['n']} | {a['tp']/a['n']*100 if a['n'] else 0:.1f}% | "
-            f"{a['pt']/a['n']*100 if a['n'] else 0:.1f}% | "
-            f"{a['loss']/a['n']*100 if a['n'] else 0:.1f}% | {a['pe']:.1f}% | "
+            f"| {tag} | {a['n']} | {a['tp'] / a['n'] * 100 if a['n'] else 0:.1f}% | "
+            f"{a['pt'] / a['n'] * 100 if a['n'] else 0:.1f}% | "
+            f"{a['loss'] / a['n'] * 100 if a['n'] else 0:.1f}% | {a['pe']:.1f}% | "
             f"{a['pf']:.2f} | {a['dd']:.1f}% | {a['pnl']:+,.0f} | "
-            f"{a['pnl']/a['n'] if a['n'] else 0:+.2f} |"
+            f"{a['pnl'] / a['n'] if a['n'] else 0:+.2f} |"
         )
     w("")
 
@@ -2574,9 +2608,9 @@ def run_compare_sf(symbols, workers, serial):
         a = agg[tag]
         w(
             f"| {tag} | {a['pnl']:+,.0f} | {a['pf']:.2f} | "
-            f"{a['pnl']/a['n'] if a['n'] else 0:+.2f} | "
-            f"{a['pt']/a['n']*100 if a['n'] else 0:.1f}% | "
-            f"{a['loss']/a['n']*100 if a['n'] else 0:.1f}% | {a['dd']:.1f}% | "
+            f"{a['pnl'] / a['n'] if a['n'] else 0:+.2f} | "
+            f"{a['pt'] / a['n'] * 100 if a['n'] else 0:.1f}% | "
+            f"{a['loss'] / a['n'] * 100 if a['n'] else 0:.1f}% | {a['dd']:.1f}% | "
             f"{a['lad']} | {a['fb_tr']} (PnL {a['fb_pnl']:+,.0f}) |"
         )
     w("")
@@ -3329,7 +3363,7 @@ def main():
         if DISABLE_FVG_TRAIL:
             _pt_extra.append("FVG_TRAIL=KAPALI")
         print(
-            f"  PARTIAL TP: {_pt_txt} -> %{PARTIAL_TP_FRAC*100:.0f} kapanis"
+            f"  PARTIAL TP: {_pt_txt} -> %{PARTIAL_TP_FRAC * 100:.0f} kapanis"
             + (f" [{', '.join(_pt_extra)}]" if _pt_extra else ""),
             flush=True,
         )
@@ -3526,7 +3560,7 @@ def main():
         else:
             _pt_level_txt = f"{PARTIAL_TP_R}R"
         print(
-            f"  PARTIAL TP NOT: {_pt_level_txt}'de %{PARTIAL_TP_FRAC*100:.0f} kapanan trade: {_partial_total}"
+            f"  PARTIAL TP NOT: {_pt_level_txt}'de %{PARTIAL_TP_FRAC * 100:.0f} kapanan trade: {_partial_total}"
         )
 
     # ── Report file ──
@@ -3630,7 +3664,7 @@ def main():
                 _pt_level_txt = f"{PARTIAL_TP_R}R seviyesinde"
             f.write(
                 f"\n**PARTIAL TP NOT:** {_pt_level_txt} pozisyonun "
-                f"%{PARTIAL_TP_FRAC*100:.0f}'i kapatilan trade sayisi: {_partial}\n"
+                f"%{PARTIAL_TP_FRAC * 100:.0f}'i kapatilan trade sayisi: {_partial}\n"
             )
             if all_trade_records:
                 _pt_trades = [r for r in all_trade_records if r.get("partial_taken")]
@@ -3645,11 +3679,11 @@ def main():
                     )
                     f.write(
                         f"\n**KALAN POZISYON KAPANISI (kismi TP alan {len(_pt_trades)} trade):** "
-                        f"TP={_n_tp} ({_n_tp/len(_pt_trades)*100:.1f}%) | "
-                        f"PROFIT_TRAIL/FVG={_n_pt} ({_n_pt/len(_pt_trades)*100:.1f}%) | "
-                        f"LOSS/SL={_n_ls} ({_n_ls/len(_pt_trades)*100:.1f}%) | "
-                        f"TIME_EXIT={_n_te} ({_n_te/len(_pt_trades)*100:.1f}%) | "
-                        f"SCALE2={_n_s2} ({_n_s2/len(_pt_trades)*100:.1f}%)\n"
+                        f"TP={_n_tp} ({_n_tp / len(_pt_trades) * 100:.1f}%) | "
+                        f"PROFIT_TRAIL/FVG={_n_pt} ({_n_pt / len(_pt_trades) * 100:.1f}%) | "
+                        f"LOSS/SL={_n_ls} ({_n_ls / len(_pt_trades) * 100:.1f}%) | "
+                        f"TIME_EXIT={_n_te} ({_n_te / len(_pt_trades) * 100:.1f}%) | "
+                        f"SCALE2={_n_s2} ({_n_s2 / len(_pt_trades) * 100:.1f}%)\n"
                     )
         f.write("\n")
     print(f"  Rapor: {rpt_path}")
