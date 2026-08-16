@@ -332,8 +332,21 @@ PARTIAL_TP_PCT = 0.0
 #      entry*(1±SL_PROTECT_PCT/100)'e tasinir, TP de ayni delta kadar otelenir.
 #   2) Fiyat ilk tetikleyiciden SCALE_STEP_PCT daha ileriye giderse (long:
 #      entry*(1+PCT/100)*(1+SCALE_STEP_PCT/100)) kalan pozisyonun TAMAMI satilir.
+# PARTIAL_TP_SCALE2_ABS_PCT > 0 ise 2. kademe GORELI yerine MUTLAK seviyededir:
+#      long: entry*(1+SCALE2_ABS_PCT/100) (giristen itibaren), SCALE_STEP ezer.
 PARTIAL_TP_SL_PROTECT_PCT = 0.0
 PARTIAL_TP_SCALE_STEP_PCT = 0.0
+PARTIAL_TP_SCALE2_ABS_PCT = 0.0
+# PARTIAL_TP_TIME_EXIT_BARS > 0 iken: kismi TP sonrasi KALAN pozisyon, entry
+# barindan itibaren bu kadar bar dolunca otomatik kapatilir (zaman cikisi).
+# Amac: FVG trailing FVG bulamadigi senaryoda pozisyonun surunmesini onlemek.
+# 0 = devre disi. TIME_EXIT kapanisi karda PROFIT_TRAIL, zararda LOSS sonucu
+# alir; ayrica t["time_exit"]=True isaretlenir (rapor "zaman cikisi" ayirt eder).
+PARTIAL_TP_TIME_EXIT_BARS = 0
+# DISABLE_FVG_TRAIL=True iken FVG-based retrace trailing komple kapatilir
+# (SL yalnizca kismi TP/scale-out kademeleriyle hareket eder, 1R sabit baslar).
+# FALLBACK_LADDER ile birlikte calismaz (bu flag onceliklidir).
+DISABLE_FVG_TRAIL = False
 
 # ─── KAR MERDIVENI (Fallback Ladder, 2026-08-16 LUNA direktif) ────────────
 # Mevcut FVG-based trailing FVG bulamadiginda SL'yi hareket ettiremiyor — fiyat
@@ -988,7 +1001,10 @@ def _collect_fvg_profile_impl(symbol: str):
                                     csl = _ns
                                     ltc += 1
                                     upd = True
-                for fvg in cfvgs:
+                # DISABLE_FVG_TRAIL=True: FVG-based retrace trailing komple
+                # kapatilir (yalnizca kismi TP/scale-out kademeleri SL'yi
+                # hareket ettirir, SL giris 1R'de sabit baslar).
+                for fvg in [] if DISABLE_FVG_TRAIL else cfvgs:
                     if s2 == "long" and fvg.direction != "bullish":
                         continue
                     if s2 == "short" and fvg.direction != "bearish":
@@ -1144,16 +1160,23 @@ def _collect_fvg_profile_impl(symbol: str):
                             t["initial_sl"] - t["entry_price"]
                         )
                     # SCALE-OUT 2. kademe: ilk tetikleyiciden SCALE_STEP_PCT daha
-                    # ileri fiyatta kalan pozisyonun TAMAMI satilir.
+                    # ileri fiyatta (long) kalan pozisyonun TAMAMI satilir.
+                    # SCALE2_ABS_PCT > 0 ise MUTLAK seviye: giristen itibaren
+                    # %SCALE2_ABS_PCT ilerleme (long: entry*(1+ABS/100)).
                     _pt_scale2_long = None
                     if (
-                        PARTIAL_TP_SCALE_STEP_PCT > 0
+                        (PARTIAL_TP_SCALE_STEP_PCT > 0 or PARTIAL_TP_SCALE2_ABS_PCT > 0)
                         and _pt_level_long is not None
                         and t.get("partial_taken")
                     ):
-                        _pt_scale2_long = _pt_level_long * (
-                            1 + PARTIAL_TP_SCALE_STEP_PCT / 100.0
-                        )
+                        if PARTIAL_TP_SCALE2_ABS_PCT > 0:
+                            _pt_scale2_long = t["entry_price"] * (
+                                1 + PARTIAL_TP_SCALE2_ABS_PCT / 100.0
+                            )
+                        else:
+                            _pt_scale2_long = _pt_level_long * (
+                                1 + PARTIAL_TP_SCALE_STEP_PCT / 100.0
+                            )
                         if cur.high >= _pt_scale2_long:
                             _pp = _pt_scale2_long
                             _pq = t["qty"]
@@ -1167,6 +1190,7 @@ def _collect_fvg_profile_impl(symbol: str):
                             t["exit_price"] = _pp
                             t["exit_bar"] = sb
                             t["result"] = "TP"
+                            t["scale2_exit"] = True
                             t["closed"] = True
                             ex = True
                     if (
@@ -1225,16 +1249,23 @@ def _collect_fvg_profile_impl(symbol: str):
                             t["initial_sl"] - t["entry_price"]
                         )
                     # SCALE-OUT 2. kademe: ilk tetikleyiciden SCALE_STEP_PCT daha
-                    # ileri fiyatta kalan pozisyonun TAMAMI satilir.
+                    # ileri fiyatta (short) kalan pozisyonun TAMAMI satilir.
+                    # SCALE2_ABS_PCT > 0 ise MUTLAK seviye: giristen itibaren
+                    # %SCALE2_ABS_PCT ilerleme (short: entry*(1-ABS/100)).
                     _pt_scale2_short = None
                     if (
-                        PARTIAL_TP_SCALE_STEP_PCT > 0
+                        (PARTIAL_TP_SCALE_STEP_PCT > 0 or PARTIAL_TP_SCALE2_ABS_PCT > 0)
                         and _pt_level_short is not None
                         and t.get("partial_taken")
                     ):
-                        _pt_scale2_short = _pt_level_short * (
-                            1 - PARTIAL_TP_SCALE_STEP_PCT / 100.0
-                        )
+                        if PARTIAL_TP_SCALE2_ABS_PCT > 0:
+                            _pt_scale2_short = t["entry_price"] * (
+                                1 - PARTIAL_TP_SCALE2_ABS_PCT / 100.0
+                            )
+                        else:
+                            _pt_scale2_short = _pt_level_short * (
+                                1 - PARTIAL_TP_SCALE_STEP_PCT / 100.0
+                            )
                         if cur.low <= _pt_scale2_short:
                             _pp = _pt_scale2_short
                             _pq = t["qty"]
@@ -1248,6 +1279,7 @@ def _collect_fvg_profile_impl(symbol: str):
                             t["exit_price"] = _pp
                             t["exit_bar"] = sb
                             t["result"] = "TP"
+                            t["scale2_exit"] = True
                             t["closed"] = True
                             ex = True
                     if (
@@ -1284,6 +1316,34 @@ def _collect_fvg_profile_impl(symbol: str):
                         t["result"] = "TP"
                         t["closed"] = True
                         ex = True
+            # ── ZAMAN CIKISI (TIME_EXIT): kismi TP sonrasi kalan pozisyon,
+            # entry barindan PARTIAL_TP_TIME_EXIT_BARS bar dolunca otomatik
+            # kapanir (SL/TP onceliklidir — ex=True ise buraya dusmez). Amac:
+            # FVG trailing FVG bulamadigi senaryoda kalanin surunmesini onlemek.
+            # Kapanis fiyati bar kapanisi (cur.close). Result karda PROFIT_TRAIL,
+            # zararda LOSS; ayrica t["time_exit"]=True isaretlenir (rapor icin).
+            if (
+                not ex
+                and PARTIAL_TP_TIME_EXIT_BARS > 0
+                and t.get("partial_taken")
+                and t["qty"] > 0
+                and sb - t.get("entry_bar", 0) >= PARTIAL_TP_TIME_EXIT_BARS
+            ):
+                _pp = cur.close
+                _pq = t["qty"]
+                _dir = 1 if t["side"] == "long" else -1
+                _entry_fee = t["entry_price"] * _pq * COMMISSION_RATE
+                _exit_fee = _pp * _pq * COMMISSION_RATE
+                t["locked_pnl"] += _dir * (_pp - t["entry_price"]) * _pq
+                t["locked_fee"] = t.get("locked_fee", 0.0) + _entry_fee + _exit_fee
+                t["qty"] -= _pq
+                t["exit_price"] = _pp
+                t["exit_bar"] = sb
+                t["time_exit"] = True
+                _te_pnl = _dir * (_pp - t["entry_price"]) * _pq - _entry_fee - _exit_fee
+                t["result"] = "PROFIT_TRAIL" if _te_pnl > 0 else "LOSS"
+                t["closed"] = True
+                ex = True
             if ex:
                 diff = (
                     (t["exit_price"] - t["entry_price"])
@@ -1319,6 +1379,9 @@ def _collect_fvg_profile_impl(symbol: str):
                         "risk_usd": risk_usd_rec,
                         "entry_bar": t.get("entry_bar"),
                         "exit_bar": t.get("exit_bar"),
+                        "partial_taken": t.get("partial_taken", False),
+                        "time_exit": t.get("time_exit", False),
+                        "scale2_exit": t.get("scale2_exit", False),
                         "fvg_direction": t.get("trigger_fvg", {}).direction
                         if t.get("trigger_fvg")
                         else "",
@@ -1430,6 +1493,9 @@ def _collect_fvg_profile_impl(symbol: str):
                         "risk_usd": risk_usd_rec,
                         "entry_bar": t.get("entry_bar"),
                         "exit_bar": t.get("exit_bar"),
+                        "partial_taken": t.get("partial_taken", False),
+                        "time_exit": t.get("time_exit", False),
+                        "scale2_exit": t.get("scale2_exit", False),
                         "fvg_direction": t.get("trigger_fvg", {}).direction
                         if t.get("trigger_fvg")
                         else "",
@@ -1652,6 +1718,9 @@ def _analyze_one_sym_v5(
     partial_tp_pct: float | None = None,
     partial_tp_sl_protect_pct: float | None = None,
     partial_tp_scale_step_pct: float | None = None,
+    partial_tp_scale2_abs_pct: float | None = None,
+    partial_tp_time_exit_bars: int | None = None,
+    disable_fvg_trail: bool = False,
     enable_fallback_ladder: bool = False,
     ladder_step_1_r: float | None = None,
     ladder_step_1_sl_r: float | None = None,
@@ -1714,6 +1783,12 @@ def _analyze_one_sym_v5(
         _eng.PARTIAL_TP_SL_PROTECT_PCT = partial_tp_sl_protect_pct
     if partial_tp_scale_step_pct is not None:
         _eng.PARTIAL_TP_SCALE_STEP_PCT = partial_tp_scale_step_pct
+    if partial_tp_scale2_abs_pct is not None:
+        _eng.PARTIAL_TP_SCALE2_ABS_PCT = partial_tp_scale2_abs_pct
+    if partial_tp_time_exit_bars is not None:
+        _eng.PARTIAL_TP_TIME_EXIT_BARS = partial_tp_time_exit_bars
+    if disable_fvg_trail:
+        _eng.DISABLE_FVG_TRAIL = True
     if enable_fallback_ladder:
         _eng.ENABLE_FALLBACK_LADDER = True
     if ladder_step_1_r is not None:
@@ -2127,6 +2202,12 @@ def main():
     global PROFIT_PROTECT_GATE_R, PROFIT_PROTECT_SWING_ATR_MULT
     global HTF_BIAS_ALIGN, PARTIAL_TP_R, PARTIAL_TP_FRAC, PARTIAL_TP_PCT
     global PARTIAL_TP_SL_PROTECT_PCT, PARTIAL_TP_SCALE_STEP_PCT
+    global PARTIAL_TP_SCALE2_ABS_PCT, PARTIAL_TP_TIME_EXIT_BARS
+    global DISABLE_FVG_TRAIL, ENABLE_FALLBACK_LADDER
+    global LADDER_STEP_1_R, LADDER_STEP_1_SL_R
+    global LADDER_STEP_2_R, LADDER_STEP_2_SL_R
+    global LADDER_STEP_3_R, LADDER_STEP_3_SL_R
+    global LADDER_STEP_4_R, LADDER_STEP_4_SL_R
     import argparse
 
     parser = argparse.ArgumentParser(description="V5 backtest engine")
@@ -2168,6 +2249,13 @@ def main():
             "PARTIAL_TP_1_2R_70PCT",
             "PARTIAL_TP_1_8R_50PCT",
             "PARTIAL_TP_2R_70PCT",
+            "PARTIAL_TP_1_5_PCT_50_PCT",
+            "PARTIAL_TP_2_0_PCT_50_PCT",
+            "PARTIAL_TP_1_5_PCT_30_PCT",
+            "SCALE_OUT_1_5_50_2_0",
+            "PARTIAL_TP_1_5_PCT_50_TIME_EXIT",
+            "PARTIAL_TP_3PCT_70PCT",
+            "PARTIAL_TP_3PCT_SCALEOUT",
             "LADDER_DEFAULT",
             "LADDER_AGGRESSIVE",
             "LADDER_CONSERVATIVE",
@@ -2192,6 +2280,18 @@ def main():
     # Her deney BASELINE'dan AYRI: yalnizca trailing mekanigini degistirir,
     # entry/state/komisyon degismez. Report etiketi EXP_TAG ile isaretlenir.
     TRAIL_EXP_TAG = args.trail_exp or "BASELINE_RETRACE_LIVE_PARITY"
+    ENABLE_FALLBACK_LADDER = False
+    LADDER_STEP_1_R = 0.0
+    LADDER_STEP_1_SL_R = 0.0
+    LADDER_STEP_2_R = 0.0
+    LADDER_STEP_2_SL_R = 0.0
+    LADDER_STEP_3_R = 0.0
+    LADDER_STEP_3_SL_R = 0.0
+    LADDER_STEP_4_R = 0.0
+    LADDER_STEP_4_SL_R = 0.0
+    PARTIAL_TP_SCALE2_ABS_PCT = 0.0
+    PARTIAL_TP_TIME_EXIT_BARS = 0
+    DISABLE_FVG_TRAIL = False
     if args.trail_exp == "PROFIT_GATE_0_8R":
         TRAIL_MODE = "retrace"
         PROFIT_GATE_R = 0.8
@@ -2282,6 +2382,75 @@ def main():
         PARTIAL_TP_R = 1.8
         PARTIAL_TP_FRAC = 0.5
     elif args.trail_exp == "PARTIAL_TP_2R_70PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.5
+        PARTIAL_TP_PCT = 3.0
+        PARTIAL_TP_SL_PROTECT_PCT = 1.5
+        PARTIAL_TP_SCALE_STEP_PCT = 2.0
+    elif args.trail_exp == "PARTIAL_TP_1_5_PCT_50_PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.5
+        PARTIAL_TP_PCT = 1.5
+    elif args.trail_exp == "PARTIAL_TP_2_0_PCT_50_PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.5
+        PARTIAL_TP_PCT = 2.0
+    elif args.trail_exp == "PARTIAL_TP_1_5_PCT_30_PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.3
+        PARTIAL_TP_PCT = 1.5
+    elif args.trail_exp == "SCALE_OUT_1_5_50_2_0":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.5
+        PARTIAL_TP_PCT = 1.5
+        PARTIAL_TP_SCALE2_ABS_PCT = 2.0
+        DISABLE_FVG_TRAIL = True
+    elif args.trail_exp == "PARTIAL_TP_1_5_PCT_50_TIME_EXIT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.5
+        PARTIAL_TP_PCT = 1.5
+        PARTIAL_TP_TIME_EXIT_BARS = 15
+        DISABLE_FVG_TRAIL = True
+    elif args.trail_exp == "PARTIAL_TP_3PCT_70PCT":
+        TRAIL_MODE = "retrace"
+        PROFIT_GATE_R = 0.0
+        TRAIL_BE_ON_GATE = False
+        PROFIT_PROTECT_GATE_R = 0.0
+        PROFIT_PROTECT_SWING_ATR_MULT = 0.5
+        PARTIAL_TP_R = 0.0
+        PARTIAL_TP_FRAC = 0.7
+        PARTIAL_TP_PCT = 3.0
+    elif args.trail_exp == "PARTIAL_TP_3PCT_SCALEOUT":
         TRAIL_MODE = "retrace"
         PROFIT_GATE_R = 0.0
         TRAIL_BE_ON_GATE = False
@@ -2403,6 +2572,26 @@ def main():
             f"{LADDER_STEP_4_R:.1f}R->+{LADDER_STEP_4_SL_R}R (SL=entry+SL_R*R)",
             flush=True,
         )
+    if PARTIAL_TP_PCT > 0 or PARTIAL_TP_R > 0:
+        _pt_txt = (
+            f"%{PARTIAL_TP_PCT:g} fiyat" if PARTIAL_TP_PCT > 0 else f"{PARTIAL_TP_R}R"
+        )
+        _pt_extra = []
+        if PARTIAL_TP_SL_PROTECT_PCT > 0:
+            _pt_extra.append(f"SL->%{PARTIAL_TP_SL_PROTECT_PCT:g}")
+        if PARTIAL_TP_SCALE2_ABS_PCT > 0:
+            _pt_extra.append(f"2.kademe->%{PARTIAL_TP_SCALE2_ABS_PCT:g} (mutlak)")
+        elif PARTIAL_TP_SCALE_STEP_PCT > 0:
+            _pt_extra.append(f"2.kademe->+%{PARTIAL_TP_SCALE_STEP_PCT:g}")
+        if PARTIAL_TP_TIME_EXIT_BARS > 0:
+            _pt_extra.append(f"TIME_EXIT={PARTIAL_TP_TIME_EXIT_BARS} bar")
+        if DISABLE_FVG_TRAIL:
+            _pt_extra.append("FVG_TRAIL=KAPALI")
+        print(
+            f"  PARTIAL TP: {_pt_txt} -> %{PARTIAL_TP_FRAC*100:.0f} kapanis"
+            + (f" [{', '.join(_pt_extra)}]" if _pt_extra else ""),
+            flush=True,
+        )
 
     if args.compare_ad:
         t0c = time.time()
@@ -2498,6 +2687,9 @@ def main():
                     PARTIAL_TP_PCT,
                     PARTIAL_TP_SL_PROTECT_PCT,
                     PARTIAL_TP_SCALE_STEP_PCT,
+                    PARTIAL_TP_SCALE2_ABS_PCT,
+                    PARTIAL_TP_TIME_EXIT_BARS,
+                    DISABLE_FVG_TRAIL,
                     ENABLE_FALLBACK_LADDER,
                     LADDER_STEP_1_R,
                     LADDER_STEP_1_SL_R,
@@ -2641,6 +2833,25 @@ def main():
                 f"\n**PARTIAL TP NOT:** {_pt_level_txt} pozisyonun "
                 f"%{PARTIAL_TP_FRAC*100:.0f}'i kapatilan trade sayisi: {_partial}\n"
             )
+            if all_trade_records:
+                _pt_trades = [r for r in all_trade_records if r.get("partial_taken")]
+                if _pt_trades:
+                    _n_te = sum(1 for r in _pt_trades if r.get("time_exit"))
+                    _n_s2 = sum(1 for r in _pt_trades if r.get("scale2_exit"))
+                    _n_fvg = len(_pt_trades) - _n_te - _n_s2
+                    _n_tp = sum(1 for r in _pt_trades if r["result"] == "TP")
+                    _n_pt = sum(1 for r in _pt_trades if r["result"] == "PROFIT_TRAIL")
+                    _n_ls = sum(
+                        1 for r in _pt_trades if r["result"] in ("LOSS", "OPEN")
+                    )
+                    f.write(
+                        f"\n**KALAN POZISYON KAPANISI (kismi TP alan {len(_pt_trades)} trade):** "
+                        f"TP={_n_tp} ({_n_tp/len(_pt_trades)*100:.1f}%) | "
+                        f"PROFIT_TRAIL/FVG={_n_pt} ({_n_pt/len(_pt_trades)*100:.1f}%) | "
+                        f"LOSS/SL={_n_ls} ({_n_ls/len(_pt_trades)*100:.1f}%) | "
+                        f"TIME_EXIT={_n_te} ({_n_te/len(_pt_trades)*100:.1f}%) | "
+                        f"SCALE2={_n_s2} ({_n_s2/len(_pt_trades)*100:.1f}%)\n"
+                    )
         f.write("\n")
     print(f"  Rapor: {rpt_path}")
 

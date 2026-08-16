@@ -1,5 +1,28 @@
 # backtest-sniper — Progress
 
+## 🎯 KISMI TP (SCALE-OUT) 7 VARYANT MATRİSİ — IMPLEMENTE EDİLDİ, SMOKE GEÇTİ (2026-08-16, branch feat/fallback-trail)
+- **Görev:** Kullanıcının yeni prompt'u (5 varyantlı kısmi TP derinleştirmesi) + onaylanan genişletilmiş matris: prompt 5 varyantı + 28s genelleme için kazanan %3/scale-out = **7 `--trail-exp` varyantı**. Başarı kriterleri: NetPnL > best partial TP baseline (+%1.2 = 28s ~1,621,288), entry seti 48,943±1,000 (<%2), PF > baseline PF, PTrail artışı beklenmiyor.
+- **Yeni mekanizmalar (`analyzer_v5.py`):**
+  - `PARTIAL_TP_SCALE2_ABS_PCT` (default 0.0): 2. kademe kapanış GÖRELİ (tetikleyiciden +SCALE_STEP%) yerine MUTLAK — girişten itibaren %N (prompt V4: %2.0). Long: `entry*(1+ABS/100)`, short: `entry*(1−ABS/100)`; `t["scale2_exit"]=True`.
+  - `PARTIAL_TP_TIME_EXIT_BARS` (default 0): kısmi TP sonrası kalan pozisyon, entry barından N bar dolunca `cur.close`'da kapanır (SL/TP öncelikli — `ex=True` ise çalışmaz). Result karda `PROFIT_TRAIL`, zararda `LOSS`; `t["time_exit"]=True`.
+  - `DISABLE_FVG_TRAIL` (default False): FVG retrace trailing döngüsünü komple kapatır (`for fvg in ([] if DISABLE_FVG_TRAIL else cfvgs)`); SL giriş 1R'de sabit başlar. V4 + TIME_EXIT'te açık.
+  - Rapor: "KALAN POZISYON KAPANISI" satırı (kısmi TP alan trade'lerde TP / PTrail-FVG / LOSS-SL / TIME_EXIT / SCALE2 dağılımı). `trade_records`'a `partial_taken`/`time_exit`/`scale2_exit` alanları (long+short iki dal, replaceAll).
+  - `main()` global listesine yeni parametreler + `ENABLE_FALLBACK_LADDER`/`LADDER_STEP_*` eklendi (seri modda modül sabitlerinin güncellenmesi için); dispatch başına default reset bloğu (UnboundLocalError fix'i — LADDER dışı dallarda LADDER değişkenleri tanımsızdı).
+- **7 varyant (isim → parametreler):**
+  | Varyant | PCT | FRAC | 2. kademe | FVG | TIME_EXIT |
+  |---|---|---|---|---|---|
+  | PARTIAL_TP_1_5_PCT_50_PCT | 1.5 | 0.5 | — | açık | — |
+  | PARTIAL_TP_2_0_PCT_50_PCT | 2.0 | 0.5 | — | açık | — |
+  | PARTIAL_TP_1_5_PCT_30_PCT | 1.5 | 0.3 | — | açık | — |
+  | SCALE_OUT_1_5_50_2_0 | 1.5 | 0.5 | ABS 2.0 | **KAPALI** | — |
+  | PARTIAL_TP_1_5_PCT_50_TIME_EXIT | 1.5 | 0.5 | — | **KAPALI** | 15 bar |
+  | PARTIAL_TP_3PCT_70PCT | 3.0 | 0.7 | — | açık | — |
+  | PARTIAL_TP_3PCT_SCALEOUT | 3.0 | 0.5 | REL 2.0 (SL_PROTECT 1.5) | açık | — |
+- **SMOKE (SOLUSDT, tek sembol, hepsi crash'siz):** V1 → 1503 trade / +26,009 / 196 partial (PTrail 37.1%); SCALE_OUT → 1387 trade / −4,203 / 311 partial / SCALE2=149 (%47.9) / **PTrail=0** (FVG kapalı doğru); TIME_EXIT → 1378 trade / −4,679 / 300 partial / **TIME_EXIT=109 (%36.3)** / PTrail 6.5% (FVG kapalı doğru — `FVG_TRAIL=KAPALI` print'te doğrulandı). V2/V3/V6/V7 = test edilmiş kod yollarının parametre kombinasyonları (statik doğrulandı, ayrı smoke koşulmadı — kullanıcı iptal etti).
+- **Doğrulama:** py_compile OK; **pre-commit 8/8 PASS** (ruff, ruff-format, vulture, mypy, trailing-whitespace, end-of-file, merge-conflicts, parity-check `PARITE_OK`). ruff-format 1 dosyayı yeniden biçimlendirdi → re-run sonrası temiz.
+- **KOŞULAR (kullanıcı terminalinde):** `python src\analyzer_v5.py --workers 6 --trail-exp <VARYANT>` × 7 (her koşu temiz state ile başlar). Sonuçlar gelince LUNA raporu + karar: hangi varyant > baseline+%1.2.
+- **Bağlam (prompt vs geçmiş):** prompt'un düşük seviyeleri (%1.5/%2.0) geçmiş desenine aykırı (seviye yükseldikçe iyi: 1.2R−0.4% → 1.5R−0.25% → 1.8R+0.24% → %3+1.2% → scale-out+1.8% 8-coinde) ama 28s'de test edilmedi — matris onaylandı. Asıl boş hücre: kazanan %3/scale-out varyantlarının 28s genellemesi.
+
 ## 🎯 FALLBACK LADDER (KÂR MERDİVENİ) — 28 SEMBOL KOŞULARI TAMAMLANDI (2026-08-16, branch feat/fallback-trail)
 - **Sonuç (28 coin, RISK 0.002):** 4/4 varyant baseline'ı GEÇEMEDİ. En iyi LADDER_DEFAULT 52,863 trade / **+881,930** / Exp **+16.68** vs baseline 48,943 / **+1,602,063** / Exp **+32.73** (NetPnL −%45).
 - **Metrikler (DEFAULT):** TP% 17.0→0.3 (çöküş, SL 0.1R'den itibaren çekiliyor → hiçbir trade 1.8R TP'ye ulaşamıyor), PTrail% 40.1→65.2, Loss% 42.9→34.6, MaxDD ort 0.80→1.10 (ARTTI, <1.2× hedefi tutmadı), AvgHold 2.3. Varyant farkları küçük (DEFAULT vs SHALLOW %3.6).
