@@ -1,5 +1,14 @@
 # backtest-sniper — Progress
 
+## 🎯 FALLBACK LADDER (KÂR MERDİVENİ) — 28 SEMBOL KOŞULARI TAMAMLANDI (2026-08-16, branch feat/fallback-trail)
+- **Sonuç (28 coin, RISK 0.002):** 4/4 varyant baseline'ı GEÇEMEDİ. En iyi LADDER_DEFAULT 52,863 trade / **+881,930** / Exp **+16.68** vs baseline 48,943 / **+1,602,063** / Exp **+32.73** (NetPnL −%45).
+- **Metrikler (DEFAULT):** TP% 17.0→0.3 (çöküş, SL 0.1R'den itibaren çekiliyor → hiçbir trade 1.8R TP'ye ulaşamıyor), PTrail% 40.1→65.2, Loss% 42.9→34.6, MaxDD ort 0.80→1.10 (ARTTI, <1.2× hedefi tutmadı), AvgHold 2.3. Varyant farkları küçük (DEFAULT vs SHALLOW %3.6).
+- **Segmentasyon (§4.4):** LOW8 610,793→348,468 (−43%), MID12 664,429→359,669 (−46%), HIGH8 326,841→173,793 (−47%) — 3/3 segment homojen kayıp, düşük-DD kaldıraç grubunda bile fayda yok.
+- **KRİTİK BULGU:** FVGEnt baseline 48,943→~52K (+%8) — merdiven SL'yi erken taşıyıp trade'i kapatınca RSM aynı gün içinde daha erken reset → **ekstra entry doğuyor** ("aynı entry seti" prensibi dolaylı ihlal; trade sayısı farkı entry seti değişiminden).
+- **§7 kararı:** `LADDER_3BAR` + `TP_PROXIMITY_ADAPTIVE` DENENMEYECEK (koşul: DEFAULT baseline'ı geçerse — geçmedi). `EXPONENTIAL_APPROACH` not edildi; Profit Protect + Ladder iki bağımsız deney aynı deseni verdi (erken SL taşıma → Exp$ ölümü, PTrail% şişmesi istatistik oyunu).
+- **Rapor:** `reports/FALLBACK_LADDER_raporu.md` (summary satır 2119/2158/2197/2236; baseline 1477). Kod: `compute_fallback_ladder_sl` + FVG döngüsü sonrası entegrasyon, `--trail-exp LADDER_*`, commit `c4d1c48`.
+- **İsteğe bağlı ileride:** trade-level "ladder tetikleme sayacı" (`ladder_count`) eklenirse kesin tetikleme sayısı raporlanabilir; şu an proxy = trade artışı +3,920.
+
 ## 🎯 PARTIAL_TP_2R_70PCT DENEYİ — KOŞU TAMAMLANDI (2026-08-15 19:40, 8 sembol)
 - **Sonuç (8-coin, RISK 0.002):** 15,100 trade / net **+444,318** / Exp **+29.43** / ort MaxDD ~0.54% / %70 kısmi kapanış: **790 trade** (%3 fiyat kârı tetikleyici).
 - **Şu ana kadar en iyi:** baseline'ı **+%1.2** geçti (baseline 438,966). Desen: 1.5R/−0.25% → 1.2R/−0.4% → 1.8R/+0.24% → **%3 fiyat/+1.2%**.
