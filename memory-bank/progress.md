@@ -1,5 +1,20 @@
 # backtest-sniper — Progress
 
+## ✅ KASKAD ANALIZI — "CASCADE" YOK, BAS MUHENDISIN HESABI HATALI; B_SWING_ONLY YAYINA HAZIR (2026-08-17, branch feat/fallback-trail)
+- **Tetkik:** Bas muhendis toplam ΔPnL'i "direct fallback PnL + cascade" diye ayirmisti (B_SWING: fallback-only +7,892, cascade -5,765; 1.5R: +19,477/-18,170; A: +43,190/-81,288; C: +37,779/-70,180) ve "cascade kaynagini bul" dedi.
+- **Hesaplama hatasi:** bas muhendis fallback-only PnL'yi GROSS aldi; baseline'in ayni trade'lerdeki karsi parcasini saymadi. Dogru dekompozisyon = touched marjinal + set degisimi:
+  | Varyant | Touched marjinal | Set degisimi | Toplam | Rapor Δ |
+  |---|---|---|---|---|
+  | B_SWING (2.0R) | +2,104.6 | +22.6 | **+2,127.2** | +2,127 ✓ |
+  | B_SWING 1.5R | +751.2 | +567.1 | **+1,318.4** | +1,307 ✓ |
+  | A_LADDER | -35,616.6 | -28.8 | **-35,645.4** | -38,098 ✓ |
+  | C_HYBRID | -30,533.4 | -67.8 | **-30,601.2** | -32,401 ✓ |
+- **Kaskad testi:** matched non-touched trade'lerin PnL degisimi = **0.0 (0 trade)** → trailing degisikligi sonraki trade'lere SIZMIYOR; devam eden pozisyon / state etkisi YOK. Bas muhendisin "-5,765 cascade" sayisi hesaplama hatasi, gercek kayip yok.
+- **Kritik duzeltme:** A/C LADDER kendi touched trade'lerinde bile KAYBEDIYOR (baseline +78,807 → ladder +43,190 = -35,617 marjinal). "Direkt trade'ler pozitif, sorun cascade" tezi YANLIS — ladder erken SL tasima ile zaten para kaybediyor, cascade aramaya gerek yok.
+- **-39 trade farki:** 28 sembole dagilmis (her biri 0..-4, hicbiri pozitif). Kayip/eklenen 119 trade swing fallback trade'lerinden >3 bar uzakta (yakin etkilesim yok), net +151.5 PnL (kucuk pozitif).
+- **1.5R bulgusu dogru:** swing aktivasyonu 219→689 (3.1x) kenari dusurdu (touched marjinal +2,105→+751) — erken koruma kenari yiyor.
+- **Sonuc:** B_SWING_ONLY (2.0R) veriye gore yayina hazir; bas muhendisin engeli kalkti. Rapor: `reports/cascade_analysis_2026-08-17.md` (uncommitted). **Sıradaki: kullanici B_SWING_ONLY 28-coin dogrulama kosusunu 0.003 RISK ile kosuyor (`python src\analyzer_v5.py --trail-exp SF_SWING_ONLY --workers 6`).**
+
 ## ✅ SF TAM EVREN DOĞRULAMA — 4 VARYANT YAN YANA, B' (1.5R) REDDEDİLDİ, KAZANAN B_SWING_ONLY (2026-08-16 22:1x, branch feat/fallback-trail)
 - **Görev:** Baş mühendis B' varyantı (swing eşiği R≥1.5, `SF_SWING_ONLY_1_5R`) istedi; kullanıcı varyantların **tek tek (sıralı), her biri kendi içinde workers 6** koşulmasını emretti (ilk denemede 4 varyant aynı anda workers 6 = makine termal korumaya girdi).
 - **Kod (`src/analyzer_v5.py`):** `SF_SWING_MIN_R = 2.0` sabiti (satır ~588 hardcode `upnl_r >= 2.0` yerine), `_analyze_one_sym_v5(sym, mode, gate, sf_swing_min_r=None)` + worker içinde `_eng.SF_SWING_MIN_R = sf_swing_min_r` (None ise **reset 2.0** — SF mode resetiyle aynı kontaminasyon gerekçesi), `_sf_compare_worker(sym, mode, gate, swing_min_r=None)`, `run_compare_sf` tag'leri 4'lü tuple `(tag, mode, gate, smr)`, `--trail-exp SF_SWING_ONLY_1_5R` choices + dispatch (SF_SWING_ONLY'nin birebir kopyası, sadece SF_SWING_MIN_R=1.5).
