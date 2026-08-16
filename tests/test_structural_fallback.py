@@ -349,5 +349,22 @@ class StructuralFallbackEngineSmokeTests(unittest.TestCase):
         self.assertGreater(stats.get("sf_trail_ladder_count", 0), 0)
 
 
+class StructuralFallbackWorkerTests(unittest.TestCase):
+    """run_compare_sf worker'i: Windows ProcessPoolExecutor spawn altinda
+    pickle edilebilir olmali (nested closure bug'i, 'Can't pickle local
+    object' -> sessizce 0 trade uretiyordu)."""
+
+    def test_sf_compare_worker_is_picklable(self):
+        import pickle
+
+        self.assertIsNotNone(pickle.dumps(_eng._sf_compare_worker))
+
+    def test_sf_compare_worker_builds_stats(self):
+        r = _eng._sf_compare_worker("BNBUSDT", "HYBRID", 0.0)
+        if "error" in r:
+            self.skipTest(f"veri yok: {r['error']}")
+        self.assertGreater(r["stats"]["total_trades"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

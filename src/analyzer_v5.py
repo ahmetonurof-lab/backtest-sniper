@@ -2423,6 +2423,15 @@ def run_compare_ad(symbols, workers, serial, cont_k, act_r):
     print(f"\n  Rapor: {rpt_path}")
 
 
+def _sf_compare_worker(sym, mode, gate):
+    return _analyze_one_sym_v5(
+        sym,
+        "retrace",
+        structural_fallback_mode=mode,
+        profit_gate=gate,
+    )
+
+
 def run_compare_sf(symbols, workers, serial):
     """STRUCTURAL FALLBACK TRAILING karsilastirmasi: baseline vs eski-kapi vs A/B/C.
 
@@ -2448,24 +2457,16 @@ def run_compare_sf(symbols, workers, serial):
 
     results = {}
 
-    def _run(sym, mode, gate):
-        return _analyze_one_sym_v5(
-            sym,
-            "retrace",
-            structural_fallback_mode=mode,
-            profit_gate=gate,
-        )
-
     if serial or workers <= 1:
         for sym, tag, mode, gate in tasks:
             try:
-                results[(sym, tag)] = _run(sym, mode, gate)
+                results[(sym, tag)] = _sf_compare_worker(sym, mode, gate)
             except Exception as e:
                 results[(sym, tag)] = {"sym": sym, "error": str(e)}
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
             fut_map = {
-                ex.submit(_run, sym, mode, gate): (sym, tag)
+                ex.submit(_sf_compare_worker, sym, mode, gate): (sym, tag)
                 for sym, tag, mode, gate in tasks
             }
             for fut in concurrent.futures.as_completed(fut_map):

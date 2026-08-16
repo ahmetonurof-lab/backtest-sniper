@@ -1,5 +1,12 @@
 # backtest-sniper — Progress
 
+## 🐛 run_compare_sf PICKLE BUG FIX — "0 trade" sessiz hatası çözüldü (2026-08-16, commit bekliyor)
+- **Belirti:** `--compare-sf` 5 config × 28 sembolün HEPSİ 0 trade; 5s'de bitti (veri yüklemeden).
+- **Kök neden:** `run_compare_sf` içindeki nested `_run` closure'ı Windows `ProcessPoolExecutor` spawn'ında pickle edilemiyor (`Can't pickle local object 'run_compare_sf.<locals>._run'`) → 140 task'ın tamamı `fut.result()`'ta exception yiyip sessizce error dict'e düştü → rapor "0 trade". (ppl_test spawn ile birebir doğrulandı.)
+- **Fix:** nested closure kaldırıldı; module-level `_sf_compare_worker(sym, mode, gate)` eklendi (run_compare_sf öncesi). Serial yol + paralel `ex.submit(_sf_compare_worker, ...)` aynı fonksiyona bağlandı. `run_compare_ad`/`ae` zaten module-level `_analyze_one_sym_v5` submit ediyordu — bug yalnızca SF'deydi.
+- **Doğrulama:** spawn test → `_sf_compare_worker("BNBUSDT","HYBRID",0.0)` = **1197 trade / +22,892** (spawn worker gerçek iş üretiyor). 2 regresyon testi eklendi: `test_sf_compare_worker_is_picklable` (pickle.dumps OK) + `test_sf_compare_worker_builds_stats` (n>0). **69/69 test PASS (69.2s)**. ruff check+format temiz.
+- **Koşu (kullanıcı terminalinde):** `python src\analyzer_v5.py --workers 6 --compare-sf` yeniden koşulacak.
+
 ## 🎯 STRUCTURAL FALLBACK TRAILING (LUNA FİNAL SPEC) — IMPLEMENTE EDİLDİ, 67/67 TEST PASS (2026-08-16, branch feat/fallback-trail)
 - **Sonnet test revizyonu (3 netleştirme + 1 küçük not) — TAMAMI ELE ALINDI:**
   1. **Atomik SL+TP uygulaması artık GERÇEK kod:** apply bloğu motor döngüsünden `_sf_apply_candidate(t, s2, csl, ctp, ns, src, reason, upnl_r_close, tp_fixed)` saf fonksiyonuna çıkarıldı (SL+TP tek çağrıda birlikte güncellenir — yarım-state imkansız). Totolojik `test_atomic_apply_sl_tp_both_or_neither` kaldırıldı; yerine gerçek fonksiyonu çağıran 3 test: `test_atomic_apply_updates_sl_and_tp_together`, `test_atomic_apply_respects_tp_fixed` (TP_FIXED=True SL değişir TP sabit), `test_apply_ladder_marks_trail_ladder`.
