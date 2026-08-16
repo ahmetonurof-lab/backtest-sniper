@@ -2228,8 +2228,13 @@ def _analyze_one_sym_v5(
         _eng.LADDER_STEP_4_R = ladder_step_4_r
     if ladder_step_4_sl_r is not None:
         _eng.LADDER_STEP_4_SL_R = ladder_step_4_sl_r
+    # SF modu her zaman SET edilir (None dahil): ayni process'te onceki
+    # task'in fallback modu (LADDER/SWING/HYBRID) kalmasi BASELINE sonuclarini
+    # kirletir. Seri ve cok-task'li worker kullanimi icin sifirlama zorunlu.
     if structural_fallback_mode is not None:
         _eng.STRUCTURAL_FALLBACK_MODE = structural_fallback_mode
+    else:
+        _eng.STRUCTURAL_FALLBACK_MODE = None
     if swing_trail_buffer is not None:
         _eng.SWING_TRAIL_BUFFER = swing_trail_buffer
 

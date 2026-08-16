@@ -1,5 +1,16 @@
 # backtest-sniper — Progress
 
+## ✅ SF İKİ AŞAMALI TARAMA TAMAMLANDI — B_SWING_ONLY BASELINE'I GEÇTİ AMA MARJ GÜRÜLTÜ SINIRINDA (2026-08-16 20:41, branch feat/fallback-trail)
+- **Aşama 1 (6 coin tarama: BNB/SOL/AVAX/LINK/XRP/ATOM, 5 varyant):** **B_SWING_ONLY kazandı** (+165,136 vs BASELINE +164,565, Δ+571). OLD_PROFIT_GATE_1R **−8,394** (PF 0.28, MaxDD 53.9 — eski profit-gate yıkıcı); A_LADDER_ONLY +157,598; C_HYBRID +158,764.
+- **Aşama 2 (28 coin doğrulama):** BASELINE 48,943 trade / **+1,068,042** / PE 57.1 / PF 999 / MaxDD 1.2 / Exp +21.82; B_SWING_ONLY 48,904 / **+1,070,170** / PE 57.1 / MaxDD 1.2 / Exp +21.88. Δ **+2,127 (+%0.20)**.
+- **B, 24/28 coinde kazandı** (kayıplar: DOT −65, SEI −5, STRK −41, LINK 0); her coin'de +6..+220 — tutarlı yön ama çok küçük etki.
+- **Fallback aktifliği:** sf_trail_fvg=28,131, Ladder=0, Swing=219; fallback-only **152 trade / +7,892 PnL** (~%0.3 trade). B fiilen baseline'dan nadiren sapıyor → fark az sayıda trade'den geliyor.
+- **Karar/yorum:** %0.2'lik marj istatistiksel gürültü sınırında; 24/28 tutarlılık (binomial p≈1e-4) ilginç ama etki büyüklüğü yayına yetmez. **Önerilen benchmark:** swing eşiği R≥2.0→R≥1.5 (veya SWING_TRAIL_BUFFER daraltma) ile fallback aktifliğini artırıp marjın gerçek mi gürültü mü olduğunu ayırt etmek.
+- **Motor bug fix ①:** `_analyze_one_sym_v5` `structural_fallback_mode=None` iken global `STRUCTURAL_FALLBACK_MODE`'u sıfırlamıyordu → seri/çok-task'lı modda ilk task'ın modu sonraki BASELINE sonuçlarına sızıyordu. Fix: mode None ise `_eng.STRUCTURAL_FALLBACK_MODE = None` (analyzer_v5.py ~2232).
+- **Driver bug fix ②:** `run_sf_two_stage.py --stage2-only` rapor aşamasında `a1` tanımsızdı (UnboundLocalError) → asama 2 bitse bile rapor HİÇ yazılmıyordu. Fix: stage1 cache'ten SCREEN_SYMS sonuçlarını geri yükleyip `a1`'i üret.
+- **Altyapı (ısınma dersi sonrası):** koşular TAMAMEN SERİ (tek worker), detach = PowerShell Start-Process + heartbeat thread + motor çıktısı susturma + **resumable JSON cache** (`reports/sf_two_stage_cache/`, 86 sonuç dosyası + `_winner.txt`). Aşama 2 ~20 dk (28 coin × 2 tag, ~20-40s/coin). Detach redirect dosyası çağıranın cwd'sine düşüyor (repo kökü `stage2_out.txt`). Rapor: `reports/analyzer_v5_sf_two_stage.md`.
+- **Sıradaki:** (a) kullanıcı kararı — B yayına mı, yoksa R≥1.5 benchmark'ı mı; (b) `run_compare_sf` OLD_PROFIT_GATE_1R'nin 28-coin koşusu hâlâ koşulmadı (yalnız 6-coinde tarandı; 5-coinde bile çöküyordu).
+
 ## 🐛 run_compare_sf PICKLE BUG FIX — "0 trade" sessiz hatası çözüldü (2026-08-16, commit bekliyor)
 - **Belirti:** `--compare-sf` 5 config × 28 sembolün HEPSİ 0 trade; 5s'de bitti (veri yüklemeden).
 - **Kök neden:** `run_compare_sf` içindeki nested `_run` closure'ı Windows `ProcessPoolExecutor` spawn'ında pickle edilemiyor (`Can't pickle local object 'run_compare_sf.<locals>._run'`) → 140 task'ın tamamı `fut.result()`'ta exception yiyip sessizce error dict'e düştü → rapor "0 trade". (ppl_test spawn ile birebir doğrulandı.)
