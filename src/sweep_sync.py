@@ -14,10 +14,16 @@ analyzer_v5.py'den izole edilir — canlı akışa başka hiçbir değişiklik y
 """
 
 from session import DailyBias
+from retrace_state import RetraceState
 
 
 def process_sweep(rsm, ss, bars_15m, current, atr_val=0.0, symbol=""):
     """Canlı progress_rsm Blok 8 mantığı (signal_engine.py:78-114)."""
+    # IFVG (ikincil yol): her bar'da kaynak etiketini 'NORMAL' sifirla;
+    # asagidaki IFVG blogu tetiklenirse 'IFVG' ile ezer. Flag kapaliyken
+    # check_ifvg_retest None doner -> islevsel etki yok.
+    rsm._last_trigger_source = "NORMAL"
+
     if rsm.state_name == "IDLE" and ss.sweep_confirmed:
         rsm.on_sweep(
             direction=ss.sweep_direction or "bullish",
@@ -53,5 +59,17 @@ def process_sweep(rsm, ss, bars_15m, current, atr_val=0.0, symbol=""):
             # Bias hala kilit yonunu destekliyor -> taze FVG wick rejection'i
             # ile yeniden TRIGGER_READY olmaya calis (yeni sweep gerekmez).
             rsm.on_bias_fvg(bars_15m, current, atr_val, symbol)
+
+    # ── IFVG ikincil yol: normal yol TRIGGER_READY yapmadiysa dene ──
+    # Ana sweep+FVG yolu onceeliklidir; ayni bar'da normal kazandiysa
+    # (state zaten TRIGGER_READY) buraya girilmez. IFVG tetiklenirse
+    # trigger_fvg ayni tiptedir (HTFFVG) -> SL/TP ayni kaliyla calisir.
+    if rsm.state != RetraceState.TRIGGER_READY:
+        ifvg_hit = rsm.check_ifvg_retest(current)
+        if ifvg_hit is not None:
+            rsm.state = RetraceState.TRIGGER_READY
+            rsm.direction = ifvg_hit.direction
+            rsm.trigger_fvg = ifvg_hit
+            rsm._last_trigger_source = "IFVG"
 
     ss.fvg_ready = rsm.state_name == "TRIGGER_READY"

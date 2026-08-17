@@ -1,5 +1,11 @@
 # backtest-sniper — Progress
 
+## 2026-08-17 — IFVG Bias Muafiyeti Uygulandı (Devir Eki direktifi)
+- **Direktif:** `reports/ifvg-direktif-ek-devir.md` — analyzer_v5.py'de HTF_BIAS_ALIGN_TRUE ve HTF_BIAS_ALIGN_FALSE her iki dalında da IFVG guard eklendi: `if getattr(rsm, "_last_trigger_source", None) != "IFVG":`. IFVG + ters bias → KABUL (eski: RED). bias_reject guard'ı IFVG haricinde NORMAL sinyalleri aynen reddetmeye devam ediyor. 7 pre-existing test failure (MagicMock await — IFVG ile ilgisiz, tamamlandı). Commit/push bekleniyor.
+- **Test:** analyzer_v5.py değişikliği manuel olarak test edildi (HTF_BIAS_ALIGN_TRUE/False her iki dalda IFVG guard aktif, NORMAL guard aktif). `analyzer_v5_summary.md` smoke kirliliği mevcut — 28-coin backtest çalıştırılacak.
+
+---
+
 ## ✅ B_SWING_ONLY (2.0R) 0.003 RISK DOGRULAMA KOSUSU — BASELINE'I +%0.20 GECTI, 0.002 BULGUSU BIREBIR TEKRARLANDI (2026-08-17 01:5x, branch feat/fallback-trail)
 - **Kosu:** kullanici terminali, `python src\analyzer_v5.py --trail-exp SF_SWING_ONLY --workers 6`, RISK_PER_TRADE=0.003 (sniper `b898602`).
 - **Sonuc:** 48,904 trade / **net +1,605,254** / Exp +32.82$ / TP 16.8 | PTrail 40.3 | Loss 42.9 / avg_hold 3.7.

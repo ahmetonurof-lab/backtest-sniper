@@ -946,27 +946,33 @@ def _collect_fvg_profile_impl(symbol: str):
                 #   - daily_bias NEUTRAL (natural) -> bu filtrede serbest
                 #   - 1D bias None (natural)       -> serbest
                 #   - ikisi de yonlu ve zit        -> REDDET (HTF_BIAS_CONTRA)
-                if (sd == "bullish" and db == DailyBias.BEARISH) or (
-                    sd == "bearish" and db == DailyBias.BULLISH
-                ):
-                    rsm.reset()
-                    continue
-                d1b = d1_bias_at[sb]
-                if d1b is not None and db != DailyBias.NEUTRAL:
-                    cbdr_dir = "LONG" if db == DailyBias.BULLISH else "SHORT"
-                    if d1b != cbdr_dir:
-                        rejection_counts["HTF_BIAS_CONTRA"] += 1
+                # IFVG kaynakli trigger'lar bu filtreden MUAF (devir eki karari).
+                if getattr(rsm, "_last_trigger_source", None) != "IFVG":
+                    if (sd == "bullish" and db == DailyBias.BEARISH) or (
+                        sd == "bearish" and db == DailyBias.BULLISH
+                    ):
                         rsm.reset()
                         continue
+                    d1b = d1_bias_at[sb]
+                    if d1b is not None and db != DailyBias.NEUTRAL:
+                        cbdr_dir = "LONG" if db == DailyBias.BULLISH else "SHORT"
+                        if d1b != cbdr_dir:
+                            rejection_counts["HTF_BIAS_CONTRA"] += 1
+                            rsm.reset()
+                            continue
             else:
-                bias_reject = (
-                    (sd == "bullish" and db == DailyBias.BEARISH)
-                    or (sd == "bearish" and db == DailyBias.BULLISH)
-                    or db == DailyBias.NEUTRAL
-                )
-                if bias_reject:
-                    rsm.reset()
-                    continue
+                # IFVG kaynakli trigger'lar bias filtresinden MUAF (devir eki karari).
+                # IFVG_ENABLED=False iken _last_trigger_source hep 'NORMAL' oldugundan
+                # guard her zaman True calisir, davranis bugunku ile bit-bit ayni.
+                if getattr(rsm, "_last_trigger_source", None) != "IFVG":
+                    bias_reject = (
+                        (sd == "bullish" and db == DailyBias.BEARISH)
+                        or (sd == "bearish" and db == DailyBias.BULLISH)
+                        or db == DailyBias.NEUTRAL
+                    )
+                    if bias_reject:
+                        rsm.reset()
+                        continue
 
             # ── E varyanti: CHoCH yon filtresi (config.ENTRY_VARIANT) ──
             v4_fvg = rsm.trigger_fvg
@@ -1117,6 +1123,7 @@ def _collect_fvg_profile_impl(symbol: str):
                 active.append(
                     {
                         "entry_bar": sb + 1,
+                        "entry_source": rsm._last_trigger_source or "NORMAL",
                         "entry_price": ep,
                         "sl": sl,
                         "tp": tp,
@@ -1719,6 +1726,7 @@ def _collect_fvg_profile_impl(symbol: str):
                         "pnl": t["pnl"],
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
+                        "entry_source": t.get("entry_source", "NORMAL"),
                         "risk_usd": risk_usd_rec,
                         "entry_bar": t.get("entry_bar"),
                         "exit_bar": t.get("exit_bar"),
@@ -1847,6 +1855,7 @@ def _collect_fvg_profile_impl(symbol: str):
                         "pnl": t["pnl"],
                         "fee": t["fee"],
                         "day_key": t.get("day_key", ""),
+                        "entry_source": t.get("entry_source", "NORMAL"),
                         "risk_usd": risk_usd_rec,
                         "entry_bar": t.get("entry_bar"),
                         "exit_bar": t.get("exit_bar"),
@@ -2007,6 +2016,10 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
             "sf_reached_1_5pct": 0,
             "sf_reached_2pct": 0,
             "sf_reached_3pct": 0,
+            "ifvg_signals": 0,
+            "normal_signals": 0,
+            "ifvg_pnl": 0.0,
+            "normal_pnl": 0.0,
         }
     tp = sum(1 for r in trade_records if r["result"] == "TP")
     profit_trail = sum(1 for r in trade_records if r["result"] == "PROFIT_TRAIL")
@@ -2121,6 +2134,19 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
         "sf_reached_1_5pct": sum(1 for r in trade_records if r.get("reached_1_5pct")),
         "sf_reached_2pct": sum(1 for r in trade_records if r.get("reached_2pct")),
         "sf_reached_3pct": sum(1 for r in trade_records if r.get("reached_3pct")),
+        "ifvg_signals": sum(
+            1 for r in trade_records if r.get("entry_source") == "IFVG"
+        ),
+        "normal_signals": n
+        - sum(1 for r in trade_records if r.get("entry_source") == "IFVG"),
+        "ifvg_pnl": sum(
+            r["pnl"] for r in trade_records if r.get("entry_source") == "IFVG"
+        ),
+        "normal_pnl": sum(
+            r["pnl"]
+            for r in trade_records
+            if r.get("entry_source") is not None and r.get("entry_source") != "IFVG"
+        ),
     }
 
 
@@ -2957,6 +2983,14 @@ def main():
     )
     parser.add_argument("--serial", action="store_true", help="Serial mod")
     parser.add_argument(
+        "--ifvg",
+        action="store_true",
+        help="IFVG (Inversion FVG) ikincil sinyal yolunu AC. Flag'siz kosu = "
+        "mevcut sweep-FVG baseline (IFVG kapali, canliyla birebir); --ifvg = "
+        "IFVG acik. config default False (canliya kapali); bu flag yalnizca "
+        "backtest icin ve worker'lara os.environ ile geciyor.",
+    )
+    parser.add_argument(
         "--compare-ad",
         action="store_true",
         help="A vs D (K, R) coin-bazli karsilastirma raporu uret (28 coin)",
@@ -3017,6 +3051,17 @@ def main():
 
     use_serial = args.serial or args.workers <= 1
     n_workers = args.workers if not use_serial else 1
+
+    # ── IFVG (Inversion FVG) toggle — direktif madde 7 + surec adim 2 ──
+    # Flag'siz: IFVG kapali (mevcut baseline, canliyla birebir). --ifvg: acik.
+    # Parallel worker (Windows spawn, fresh process) config'i yeniden import
+    # ettigi icin flag'in tek kaynaktan gorunmesi icin os.environ da set edilir
+    # (config.py:93 os.environ.get("SNIPER_IFVG_ENABLED")). Serial kosuda
+    # cfg.IFVG_ENABLED=True dogrudan yeter.
+    if args.ifvg:
+        os.environ["SNIPER_IFVG_ENABLED"] = "true"
+        cfg.IFVG_ENABLED = True
+        print("  [IFVG] ACIK — Inversion FVG ikincil sinyal yolu aktif", flush=True)
 
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -3572,7 +3617,7 @@ def main():
                 total += v
         return total
 
-    hdr = f"  {'Symbol':<10} {'Trades':>7} {'TP%':>6} {'PTrail%':>8} {'Loss%':>7} {'PF':>6} {'Sharpe':>7} {'MaxDD%':>7} {'Fee':>10} {'NetPnL':>10} {'PnL/Fee':>8} {'FVGCr':>6} {'FVGEnt':>6} {'MinRisk':>7} {'Score':>7}"
+    hdr = f"  {'Symbol':<10} {'Trades':>7} {'TP%':>6} {'PTrail%':>8} {'Loss%':>7} {'PF':>6} {'Sharpe':>7} {'MaxDD%':>7} {'Fee':>10} {'NetPnL':>10} {'PnL/Fee':>8} {'FVGCr':>6} {'FVGEnt':>6} {'MinRisk':>7} {'Score':>7} {'IFVG#':>6} {'IFVG$':>9}"
     print(hdr)
     print(f"  {'-' * len(hdr)}")
 
@@ -3581,7 +3626,7 @@ def main():
         fvg_c = fvg_created(rej)
         min_risk = rej.get("MIN_RISK_DIST", 0)
         row = f"  {sym:<10} {stats['total_trades']:>7} {stats['tp_pct']:>5.1f}% {stats['profit_trail_pct']:>7.1f}% {stats['loss_pct']:>6.1f}% "
-        row += f"{stats['profit_factor']:>5.2f} {stats['sharpe']:>6.3f} {stats['max_dd_pct']:>6.1f}% {stats['total_fee']:>+9.0f} {stats['total_pnl']:>+9.0f} {stats['pnl_per_fee']:>7.2f} {fvg_c:>6} {entered:>6} {min_risk:>7} {stats['score']:>6.1f}"
+        row += f"{stats['profit_factor']:>5.2f} {stats['sharpe']:>6.3f} {stats['max_dd_pct']:>6.1f}% {stats['total_fee']:>+9.0f} {stats['total_pnl']:>+9.0f} {stats['pnl_per_fee']:>7.2f} {fvg_c:>6} {entered:>6} {min_risk:>7} {stats['score']:>6.1f} {stats['ifvg_signals']:>6} {stats['ifvg_pnl']:>+9.0f}"
         print(row)
 
     total_trades = sum(s["total_trades"] for _, s, _, _ in results_data)
@@ -3589,6 +3634,15 @@ def main():
     total_fee_sum = sum(s["total_fee"] for _, s, _, _ in results_data)
     print(
         f"\n  TOPLAM: {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f} | Sure: {time.time() - t0:.0f}s"
+    )
+    _ifvg_n = sum(s["ifvg_signals"] for _, s, _, _ in results_data)
+    _ifvg_pnl = sum(s["ifvg_pnl"] for _, s, _, _ in results_data)
+    _normal_n = sum(s["normal_signals"] for _, s, _, _ in results_data)
+    _normal_pnl = sum(s["normal_pnl"] for _, s, _, _ in results_data)
+    print(
+        f"  IFVG: entry {_ifvg_n}/{total_trades} "
+        f"({_ifvg_n / total_trades * 100 if total_trades else 0.0:.1f}%) | "
+        f"IFVG PnL={_ifvg_pnl:+.0f} | NORMAL n={_normal_n} PnL={_normal_pnl:+.0f}"
     )
     if HTF_BIAS_ALIGN:
         _contra_total = sum(
@@ -3614,7 +3668,7 @@ def main():
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     with open(rpt_path, "a") as f:
         f.write(f"\n---\n# analyzer_v5 Summary [{TRAIL_EXP_TAG}] — {ts}\n\n")
-        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'TP%':>6} | {'PTrail%':>8} | {'Loss%':>7} | {'PF':>6} | {'Sharpe':>7} | {'MaxDD%':>7} | {'Fee':>10} | {'NetPnL':>10} | {'Exp$':>8} | {'AvgHold':>8} | {'PnL/Fee':>8} | {'FVGCr':>6} | {'FVGEnt':>6} | {'MinRisk':>7} | {'Score':>7} |"
+        hdr2 = f"| {'Symbol':<10} | {'Trades':>7} | {'TP%':>6} | {'PTrail%':>8} | {'Loss%':>7} | {'PF':>6} | {'Sharpe':>7} | {'MaxDD%':>7} | {'Fee':>10} | {'NetPnL':>10} | {'Exp$':>8} | {'AvgHold':>8} | {'PnL/Fee':>8} | {'FVGCr':>6} | {'FVGEnt':>6} | {'MinRisk':>7} | {'Score':>7} | {'IFVG#':>6} | {'IFVG$':>9} |"
         f.write(hdr2 + "\n")
         sep = "|" + "---|" * (hdr2.count("|") - 1)
         f.write(sep + "\n")
@@ -3623,12 +3677,26 @@ def main():
             fvg_c = fvg_created(rej)
             min_risk = rej.get("MIN_RISK_DIST", 0)
             line = f"| {sym:<10} | {stats['total_trades']:>7} | {stats['tp_pct']:>5.1f}% | {stats['profit_trail_pct']:>7.1f}% | {stats['loss_pct']:>6.1f}% | "
-            line += f"{stats['profit_factor']:>5.2f} | {stats['sharpe']:>6.3f} | {stats['max_dd_pct']:>6.1f}% | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {stats['expectancy']:>8.2f} | {stats['avg_hold']:>7.1f} | {stats['pnl_per_fee']:>7.2f} | {fvg_c:>6} | {entered:>6} | {min_risk:>7} | {stats['score']:>6.1f} |"
+            line += f"{stats['profit_factor']:>5.2f} | {stats['sharpe']:>6.3f} | {stats['max_dd_pct']:>6.1f}% | {stats['total_fee']:>+9.0f} | {stats['total_pnl']:>+9.0f} | {stats['expectancy']:>8.2f} | {stats['avg_hold']:>7.1f} | {stats['pnl_per_fee']:>7.2f} | {fvg_c:>6} | {entered:>6} | {min_risk:>7} | {stats['score']:>6.1f} | {stats['ifvg_signals']:>6} | {stats['ifvg_pnl']:>+8.0f} |"
             f.write(line + "\n")
         f.write(
             f"\n**TOPLAM:** {total_trades} trade, Fee={total_fee_sum:+.0f}, net PnL={total_pnl:+.0f}, "
             f"Expectancy={total_pnl / total_trades:+.2f}$/trade (avg_hold bar ort. "
             f"{sum(s['avg_hold'] * s['total_trades'] for _, s, _, _ in results_data) / total_trades:.1f})\n"
+        )
+        # ── IFVG (Inversion FVG) ozet — direktif madde 7 ──
+        _ifvg_n = sum(s["ifvg_signals"] for _, s, _, _ in results_data)
+        _ifvg_pnl = sum(s["ifvg_pnl"] for _, s, _, _ in results_data)
+        _normal_n = sum(s["normal_signals"] for _, s, _, _ in results_data)
+        _normal_pnl = sum(s["normal_pnl"] for _, s, _, _ in results_data)
+        _ifvg_pct = _ifvg_n / total_trades * 100 if total_trades else 0.0
+        f.write("\n**IFVG (Inversion FVG) ozet:**\n")
+        f.write(
+            f"- IFVG entry sayisi: **{_ifvg_n} / {total_trades}** ({_ifvg_pct:.1f}%)\n"
+        )
+        f.write(
+            f"- IFVG-only PnL: **{_ifvg_pnl:+.0f}** | NORMAL-only PnL: **{_normal_pnl:+.0f}** "
+            f"(NORMAL n={_normal_n})\n"
         )
         # ── Exit-reason dagilimi (LUNA Plan C madde 4 rapor zorunlulugu) ──
         if all_trade_records:
