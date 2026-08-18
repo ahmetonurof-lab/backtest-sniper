@@ -22,7 +22,7 @@ if _SNIPER_SRC not in sys.path:
 
 import config as cfg
 
-from fvg import detect_fvgs
+from fvg import detect_fvgs, fvg_is_alive
 from indicators import calculate_true_range, update_atr
 from models import Bar
 from retrace_state import RetraceStateMachine
@@ -1055,12 +1055,35 @@ def _collect_fvg_profile_impl(symbol: str):
 
             quality_mult = 1.0
             if tf is not None:
-                fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
-                if fvg_status == "INVALIDATED":
-                    quality_mult = 0.0
-                    classic_fvg["v4_rejected"] = "FVG_SWEPT"
+                # IFVG kaynakli trigger: canlilik taramasi kirilim barindan
+                # SONRA baslar (canli bot.py ile AYNI semantik, guard-fix).
+                # Kirilim barinin kendisi flipped aday icin olum kosulu
+                # DEGILDIR — aksi halde her IFVG trigger guard'da olur.
+                # Tarama break_bar+1 .. current (chunk dahil) araliginda
+                # far-side close arar; NORMAL path bit-bit ayni kalir.
+                if (
+                    getattr(rsm, "_last_trigger_source", None) == "IFVG"
+                    and tf.break_bar_index is not None
+                ):
+                    if not fvg_is_alive(
+                        tf.direction,
+                        tf.top,
+                        tf.bottom,
+                        tf.bar_index,
+                        chunk,
+                        scan_from=tf.break_bar_index + 1,
+                    ):
+                        quality_mult = 0.0
+                        classic_fvg["v4_rejected"] = "FVG_SWEPT"
+                    else:
+                        classic_fvg["v4_rejected"] = None
                 else:
-                    classic_fvg["v4_rejected"] = None
+                    fvg_status = get_fvg_status(tf.top, tf.bottom, tf.direction, cur)
+                    if fvg_status == "INVALIDATED":
+                        quality_mult = 0.0
+                        classic_fvg["v4_rejected"] = "FVG_SWEPT"
+                    else:
+                        classic_fvg["v4_rejected"] = None
 
             # ── Min risk dist ──
             if rd < atr * cfg.MIN_RISK_DIST_ATR_MULT:
@@ -1159,6 +1182,15 @@ def _collect_fvg_profile_impl(symbol: str):
                 # korunur, yeni sweep beklemeden BIAS yönlü taze FVG aranır
                 # (on_bias_fvg). Bias tersine dönerse / nötrleşirse sweep_sync
                 # BIAS_LOCKED dalı resetler.
+                # IFVG entry: state makinesi kirlenmez — trigger aninda ezilen
+                # yon, giris oncesi sweep/bias yonune geri alinir, sonra normal
+                # entry gibi BIAS_LOCKED'a gecilir. Aksi halde IFVG yonundeki
+                # kilit bias_conflict -> reset ile gunun sweep penceresini
+                # oldururdu (17K normal trade bastirmasi).
+                if getattr(rsm, "_last_trigger_source", None) == "IFVG":
+                    rsm.direction = (
+                        getattr(rsm, "_pre_ifvg_direction", None) or rsm.direction
+                    )
                 rsm.lock_bias(bar_index=cur.index)
                 continue  # ayni-bar trailing/exit calistirma
             else:

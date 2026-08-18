@@ -67,6 +67,13 @@ def process_sweep(rsm, ss, bars_15m, current, atr_val=0.0, symbol=""):
     if rsm.state != RetraceState.TRIGGER_READY:
         ifvg_hit = rsm.check_ifvg_retest(current)
         if ifvg_hit is not None:
+            # IFVG entry state makinesini kirletmesin: trigger aninda yon
+            # IFVG yonune cekilir (entry side hesabi icin gerekli) AMA giris
+            # oncesi sweep/bias yonu saklanir. Entry tarafi (analyzer_v5)
+            # kapanista bu yone geri donup normal entry gibi BIAS_LOCKED'a
+            # gecer — ters yon kilidi bias_conflict -> reset ile gunun sweep
+            # penceresini oldurmesin (17K normal trade bastirmasi).
+            rsm._pre_ifvg_direction = rsm.direction
             rsm.state = RetraceState.TRIGGER_READY
             rsm.direction = ifvg_hit.direction
             rsm.trigger_fvg = ifvg_hit

@@ -1,5 +1,41 @@
 # backtest-sniper — Progress
 
+## ✅ IFVG GUARD-FIX — 53,018 trade / +1,889,348, IFVG 9,872 (+406,592) — canlıya deploy EDİLMEZ (2026-08-18)
+- **Direktif:** `ifvg-guard-fix-direktif.md` — canlı/backtest guard semantik farkı: canlı `fvg_is_alive` (formasyon+2 taraması) IFVG adayını kırılım barının kendisinde öldürüyor (kırılım barı flipped far-side'a kapanır); backtest cur-bar kontrolü görmüyor → backtest binlerce canlıya taşınamaz IFVG trade'i üretiyordu.
+- **Kod:**
+  - `sniper/src/retrace_state.py`: `HTFFVG.break_bar_index` alanı; `_register_inverted(fvg, break_bar_index)`; `on_sweep_confirmed` çağrı noktası `break_bar_index=last.index` (**önceki çalışmada eksikti — tamamlandı**), `on_bias_fvg` `current.index` (hazırdı).
+  - `sniper/src/fvg.py`: `fvg_is_alive(..., scan_from=None)` — verilirse formation_index yoksayılır, tarama scan_from'dan başlar.
+  - `sniper/src/bot.py` (~564): trigger guard `scan_from=tf.break_bar_index + 1` (IFVG adayları; NORMAL aynen).
+  - `src/analyzer_v5.py`: IFVG kaynaklı trigger'lar (`_last_trigger_source == "IFVG" and tf.break_bar_index is not None`) için `fvg_is_alive(..., chunk, scan_from=break_bar_index+1)`; NORMAL dal `get_fvg_status(cur)` **bit-bit korundu**. Import: `from fvg import detect_fvgs, fvg_is_alive`.
+  - **Semantik:** kırılım barı ölüm DEĞİL; kırılım SONRASI far-side close hâlâ ölüm (tutarlılık, gevşetme değil). İki tarafta aynı fonksiyon + aynı başlangıç.
+- **Parity contract** (`sniper/tests/parity/test_parity_regression.py`): 2026-07-31 benchmark'i **tazelendi** (stale — sweep-tüketim fix'i + signal_engine refactor'ü sonrası; trigger 10751→505 vb., sweep-lock 32697→0; input sha256 AYNI) + **IFVG-on senaryosu**: `test_parity_ifvg_on` (9 sembol, `IFVG_ON_BENCHMARK_CONTRACT`) — flag açıkken core_diff=0, IFVG trigger bt==live, toplam TRIGGER bt==live. **18/18 PASS** (9 NORMAL + 9 IFVG-on).
+- **Yeni testler:** sniper `test_retrace_state.py` +4 (break_bar_index default/kayıt, on_sweep_confirmed/on_bias_fvg çağrı noktaları), `test_fvg.py` +6 (`fvg_is_alive` scan_from: kırılım barı sayılmaz, sonrası sayılır, formation override, unclosed skip).
+- **Koşu** (`python src\analyzer_v5.py --workers 6 --ifvg`, 797s, log `_bt_ifvg_guard_fix.log`):
+  - **TOPLAM: 53,018 trade / +1,889,348 / Exp +35.64** (baseline IFVG-off 48,943 / +1,602,063).
+  - NORMAL 43,146 / +1,482,756 | **IFVG 9,872 (18.6%) / +406,592**.
+  - **Önceki (guard bug, state-fix) 62,806 / +2,345,188: NORMAL 47,907 / IFVG 14,899 (+782,552)** → IFVG trade **−33.7%** (direktif: "düşmesi bekleniyor" ✓). NORMAL farkı state-dinamiği (IFVG entry zinciri seyreldi), entry mantığına dokunulmadı.
+  - **28/28 coin IFVG$ pozitif** (min XRP +5,748 / max SEI +25,920) → tek-coin bağımlılığı YOK. Holdout VALIDATED (PF 7.83 vs 4.08).
+  - Rapor: `reports/ifvg_guard_fix_raporu.md` + `reports/analyzer_v5_summary.md` son blok.
+- **Test durumu:** backtest 63 PASS (test_analyze_cbdr_thresholds collection error pre-existing); sniper 1050 PASS, 24 fail **birebir pre-existing** (stash A/B: baseline 24 failed / 1039 passed → aynı set, +11 yeni pass).
+- **Kırmızı çizgi:** `IFVG_ENABLED=True` **canlıya deploy edilmedi** (sniper config'de flag tanımlı değil, default False). Fix + yeniden koşu + rapor tamam — **Baş Mühendis canlı onayına sunuldu.** Commit+push yapıldı.
+
+---
+
+## ✅ IFVG STATE-FIX — NET +2,345,188 (BASELINE +46%), STATE SUPPRESSION YOK (2026-08-17 23:53)
+- **Karar:** Baş Mühendis seçenek (a) — state fix: IFVG sweep penceresini/kayıtlarını yok etmesin. 3 şart: (1) gerçek koşu ~1,797,977, (2) coin bazlı dağılım 28/28 IFVG pozitif, (3) IFVG_ENABLED=False birebir inert.
+- **Kod:** `src/sweep_sync.py` IFVG trigger'ı `rsm._pre_ifvg_direction = rsm.direction` kaydı (before `rsm.direction = ifvg_hit.direction`); `src/analyzer_v5.py` (~1162) IFVG entry'de `rsm.direction = _pre_ifvg_direction` + `rsm.lock_bias()` — NORMAL entry ile birebir BIAS_LOCKED yolu (SWEEP_DETECTED restore seçilmedi: stale FVG filtresi yok, aynı kırık FVG yeniden aday olup tekrar tetikleyebilir). Canlı: `sniper/src/trading/signal_engine.py` (kayıt) + `sniper/src/bot.py` (~1167, restore+lock).
+- **Test:** `tests/test_ifvg_state_fix.py` 5 test (flag-off side-effect yok, trigger sweep direction'ı kaydeder, restore sweep direction'ı kilitler, NORMAL path değişmez) → **5/5 PASS**. Backtest süiti 63 PASS (test_analyze_cbdr_thresholds.py import hatası pre-existing, src dizininden koşulmalı). Sniper: signal_engine+retrace_state+integration 130 PASS; test_bot.py 13 fail pre-existing (git stash A/B ile kanıtlandı). Parity testi clean HEAD'de de AYNI sayılarla fail (core_diff=33488, TRIGGER 11813/505, sweep-lock 32697/0) → **pre-existing stale contract (benchmark 2026-07-31, live flow değişti), fix'ten değil** — ayrı bulgu.
+- **Sonuç (23:53 koşusu, `--workers 6 --ifvg`, 1087s):** 62,806 trade / **+2,345,188** / Exp +37.34.
+  - NORMAL 47,907 / +1,562,636 → baseline 48,943/+1,602,063'e −2% (timing kayması, suppression YOK — şart 1 dolaylı, NORMAL hacmi geri geldi)
+  - IFVG 14,899 / +782,552 (+52.5/trade) vs pre-fix 6,861/+195,914 (+28.55) → state özgürleşince count 2x + per-trade karlılık arttı
+  - **28/28 coin IFVG$ pozitif** (min XRP +8,668 / max SEI +55,773) → **şart 2 KARŞILANDI**
+  - Holdout VALIDATED (PF 8.17 vs train 4.59). Toplam baseline'ın +%46 üstü.
+- **Tahmin vs gerçek:** ~1,797,977 tahmininin +547K üstü — varyans kaynağı IFVG count'un 2x'e çıkması (tahmin "IFVG count sabit" varsayıyordu). Mekanizma legit: trade kapanınca RSM BIAS_LOCKED'de devam ediyor, yeni kırılan FVG'ler yeni aday üretiyor; `_locked_from_bar` stale filtresi aynı FVG'nin yeniden kaydını engelliyor.
+- **Kalite:** ruff temiz (2 F841 + format düzeltildi); mypy bot.py/signal_engine.py 0 yeni hata (websocket.py:221, trailing_manager.py:437-452 pre-existing 6 hata — değişmediğim dosyalar).
+- **BEKLEYEN:** commit+push (backtest-sniper + sniper), Baş Mühendis canlı onayı (IFVG_ENABLED=True), stale parity contract ayrı bulgu olarak raporlanacak.
+
+---
+
 ## 2026-08-17 — IFVG Bias Muafiyeti Uygulandı (Devir Eki direktifi)
 - **Direktif:** `reports/ifvg-direktif-ek-devir.md` — analyzer_v5.py'de HTF_BIAS_ALIGN_TRUE ve HTF_BIAS_ALIGN_FALSE her iki dalında da IFVG guard eklendi: `if getattr(rsm, "_last_trigger_source", None) != "IFVG":`. IFVG + ters bias → KABUL (eski: RED). bias_reject guard'ı IFVG haricinde NORMAL sinyalleri aynen reddetmeye devam ediyor. 7 pre-existing test failure (MagicMock await — IFVG ile ilgisiz, tamamlandı). Commit/push bekleniyor.
 - **Test:** analyzer_v5.py değişikliği manuel olarak test edildi (HTF_BIAS_ALIGN_TRUE/False her iki dalda IFVG guard aktif, NORMAL guard aktif). `analyzer_v5_summary.md` smoke kirliliği mevcut — 28-coin backtest çalıştırılacak.
