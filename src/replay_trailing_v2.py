@@ -22,6 +22,10 @@ Parametre taramasi (bas mühendis direktifi):
   --act-r R...     TRAIL_ACTIVATION_R_MULT (dinamik R-kati kar esigi) taramasi —
                    verilirse A baseline + D(activation) x (K, R) gridi kosulur
                    (B/C atlanir). Esik = R * risk_pts (risk_pts = |entry - initial_sl|).
+  --fallback-bars N...  TRAIL_FALLBACK_BARS (N-bar suskunluk) taramasi —
+                   verilirse A baseline + E(retrace_fallback) x (K, N) gridi
+                   kosulur (B/C atlanir). Fallback yalnizca son hop'tan beri
+                   N bar + unrealized kar R*risk_pts birlikte saglaninca girer.
 
 Kullanim:
   python replay_trailing_v2.py                          # baseline A/B/C
@@ -31,8 +35,9 @@ Kullanim:
   python replay_trailing_v2.py --cont-bars 2 3          # onay penceresi taramasi
   python replay_trailing_v2.py --cont-k 0.3 0.5 --cont-bars 1 2
   python replay_trailing_v2.py --act-r 0.8 1.0 1.2 1.5 --cont-k 1.0 1.5 2.0 PYTHUSDT
+  python replay_trailing_v2.py --fallback-bars 20 30 50 --cont-k 2.0
 
-Cikti: reports/trailing_replay_ab_c.md veya (--act-r) reports/trailing_activation_scan.md.
+Cikti: reports/trailing_replay_ab_c.md veya (--act-r) reports/trailing_activation_scan.md veya (--fallback-bars) reports/trailing_fallback_scan.md.
 """
 
 import builtins
@@ -80,6 +85,10 @@ def _worker(sym, mode, k, bars):
         if mode == "activation":
             # bars slotu activation koşusunda TRAIL_ACTIVATION_R_MULT (R-kati)
             analyzer_v5.TRAIL_ACTIVATION_R_MULT = bars
+            analyzer_v5.CONT_CONFIRM_BARS = 1
+        elif mode == "retrace_fallback":
+            # bars slotu retrace_fallback koşusunda TRAIL_FALLBACK_BARS (N)
+            analyzer_v5.TRAIL_FALLBACK_BARS = bars
             analyzer_v5.CONT_CONFIRM_BARS = 1
         else:
             analyzer_v5.CONT_CONFIRM_BARS = bars
@@ -260,6 +269,7 @@ def main():
     cont_bars = _vals("--cont-bars", [1], int)
     skip_ks = _vals("--skip-k", [], float)
     act_rs = _vals("--act-r", [], float)
+    fb_bars = _vals("--fallback-bars", [], int)
 
     cont_only = "--cont-only" in args
     if cont_only:
@@ -279,7 +289,12 @@ def main():
         (k, b) for k, b in itertools.product(cont_ks, cont_bars) if k not in skip_ks
     ]
     runs = [("A", "retrace", 0.1, 1)]
-    if act_rs:
+    if fb_bars:
+        # retrace_fallback taramasi: A baseline + E(retrace_fallback) x (K, N).
+        # bars slotu TRAIL_FALLBACK_BARS (N-bar suskunluk) tasir.
+        for k, n_bars in itertools.product(cont_ks, fb_bars):
+            runs.append(("E", "retrace_fallback", k, n_bars))
+    elif act_rs:
         # Aktivasyonlu ATR-chase taramasi: A baseline + D(activation) x (K, R).
         # bars slotu TRAIL_ACTIVATION_R_MULT (R-kati) tasir.
         for k, r_mult in itertools.product(cont_ks, act_rs):
@@ -293,11 +308,20 @@ def main():
     print(
         f"{len(runs)} kosis: A baseline + "
         + (
-            f"D(activation) x {len(act_rs)} R x {len(cont_ks)} K"
-            if act_rs
-            else f"B/C x {len(combos)} kombinasyon"
+            f"E(retrace_fallback) x {len(fb_bars)} N x {len(cont_ks)} K"
+            if fb_bars
+            else (
+                f"D(activation) x {len(act_rs)} R x {len(cont_ks)} K"
+                if act_rs
+                else f"B/C x {len(combos)} kombinasyon"
+            )
         )
-        + f" (K={cont_ks}, R={act_rs or cont_bars}), {len(symbols)} coin, {workers} worker"
+        + (
+            f" (K={cont_ks}, N={fb_bars})"
+            if fb_bars
+            else f" (K={cont_ks}, R={act_rs or cont_bars})"
+        )
+        + f", {len(symbols)} coin, {workers} worker"
     )
     t0 = datetime.now()
     results, errors = _load_checkpoint(runs)
@@ -329,13 +353,28 @@ def main():
     lines = []
     w = lines.append
     title = (
-        "Aktivasyonlu ATR-Chase Taramasi (dinamik R)"
-        if act_rs
-        else ("A/B" if cont_only else "A/B/C") + " + Parametre Taramasi"
+        "Retrace-Fallback Taramasi (N-bar suskunluk)"
+        if fb_bars
+        else (
+            "Aktivasyonlu ATR-Chase Taramasi (dinamik R)"
+            if act_rs
+            else ("A/B" if cont_only else "A/B/C") + " + Parametre Taramasi"
+        )
     )
     w(f"# Trailing Replay — {title} ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
     w("")
-    if act_rs:
+    if fb_bars:
+        w("Ayni entry uretim kurali, trailing modlari + (K, N-bar suskunluk) taramasi:")
+        w(
+            "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis, kontrol grubu)."
+        )
+        w(
+            "- **E retrace_fallback**: FVG yolu retrace ile BIREBIR; FVG adayi yoksa ATR-chase fallback `SL = close -+ K*ATR` YALNIZCA unrealized kar `>= TRAIL_ACTIVATION_R_MULT * risk_pts` VE son basarili hop'tan itibaren `TRAIL_FALLBACK_BARS` (N) bar boyunca suskunluk oldugunda devreye girer (`risk_pts = |entry - initial_sl|`, `TRAIL_MIN_MOVE_MULT` + is_placeable sartlariyla)."
+        )
+        w(
+            f"- `TRAIL_FALLBACK_BARS` (N): grid {fb_bars}; `CONT_BUFFER_MULT` (K): grid {cont_ks}."
+        )
+    elif act_rs:
         w("Ayni entry uretim kurali, trailing modlari + (K, activation R) taramasi:")
         w(
             "- **A retrace-only**: yalnizca FVG gap'i icinde kapanis onaylar (eski davranis, kontrol grubu)."
@@ -361,7 +400,7 @@ def main():
             "- `CONT_BUFFER_MULT` (K): continuation/atr-chase SL tamponu; `CONT_CONFIRM_BARS` (bars): far-side kapanisin ard arda N bar korunmasi (N=1 ilk kapanista tetikler)."
         )
     w("")
-    if not act_rs:
+    if not act_rs and not fb_bars:
         w(
             "Not (etiket sabit): A/B/C semasi onceki taramalarla AYNIDIR — B, daha once K=0.3/N=1'de negatif "
             "cikan 'continuation' modunun kendisidir; bu tarama ayni B modunu (K, N) gridi ile parametrize eder "
@@ -377,7 +416,7 @@ def main():
     w("")
     hdr = (
         "| Mod | K | "
-        + ("R" if act_rs else "Bars")
+        + ("N" if fb_bars else ("R" if act_rs else "Bars"))
         + " | Trade | TP | PTrail | LOSS | PE% | NetPnL | "
         "MaxDD | HOP | HOP/t | AvgHold(b) | AvgHold(h) |"
     )
@@ -418,7 +457,7 @@ def main():
         n_dn = sum(1 for _, b, v in rows if v["trailing_count"] < b["trailing_count"])
         n_rc = sum(1 for _, b, v in rows if b["result"] != v["result"])
         hd = _avg_hold_delta(rows)
-        lbl = f"R={bars}" if act_rs else f"B={bars}"
+        lbl = f"N={bars}" if fb_bars else (f"R={bars}" if act_rs else f"B={bars}")
         w(
             f"| {tag} K={k} {lbl} | {len(variant)} | {len(rows)} | {n_up} | {n_dn} | "
             f"{ho_d:+d} | {pnl_d:+,.0f} | {n_rc} | {hd:+.1f} | {hd / BARS_PER_HOUR:+.1f} |"
@@ -466,7 +505,17 @@ def main():
     w("")
     w("## Yorum")
     w("")
-    if act_rs:
+    if fb_bars:
+        w(
+            "- E (retrace_fallback): FVG yolu retrace ile birebir; yalnizca son hop'tan beri N bar suskunluk + unrealized kar R*risk_pts esigi birlikte saglaninca ATR-chase fallback devreye girer."
+        )
+        w(
+            "- N etkisi: kucuk N (20) fallback'i daha erken aktiflestirir (sessiz trend donemlerinde SL'yi erken kilitler); buyuk N (50) retrace'e daha fazla sure verir ama uzun suskunlukta karin geri verilme riskini tasir."
+        )
+        w(
+            "- Karar kurali (bas muhendis direktifi): N, en yuksek NetPnL'ye gore DEGIL, A baseline'a gore en az yeni outlier (SUIUSDT tarzi negatif aykiri) ureten degerle secilir."
+        )
+    elif act_rs:
         w(
             "- Bulgu (PYTHUSDT + SEIUSDT, 13-kosis gridi): hicbir D (K, R) kombinasyonu toplam NetPnL'de A'yi gecmiyor — en iyi D (K=2.0, R=1.5) +437,071 (A: +438,205, -0.26%). Aktivasyonlu ATR-chase genel skorda A'nin altinda kaliyor."
         )
@@ -498,13 +547,16 @@ def main():
 
     report_dir = os.path.join(_HERE, "..", "reports")
     os.makedirs(report_dir, exist_ok=True)
-    rpt_name = "trailing_activation_scan.md" if act_rs else "trailing_replay_ab_c.md"
+    rpt_name = (
+        "trailing_fallback_scan.md"
+        if fb_bars
+        else ("trailing_activation_scan.md" if act_rs else "trailing_replay_ab_c.md")
+    )
     rpt_path = os.path.join(report_dir, rpt_name)
     with open(rpt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
-    ck = _checkpoint_path()
-    if os.path.exists(ck):
-        os.remove(ck)
+    # NOTE: checkpoint bilinçli olarak silinmiyor — koşu sonrası coin-bazlı kırılım
+    # analizi için trade verisi korunur. Kullanıcı istediğinde elle silinebilir.
     print(f"\nRapor: {rpt_path}")
     print(f"Toplam sure: {(datetime.now() - t0).total_seconds():.0f}s")
 
