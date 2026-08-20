@@ -1,5 +1,13 @@
 # backtest-sniper — Progress
 
+## ✅ RETRACE_FALLBACK (E MODU) KAPANDI — Gate yapısal olarak hatalı, A/retrace korunuyor (2026-08-20)
+- **Soru:** FVG kuraklığı yapısal mı, rastgele mi? → **Rastgele (tail-event).** Checkpoint analizi: 49 farklı trade 25 coin'e dağılmış, tetikleme oranı tüm coin'lerde %0.04–%0.25 (homojen).
+- **Gate kök nedeni:** `UPNL ≥ 1.5R` + `bars_since ≥ 30` — underwater dry spell senaryolarında hiçbir zaman aynı anda sağlanmıyor. NEAR orijinal vakası: 1803 trade'de 1 trade değişmiş, `TP(+63) → PROFIT_TRAIL(+48)` — kurtarma yok, zarar var.
+- **Nihai karar:** (1) Maliyet var (-267 USD), (2) Çözülmesi gereken sorunu çözmüyor, (3) Tetiklendiğinde TP kısaltıyor. **E modu (hiçbir N değeri) deploy edilmeyecek, Option C (sembol allowlist) de gereksiz.** A/retrace sabit kalıyor.
+- **İleriye dönük:** Tepe-sonrası-düşüş tetikleyicisi (UPNL bir kez ≥1.5R olup sonra düşerse fallback aktifleşsin) tartışılabilir; ya da tail-risk olarak A/retrace'te bırakılır.
+
+---
+
 ## ✅ IFVG PAPER'A AÇILDI (G3) — Baş Mühendis onayı + sunucu deploy + restart doğrulandı (2026-08-18)
 - **Onay:** Baş Mühendis G1+G2 raporlarını onayladı (G1: temiz tasarım sonucu — tick_size riski yapısal yok; G2: ~3.4 kat oran, kabul edilebilir trade-off). **Görev 3 onaylandı — paper'a açıldı.**
 - **Sunucu deploy:** `169.58.41.73` root (plink, hostkey SHA256:up718...). Paper bot SCREEN içinde `src/bot.py` (`_live=False`, TESTNET default True). Sunucu 4 commit gerideydi (IFVG feature'ı yok) → `git pull origin main` → 7a53693. Bot durduruldu, `SNIPER_IFVG_ENABLED=true` env ile yeniden başlatıldı (flag env var — config dosyası canlıyla paylaşıldığı için **canlıya dokunulmadı**).
