@@ -1,5 +1,14 @@
 # backtest-sniper — Progress
 
+## ✅ IFVG FLAG KALICI DÜZELTİLDİ — /root/.env'ye SNIPER_IFVG_ENABLED=true eklendi (2026-08-20)
+- **Kök neden:** Önceki deploy'da flag manuel `screen -X stuff 'export SNIPER_IFVG_ENABLED=true'` ile set edilmişti. 2 restart (01:30, 13:05) sırasında yeni shell/process başlatıldı → manuel export kayboldu. Config default False → IFVG hiçbir zaman aktif olmadı.
+- **Kalıcı çözüm:** `/root/.env`'ye `SNIPER_IFVG_ENABLED=true` eklendi (config.py `load_dotenv(_ROOT_DIR / ".env")` → `/root/.env`). Bot kill edildi (PID 595359), yeni PID 627674 başlatıldı.
+- **Doğrulama:** `python3 -c "import config; print(config.IFVG_ENABLED)"` → **True**. `/proc/PID/environ`'da görünmemesi normal (load_dotenv `os.environ`'a yazar). 6 entry (tümü SRC: NORMAL), 9 GAP_SCAN (IFVG taraması aktif). BIAS_LOCKED latch正常, _inverted_candidates 0 (beklenen).
+- **İzleme:** 24-48 saat başlatıldı. İlk IFVG entry'si geldiğinde PnL NORMAL ile karşılaştırılacak. 48 saat sonra 0 IFVG ise feature kodunda real bug.
+- **Sunucu durumu:** 28/28 coin 5x OK, 55'er bar (simetrik), 0 hata, TESTNET korunuyor, WAL: 4,745.60 USDT, 3 trade kapatıldı (net +60.90), aktif 6 pozisyon.
+
+---
+
 ## ✅ RETRACE_FALLBACK (E MODU) KAPANDI — Gate yapısal olarak hatalı, A/retrace korunuyor (2026-08-20)
 - **Soru:** FVG kuraklığı yapısal mı, rastgele mi? → **Rastgele (tail-event).** Checkpoint analizi: 49 farklı trade 25 coin'e dağılmış, tetikleme oranı tüm coin'lerde %0.04–%0.25 (homojen).
 - **Gate kök nedeni:** `UPNL ≥ 1.5R` + `bars_since ≥ 30` — underwater dry spell senaryolarında hiçbir zaman aynı anda sağlanmıyor. NEAR orijinal vakası: 1803 trade'de 1 trade değişmiş, `TP(+63) → PROFIT_TRAIL(+48)` — kurtarma yok, zarar var.
