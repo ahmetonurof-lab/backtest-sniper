@@ -193,36 +193,93 @@ def build_combined(
     live: dict[str, dict],
     bt: dict[str, dict],
     bt_pf: float | None = None,
+    bt_gross: tuple[float, float] | None = None,
 ) -> str:
-    """Yanyana karsilastirma tablosu uret."""
+    """Yanyana karsilastirma tablosu uret (per-symbol ustte, genel altta)."""
     all_syms = sorted(set(live) | set(bt))
     lines = []
     lines.append("# PARITY REPORT -- Canli (8.5g) vs Backtest (Binance 15d)")
     lines.append("")
-    lines.append("## Ortak istatistik")
+
+    # ── 1. PER-SYMBOL DETAY (USTTE) ──
+    lines.append("## 1. Per-Symbol Detay")
     lines.append("")
-    lines.append("| Kaynak | Trade | Win% | Net PnL | Ort/trade | PF |")
-    lines.append("|---|---|---|---|---|---|")
+    lines.append(
+        "| Symbol | Live N | Live W | Live L | Live Win% | "
+        "Live NetPnL (USDT) | Live Avg | "
+        "BT N | BT Win% | BT TP% | BT PTrail% | BT Loss% | "
+        "BT NetPnL (R) | BT AvgR | Eslesme |"
+    )
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for sym in all_syms:
+        l = live.get(sym)
+        b = bt.get(sym)
+        if l and b:
+            match = "MATCH"
+        elif l and not b:
+            match = "live-only"
+        else:
+            match = "bt-only"
+        # Live sutunlari
+        l_n = l["trades"] if l else "—"
+        l_w = l["wins"] if l else "—"
+        l_l = l["losses"] if l else "—"
+        l_wp = f"{l['win_pct']:.1f}" if l else "—"
+        l_np = f"{l['net_pnl_usdt']:+.2f}" if l else "—"
+        l_avg = f"{l['avg_pnl_usdt']:+.2f}" if l else "—"
+        # BT sutunlari
+        b_n = b["trades"] if b else "—"
+        b_wp = f"{b['win_pct']:.1f}" if b else "—"
+        b_tp = f"{b['tp_pct']:.1f}" if b else "—"
+        b_ptp = f"{b['ptrail_pct']:.1f}" if b else "—"
+        b_lp = f"{b['loss_pct']:.1f}" if b else "—"
+        b_np = f"{b['net_pnl_r']:+.0f}" if b else "—"
+        b_avg = (
+            f"{b['net_pnl_r']/b['trades']:+.2f}"
+            if b and b['trades'] > 0 else "—"
+        )
+        lines.append(
+            f"| {sym} | {l_n} | {l_w} | {l_l} | {l_wp} | "
+            f"{l_np} | {l_avg} | "
+            f"{b_n} | {b_wp} | {b_tp} | {b_ptp} | {b_lp} | "
+            f"{b_np} | {b_avg} | {match} |"
+        )
+    lines.append("")
+
+    # ── 2. GENEL OZET (ALTTA) ──
+    lines.append("## 2. Genel Ozet (Toplam)")
+    lines.append("")
+
+    # Ortak istatistik tablosu
+    lines.append("### 2.1 Ortak Istatistik")
+    lines.append("")
+    lines.append(
+        "| Kaynak | Trade | Wins | Losses | Win% | "
+        "Net PnL | Ort/trade | Gross Win | Gross Loss | PF |"
+    )
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
 
     if live:
         l_t = sum(s["trades"] for s in live.values())
         l_w = sum(s["wins"] for s in live.values())
+        l_l = sum(s["losses"] for s in live.values())
         l_n = sum(s["net_pnl_usdt"] for s in live.values())
         l_a = l_n / l_t if l_t else 0
-        l_pf_w = sum(s["gross_wins"] for s in live.values())
-        l_pf_l = sum(s["gross_losses"] for s in live.values())
-        l_pf = l_pf_w / l_pf_l if l_pf_l else float("inf")
+        l_gw = sum(s["gross_wins"] for s in live.values())
+        l_gl = sum(s["gross_losses"] for s in live.values())
+        l_pf = l_gw / l_gl if l_gl > 0 else float("inf")
         lines.append(
-            f"| **CANLI** (USDT) | {l_t} | {100*l_w/l_t:.1f} | "
-            f"{l_n:+.2f} | {l_a:+.2f} | {l_pf:.2f} |"
+            f"| **CANLI** (USDT) | {l_t} | {l_w} | {l_l} | "
+            f"{100*l_w/l_t:.1f} | {l_n:+.2f} | {l_a:+.2f} | "
+            f"{l_gw:+.2f} | {l_gl:+.2f} | {l_pf:.2f} |"
         )
     if bt:
         b_t = sum(s["trades"] for s in bt.values())
         b_w = sum(s["trades"] * s["win_pct"] / 100 for s in bt.values())
         b_n = sum(s["net_pnl_r"] for s in bt.values())
         b_a = b_n / b_t if b_t else 0
-        # PF: dump'tan hesaplanan gercek oran (summary'deki per-coin PF
-        # 999.0 sentinel oldugu icin ortalamasi anlamsiz)
+        b_gw = bt_gross[0] if bt_gross else 0
+        b_gl = bt_gross[1] if bt_gross else 0
         if bt_pf is None:
             b_pf_str = "n/a"
         elif bt_pf == float("inf"):
@@ -230,9 +287,88 @@ def build_combined(
         else:
             b_pf_str = f"{bt_pf:.2f}"
         lines.append(
-            f"| **BACKTEST** (R) | {b_t} | {b_w/b_t*100:.1f} | "
-            f"{b_n:+.2f} | {b_a:+.2f} | {b_pf_str} |"
+            f"| **BACKTEST** (R) | {b_t} | {int(b_w)} | {b_t-int(b_w)} | "
+            f"{b_w/b_t*100:.1f} | {b_n:+.0f} | {b_a:+.2f} | "
+            f"{b_gw:+.0f} | {b_gl:+.0f} | {b_pf_str} |"
         )
+    lines.append("")
+
+    # Sembol kapsama
+    lines.append("### 2.2 Sembol Kapsama")
+    lines.append("")
+    n_live = len(live)
+    n_bt = len(bt)
+    n_match = len([s for s in (set(live) & set(bt))])
+    n_live_only = len(set(live) - set(bt))
+    n_bt_only = len(set(bt) - set(live))
+    lines.append(
+        f"- CANLI sembol sayisi: **{n_live}**\n"
+        f"- BACKTEST sembol sayisi: **{n_bt}**\n"
+        f"- Eslesen (MATCH): **{n_match}**\n"
+        f"- Canli-only: **{n_live_only}** (canli trade acmis, BT'de yok)\n"
+        f"- BT-only: **{n_bt_only}** (BT'de var, canli hic trade acmamis)"
+    )
+    lines.append("")
+
+    # Eslesme / TERS yon analizi
+    lines.append("### 2.3 Eslesme Analizi")
+    lines.append("")
+    lines.append("**TERS yon (canli negatif, BT pozitif):**")
+    lines.append("")
+    lines.append("| Symbol | Live NetPnL | BT NetPnL | Fark |")
+    lines.append("|---|---|---|---|")
+    for sym in sorted(set(live) & set(bt)):
+        l = live[sym]
+        b = bt[sym]
+        if l["net_pnl_usdt"] < 0 and b["net_pnl_r"] > 0:
+            lines.append(
+                f"| {sym} | {l['net_pnl_usdt']:+.2f} | "
+                f"{b['net_pnl_r']:+.0f}R | "
+                f"{l['net_pnl_usdt'] - b['net_pnl_r']:+.2f} |"
+            )
+    lines.append("")
+    lines.append("**TERS yon (canli pozitif, BT negatif):**")
+    lines.append("")
+    lines.append("| Symbol | Live NetPnL | BT NetPnL | Fark |")
+    lines.append("|---|---|---|---|")
+    for sym in sorted(set(live) & set(bt)):
+        l = live[sym]
+        b = bt[sym]
+        if l["net_pnl_usdt"] > 0 and b["net_pnl_r"] < 0:
+            lines.append(
+                f"| {sym} | {l['net_pnl_usdt']:+.2f} | "
+                f"{b['net_pnl_r']:+.0f}R | "
+                f"{l['net_pnl_usdt'] - b['net_pnl_r']:+.2f} |"
+            )
+    lines.append("")
+    lines.append("**AYNI yon (ikisi de pozitif):**")
+    lines.append("")
+    lines.append("| Symbol | Live NetPnL | BT NetPnL | Fark |")
+    lines.append("|---|---|---|---|")
+    for sym in sorted(set(live) & set(bt)):
+        l = live[sym]
+        b = bt[sym]
+        if l["net_pnl_usdt"] > 0 and b["net_pnl_r"] > 0:
+            lines.append(
+                f"| {sym} | {l['net_pnl_usdt']:+.2f} | "
+                f"{b['net_pnl_r']:+.0f}R | "
+                f"{l['net_pnl_usdt'] - b['net_pnl_r']:+.2f} |"
+            )
+    lines.append("")
+    lines.append("**AYNI yon (ikisi de negatif):**")
+    lines.append("")
+    lines.append("| Symbol | Live NetPnL | BT NetPnL | Fark |")
+    lines.append("|---|---|---|---|")
+    for sym in sorted(set(live) & set(bt)):
+        l = live[sym]
+        b = bt[sym]
+        if l["net_pnl_usdt"] < 0 and b["net_pnl_r"] < 0:
+            lines.append(
+                f"| {sym} | {l['net_pnl_usdt']:+.2f} | "
+                f"{b['net_pnl_r']:+.0f}R | "
+                f"{l['net_pnl_usdt'] - b['net_pnl_r']:+.2f} |"
+            )
+    lines.append("")
     lines.append("")
     lines.append("Notlar:")
     lines.append(
@@ -247,34 +383,6 @@ def build_combined(
         "bu raporda sadece R tablosu kullanildi. Tam USDT karsiligi "
         "icin analyzer_v5.py'ye trade dump (qty + prices) eklemek gerekir."
     )
-    lines.append("")
-
-    # Per-symbol
-    lines.append("## Per-symbol")
-    lines.append("")
-    lines.append(
-        "| Symbol | Live N | Live Win% | Live NetPnL (USDT) | "
-        "BT N | BT Win% | BT NetPnL (R) | Eslesme |"
-    )
-    lines.append("|---|---|---|---|---|---|---|---|")
-    for sym in all_syms:
-        l = live.get(sym)
-        b = bt.get(sym)
-        if l and b:
-            match = "MATCH"
-        elif l and not b:
-            match = "live-only"
-        else:
-            match = "bt-only"
-        l_n = l["trades"] if l else "—"
-        l_w = f"{l['win_pct']}" if l else "—"
-        l_p = f"{l['net_pnl_usdt']:+.2f}" if l else "—"
-        b_n = b["trades"] if b else "—"
-        b_w = f"{b['win_pct']}" if b else "—"
-        b_p = f"{b['net_pnl_r']:+.0f}" if b else "—"
-        lines.append(
-            f"| {sym} | {l_n} | {l_w} | {l_p} | {b_n} | {b_w} | {b_p} | {match} |"
-        )
     lines.append("")
     return "\n".join(lines)
 
@@ -309,7 +417,10 @@ def main():
         print("      Trade dump YOK — PF hesaplanamadi")
     print()
     print("[3/3] Rapor uretiliyor...")
-    report = build_combined(live, bt, bt_pf=b_pf_real)
+    report = build_combined(
+        live, bt, bt_pf=b_pf_real,
+        bt_gross=(b_gw_r, b_gl_r) if bt_dump else None,
+    )
     print()
     print(report)
     PARITY_MD.parent.mkdir(parents=True, exist_ok=True)
