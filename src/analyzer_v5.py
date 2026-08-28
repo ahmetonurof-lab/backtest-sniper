@@ -81,13 +81,23 @@ def load_data(filepath):
     if filepath in _DATA_CACHE:
         return _DATA_CACHE[filepath]
     t0 = time.time()
-    df = pd.read_feather(filepath)
+    # ── Dispatch: .csv (Binance export) vs .feather (IC Market) ──
+    if str(filepath).lower().endswith(".csv"):
+        df = pd.read_csv(filepath)
+        # Binance export: open_time = ms int. parse via unit='ms'.
+        ts_ms = (
+            pd.to_datetime(df["open_time"], unit="ms")
+            .values.astype("datetime64[ms]")
+            .astype("int64")
+        )
+    else:
+        df = pd.read_feather(filepath)
+        ts_ms = (
+            pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
+            .values.astype("datetime64[ms]")
+            .astype("int64")
+        )
     t1 = time.time()
-    ts_ms = (
-        pd.to_datetime(df["open_time"], format="%Y-%m-%d %H:%M:%S")
-        .values.astype("datetime64[ms]")
-        .astype("int64")
-    )
     n = len(df)
     bars = [None] * n
     o = df["open"].to_numpy(dtype=float)
@@ -810,10 +820,20 @@ def collect_fvg_profile(symbol: str):
 
 def _collect_fvg_profile_impl(symbol: str):
     # --- (coin bazli FVG expiry kalkti — yerini is_fvg_alive aldi) ---
+    # Veri yolu secimi: Binance CSV (binance_15d/) > IC Market feather (data/daily/).
+    # oncece .csv kontrolu, sonra fallback .feather. Bu yeni dispatch 28 sembol
+    # Binance 15d backtest parity testi icin eklendi (2026-08-28).
+    csv_path = os.path.join(
+        os.path.dirname(__file__), "data", "binance_15d", f"{symbol}_1m.csv"
+    )
     feather_path = os.path.join(
         os.path.dirname(__file__), "data", "daily", f"{symbol}_1m_raw.feather"
     )
-    if not os.path.isfile(feather_path):
+    if os.path.isfile(csv_path):
+        data_path = csv_path
+    elif os.path.isfile(feather_path):
+        data_path = feather_path
+    else:
         return None, None, None, None, None
 
     ic = cfg.INITIAL_BALANCE
@@ -826,7 +846,7 @@ def _collect_fvg_profile_impl(symbol: str):
     TMM = cfg.TRAIL_MIN_MOVE_MULT
     FVG_MIN_SIZE_ATR_MULT = cfg.FVG_MIN_SIZE_ATR_MULT
 
-    b1 = load_data(feather_path)
+    b1 = load_data(data_path)
     b15 = resample_15m(b1)
     if not b15:
         print(f"    [{symbol}] resample_15m bos dondu")
