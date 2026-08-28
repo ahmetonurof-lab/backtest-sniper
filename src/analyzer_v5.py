@@ -2096,7 +2096,11 @@ def compute_session_stats(trade_records, initial_balance, daily_rows=None):
     positive_exit_pct = tp_pct + profit_trail_pct
     gross_profit = sum(r["pnl"] for r in trade_records if r["pnl"] > 0) or 0
     gross_loss = abs(sum(r["pnl"] for r in trade_records if r["pnl"] < 0))
-    profit_factor = 999.0 if gross_loss == 0 else gross_profit / gross_loss
+    # BUG FIX: gross_loss=0 durumunda 999.0 sentinel PF yanlis yorumlamaya
+    # yol aciyordu (parity raporu "PF=999.00" yazip gercek performans
+    # gostergesi saniliyordu). Sentinel mat.inf yapiyoruz; gosterimde
+    # ayrik ele alinmali.
+    profit_factor = float("inf") if gross_loss == 0 else gross_profit / gross_loss
     cumulative = 0
     peak = 0
     max_dd = 0
@@ -2670,7 +2674,8 @@ def run_compare_sf(symbols, workers, serial):
                 and r[tag_names.index(tag) + 1]["total_pnl"] < 0
             )
         )
-        a["pf"] = 999.0 if gl == 0 else gp / gl
+        # BUG FIX: 999.0 sentinel yerine mat.inf (daha dogru semantik)
+        a["pf"] = float("inf") if gl == 0 else gp / gl
 
     lines = []
     w = lines.append
@@ -3931,6 +3936,36 @@ def main():
         )
     except Exception as e:
         print(f"  [FVG Zone] Rapor olusturma hatasi: {e}")
+
+    # ── Trade-level JSON dump (parity raporu icin) ───────────────────
+    # tools/parity_report_crypto.py bu dosyayi okuyup gercek gross_wins /
+    # gross_losses oranindan PF hesaplar (summary'de per-coin PF 999.0
+    # sentinel olarak geliyordu, ortalamasi anlamsizdi).
+    try:
+        import json as _json
+        _dump_path = os.path.join(report_dir, "trades_dump.json")
+        # numpy tiplerini JSON serializable yap
+        def _to_native(o):
+            try:
+                import numpy as _np
+                if isinstance(o, (_np.integer,)): return int(o)
+                if isinstance(o, (_np.floating,)): return float(o)
+                if isinstance(o, (_np.bool_,)): return bool(o)
+            except Exception:
+                pass
+            return o
+        with open(_dump_path, "w", encoding="utf-8") as _f:
+            _json.dump(
+                [_json.loads(_json.dumps(r, default=_to_native))
+                 for r in all_trade_records],
+                _f,
+                ensure_ascii=False,
+            )
+        print(
+            f"  [Trade Dump] {len(all_trade_records)} trade -> {_dump_path}"
+        )
+    except Exception as e:
+        print(f"  [Trade Dump] Hata: {e}")
 
 
 if __name__ == "__main__":

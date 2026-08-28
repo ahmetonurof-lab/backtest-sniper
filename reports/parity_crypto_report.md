@@ -4,8 +4,8 @@
 
 | Kaynak | Trade | Win% | Net PnL | Ort/trade | PF |
 |---|---|---|---|---|---|
-| **CANLI** (USDT) | 220 | 30.9 | -482.71 | -2.19 | 0.76 |
-| **BACKTEST** (R) | 189 | 54.5 | +4459.00 | +23.59 | 80.88 |
+| **CANLI** (USDT) | 221 | 30.8 | -475.80 | -2.15 | 0.76 |
+| **BACKTEST** (R) | 187 | 54.5 | +4266.00 | +22.81 | 2.71 |
 
 Notlar:
 - **CANLI**: production bot, events_2026-08-2*.jsonl, USDT. Sadece kapanan (exit) trade'ler. Trailing_count dahil degil, qty birebir Binance tarafindan raporlanan (testnet) miktardir.
@@ -26,7 +26,7 @@ Notlar:
 | DOGEUSDT | 10 | 50.0 | +34.64 | 0 | 0.0 | +0 | MATCH |
 | DOTUSDT | 14 | 21.4 | -35.99 | 4 | 50.0 | +11 | MATCH |
 | DYDXUSDT | 2 | 0.0 | -23.13 | 5 | 40.0 | +51 | MATCH |
-| ENAUSDT | 17 | 29.4 | -109.73 | 1 | 100.0 | +133 | MATCH |
+| ENAUSDT | 17 | 29.4 | -109.73 | — | — | — | live-only |
 | GMXUSDT | 11 | 27.3 | -84.75 | 3 | 33.3 | -96 | MATCH |
 | INJUSDT | 6 | 33.3 | +40.31 | 4 | 50.0 | +438 | MATCH |
 | LDOUSDT | 12 | 16.7 | -98.79 | 5 | 80.0 | +36 | MATCH |
@@ -41,5 +41,5 @@ Notlar:
 | STRKUSDT | — | — | — | 6 | 66.7 | +972 | bt-only |
 | SUIUSDT | 19 | 31.6 | -86.13 | 10 | 60.0 | +572 | MATCH |
 | TIAUSDT | 4 | 25.0 | -17.30 | 7 | 28.6 | +56 | MATCH |
-| UNIUSDT | 7 | 14.3 | -59.31 | 1 | 0.0 | +60 | MATCH |
+| UNIUSDT | 8 | 12.5 | -52.40 | — | — | — | live-only |
 | XRPUSDT | 6 | 66.7 | +56.18 | 0 | 0.0 | +0 | MATCH |

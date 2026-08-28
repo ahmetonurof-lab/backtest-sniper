@@ -1113,3 +1113,18 @@ Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded f
 **Decision: NOT VALIDATED**
 
 Matched-pair bucket has n<100 in train or holdout — insufficient data.
+## Fibonacci Zone Holdout Validation — Matched vs Mismatched Pairs
+
+Matched pairs = discount+0.236, premium+0.786 (combined as ONE strategy).
+Mismatched pairs = discount+0.786, premium+0.236 (shown for contrast, excluded from strategy).
+
+| Group | Split | Trades | Winrate | PF | Net PnL | MaxDD% | Reliable |
+|---|---|---|---|---|---|---|---|
+| Matched | Train | 71 | 69.01% | 3.23 | +1177 | 1.31% | NO (n<100) |
+| Matched | Holdout | 42 | 69.05% | 7.96 | +3576 | 1.24% | NO (n<100) |
+| Mismatched | Train | 34 | 32.35% | 0.62 | -211 | 2.73% | NO (n<100) |
+| Mismatched | Holdout | 5 | 0.0% | 0.0 | -163 | 2.17% | NO (n<100) |
+
+**Decision: NOT VALIDATED**
+
+Matched-pair bucket has n<100 in train or holdout — insufficient data.

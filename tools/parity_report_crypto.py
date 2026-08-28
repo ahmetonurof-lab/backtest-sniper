@@ -97,6 +97,35 @@ def summarize_live(events: list[dict]) -> dict[str, dict]:
     return out
 
 
+# ── Trade dump parse (analyzer_v5'in yazdigi trades_dump.json) ──────
+def parse_trades_dump(path: Path) -> tuple[float, float, int, int] | None:
+    """Trade dump'tan gercek (gross_wins, gross_losses, trades, wins) hesapla.
+
+    PF = gross_wins / gross_losses (gross_loss=0 ise math.inf).
+    Returns: (gross_wins_R, gross_losses_R, n_trades, n_wins)
+    """
+    if not path.exists():
+        return None
+    import json as _json
+    try:
+        trades = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    gross_w = 0.0
+    gross_l = 0.0
+    wins = 0
+    for t in trades:
+        pnl = t.get("pnl", 0.0) or 0.0
+        result = t.get("result", "")
+        if pnl > 0:
+            gross_w += pnl
+            if result in ("TP", "PROFIT_TRAIL"):
+                wins += 1
+        elif pnl < 0:
+            gross_l += abs(pnl)
+    return gross_w, gross_l, len(trades), wins
+
+
 # ── Backtest parse (analyzer_v5_summary.md'den) ───────────────────────
 def parse_bt_summary(path: Path) -> dict[str, dict] | None:
     """En son [BASELINE_RETRACE_LIVE_PARITY] tablosunu parse et.
@@ -160,7 +189,11 @@ def parse_bt_summary(path: Path) -> dict[str, dict] | None:
 
 
 # ── Combined report ───────────────────────────────────────────────────
-def build_combined(live: dict[str, dict], bt: dict[str, dict]) -> str:
+def build_combined(
+    live: dict[str, dict],
+    bt: dict[str, dict],
+    bt_pf: float | None = None,
+) -> str:
     """Yanyana karsilastirma tablosu uret."""
     all_syms = sorted(set(live) | set(bt))
     lines = []
@@ -188,11 +221,17 @@ def build_combined(live: dict[str, dict], bt: dict[str, dict]) -> str:
         b_w = sum(s["trades"] * s["win_pct"] / 100 for s in bt.values())
         b_n = sum(s["net_pnl_r"] for s in bt.values())
         b_a = b_n / b_t if b_t else 0
-        b_pf_vals = [s["pf"] for s in bt.values() if s["pf"] not in (float("inf"), 0)]
-        b_pf_avg = sum(b_pf_vals) / len(b_pf_vals) if b_pf_vals else 0
+        # PF: dump'tan hesaplanan gercek oran (summary'deki per-coin PF
+        # 999.0 sentinel oldugu icin ortalamasi anlamsiz)
+        if bt_pf is None:
+            b_pf_str = "n/a"
+        elif bt_pf == float("inf"):
+            b_pf_str = "inf (0 loss)"
+        else:
+            b_pf_str = f"{bt_pf:.2f}"
         lines.append(
             f"| **BACKTEST** (R) | {b_t} | {b_w/b_t*100:.1f} | "
-            f"{b_n:+.2f} | {b_a:+.2f} | {b_pf_avg:.2f} |"
+            f"{b_n:+.2f} | {b_a:+.2f} | {b_pf_str} |"
         )
     lines.append("")
     lines.append("Notlar:")
@@ -256,9 +295,21 @@ def main():
         print(f"      Beklenen: {SUMMARY_MD}")
         return 1
     print(f"      {len(bt)} sembol (analyzer_v5)")
+    # Trade dump'tan gercek gross_wins/gross_losses (PF hesap icin)
+    bt_dump = parse_trades_dump(REPORTS / "trades_dump.json")
+    if bt_dump:
+        b_gw_r, b_gl_r, b_n_dump, b_w_dump = bt_dump
+        b_pf_real = (b_gw_r / b_gl_r) if b_gl_r > 0 else float("inf")
+        print(
+            f"      Trade dump: {b_n_dump} trade, gross_win={b_gw_r:.0f}R, "
+            f"gross_loss={b_gl_r:.0f}R, PF={b_pf_real:.2f}"
+        )
+    else:
+        b_gw_r = b_gl_r = b_pf_real = None
+        print("      Trade dump YOK — PF hesaplanamadi")
     print()
     print("[3/3] Rapor uretiliyor...")
-    report = build_combined(live, bt)
+    report = build_combined(live, bt, bt_pf=b_pf_real)
     print()
     print(report)
     PARITY_MD.parent.mkdir(parents=True, exist_ok=True)
