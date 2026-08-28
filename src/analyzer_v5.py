@@ -98,6 +98,20 @@ def load_data(filepath):
             .astype("int64")
         )
     t1 = time.time()
+    # ── Opsiyonel zaman filtresi: SNIPER_BACKTEST_START_MS env (ms epoch) ──
+    # Binance 15d parity testi icin canli ilk entry anina (2026-08-20
+    # 05:15:07 UTC = 1787202907000) filtrelemek uzere eklendi. Bos/none
+    # ise filtre uygulanmaz (mevcut davranis korunur).
+    _start_ms = os.environ.get("SNIPER_BACKTEST_START_MS", "").strip()
+    if _start_ms:
+        try:
+            _start = int(_start_ms)
+            mask = ts_ms >= _start
+            df = df.loc[mask].reset_index(drop=True)
+            ts_ms = ts_ms[mask]
+            print(f"      [FILTER] start_ts>={_start} -> {len(df)} bar")
+        except ValueError:
+            print(f"      [FILTER] SNIPER_BACKTEST_START_MS gecersiz: {_start_ms}")
     n = len(df)
     bars = [None] * n
     o = df["open"].to_numpy(dtype=float)
